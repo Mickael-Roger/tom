@@ -1,0 +1,8 @@
+mistral:
+  api: XXXXX
+
+nextcloud:
+  calendar:
+    user: XXXXX
+    password: XXXXX
+    url: XXXX
