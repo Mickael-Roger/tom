@@ -6,3 +6,6 @@ nextcloud:
     user: XXXXX
     password: XXXXX
     url: XXXX
+
+personalContext: |
+  My name is xxx. I'm married with YYY and I have 2 daughters: ZZ and RR. My birthdate is YYY-mm-dd. My wide, YYY is born YYY-mm-dd. My oldest daughter ZZ is born YYY-mm-dd and mys youngest one RR is born YYY-mm-dd
