@@ -27,29 +27,33 @@ class JarMick():
     }
 
   
-  def listTasks(self, start, end):
+  def listTasks(self):
   
     evts = []
 
-    date_format = "%Y-%m-%d %H:%M:%S"
+    #for calendar in self.calendars:
+    tasks = self.calendars[0].search(
+      todo=True,
+    )
+    for task in tasks:
+      for component in task.icalendar_instance.walk():
+        if component.name != "VTODO":
+          continue
+        if component.get("due") == None:
+          due = None
+        else:
+          due = component.get("due").dt.strftime("%d/%m/%Y %H:%M")
+
+        myevent= {"title": component.get("summary"),
+                 "due": due}
+        evts.append(myevent) 
+ 
+    print("---")
+    print(json.dumps(evts))
+    print("---")
   
-    for calendar in self.calendars:
-      events = calendar.search(
-        start = datetime.strptime(start, date_format),
-        end = datetime.strptime(end, date_format),
-        event=True,
-        expand=True,
-      )
-      for event in events:
-        for component in event.icalendar_instance.walk():
-          if component.name != "VEVENT":
-            continue
-          myevent= {"title": component.get("summary"),
-            "start": component.get("dtstart").dt.strftime("%d/%m/%Y %H:%M"),
-            "end": component.get("dtend").dt.strftime("%d/%m/%Y %H:%M")}
-          evts.append(myevent) 
-  
-    return json.dumps(evts)
+    #return json.dumps(evts)
+    return
                   
   def addTask(self, title, todolist, due):
     
@@ -132,7 +136,8 @@ class JarMick():
 
     systemPrompt = f"""
       The user prompt is a about information that is containt in its todo list.
-      You must answer a json that contain only one value: "action". 
+      You must answer a json that contain only two values: "action" and "list".
+      The "list" value is set to the todo list name in case the user provide it. If this information is not provided, the "list" value is just an empty string.
       According to the user prompt, you must set the "action" value to one of the appropriate values: "search", "add", "update", "close"
       - The "search" value is used for any user request that request information about a task in its todo list
       - The "add" value is used for any user request that request the creation of a new task in its todo list
@@ -140,7 +145,10 @@ class JarMick():
       - The "close" value is used for any user request that request to mark at completed a certain task in its todo list
     """
    
-    #response = self.callLLM("mistral-small-latest", systemPrompt, user, self.conf)
+    response = self.callLLM("mistral-small-latest", systemPrompt, user, self.conf)
+    print(response)
+
+    print(self.listTasks())
 
     #match response['action']:
     #  case 'search':
