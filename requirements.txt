@@ -1,3 +1,4 @@
 mistralai
 caldav
 PyYAML
+cherrypy
