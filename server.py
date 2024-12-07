@@ -769,7 +769,7 @@ mistralClient = Mistral(api_key=config["mistral"]["api"])
 
 if __name__ == "__main__":    
 
-  cherrypy.config.update({'server.socket_port': 8444})
+  cherrypy.config.update({'server.socket_host': '0.0.0.0', 'server.socket_port': 8444})
   cherrypy.quickstart(MyWebService(), '/', config={
       '/static': {
           'tools.staticdir.on': True,

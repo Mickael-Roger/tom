@@ -3,6 +3,7 @@
 <head>
     <title>JarMick</title>
     <link rel="stylesheet" type="text/css" href="static/styles.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
 <h1>Welcome to JarMick</h1>
@@ -12,7 +13,17 @@
 <form id="promptForm">
     <label for="prompt">Enter your prompt:</label>
     <input type="text" id="prompt" name="request"><br>
+    <label for="language">Select Language:</label>
+    <select id="language">
+        <option value="fr-FR">French</option>
+        <option value="en-US">English</option>
+    </select><br>
+    <label for="autoSubmit">
+        <input type="checkbox" id="autoSubmit" name="autoSubmit">
+        Auto Submit
+    </label><br>
     <input type="submit" value="Submit">
+    <button type="button" id="speechButton">Speak</button>
 </form>
 
 <script>
@@ -23,7 +34,6 @@ document.getElementById('promptForm').addEventListener('submit', function(event)
 
     // Display the user's prompt in the chat
     var chatDiv = document.getElementById('chat');
-    chatDiv.innerHTML = ''; // Clear previous responses
     var userDiv = document.createElement('div');
     userDiv.className = 'user';
     userDiv.innerHTML = '<strong>You:</strong> ' + requestValue;
@@ -48,11 +58,89 @@ document.getElementById('promptForm').addEventListener('submit', function(event)
         chatDiv.scrollTop = chatDiv.scrollHeight;
         // Clear the input field
         document.getElementById('prompt').value = '';
+
+        // Voice the response
+        console.log('Calling speakText with:', data.response);
+        speakText(data.response);
     })
     .catch((error) => {
         console.error('Error:', error);
     });
 });
+
+// Speech recognition setup
+const speechButton = document.getElementById('speechButton');
+const promptInput = document.getElementById('prompt');
+const languageSelect = document.getElementById('language');
+const promptForm = document.getElementById('promptForm');
+const autoSubmitCheckbox = document.getElementById('autoSubmit');
+
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = function(event) {
+        const result = event.results[0];
+        const transcript = result[0].transcript;
+        const detectedLanguage = result[0].lang || 'fr-FR'; // Default to French if language is not detected
+
+        // Update the language selection dropdown
+        languageSelect.value = detectedLanguage;
+
+        promptInput.value = transcript;
+
+        // Check if the auto-submit checkbox is checked
+        if (autoSubmitCheckbox.checked) {
+            // Automatically submit the form
+            promptForm.dispatchEvent(new Event('submit'));
+        }
+    };
+
+    recognition.onerror = function(event) {
+        console.error('Speech recognition error:', event.error);
+    };
+
+    recognition.onend = function() {
+        console.log('Speech recognition ended.');
+    };
+
+    speechButton.addEventListener('click', function() {
+        recognition.lang = languageSelect.value;
+        recognition.start();
+    });
+} else {
+    speechButton.disabled = true;
+    speechButton.title = 'Speech recognition not supported in this browser.';
+}
+
+// Speech synthesis setup
+function speakText(text) {
+    console.log('speakText called with:', text);
+    if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = languageSelect.value;
+
+        // Add event listeners for speech synthesis events
+        utterance.onstart = function(event) {
+            console.log('Speech synthesis started:', event);
+        };
+        utterance.onend = function(event) {
+            console.log('Speech synthesis ended:', event);
+        };
+        utterance.onerror = function(event) {
+            console.error('Speech synthesis error:', event);
+        };
+        utterance.onboundary = function(event) {
+            console.log('Speech synthesis boundary:', event);
+        };
+
+        window.speechSynthesis.speak(utterance);
+    } else {
+        console.error('Speech synthesis not supported in this browser.');
+    }
+}
 </script>
 </body>
 </html>
