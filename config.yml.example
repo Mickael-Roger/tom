@@ -1,6 +1,9 @@
 mistral:
   api: XXXXX
 
+openai:
+  api: XXXXXXX
+
 nextcloud:
   calendar:
     user: XXXXX
@@ -11,6 +14,11 @@ obsidian:
   vault: XXXXX
   defaultNote: Inbox/Notes.md
   defaultDir: Inbox
+
+# Need Anki-sync HTTP add on
+anki:
+  url: http://localhost:8765
+
 
 personalContext: |
   My name is xxx. I'm married with YYY and I have 2 daughters: ZZ and RR. My birthdate is YYY-mm-dd. My wide, YYY is born YYY-mm-dd. My oldest daughter ZZ is born YYY-mm-dd and mys youngest one RR is born YYY-mm-dd

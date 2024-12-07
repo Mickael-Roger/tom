@@ -2,3 +2,4 @@ mistralai
 caldav
 PyYAML
 cherrypy
+openai
