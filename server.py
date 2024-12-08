@@ -21,6 +21,7 @@ from anki import Anki
 from nextcloudtodo import NextCloudTodo
 from nextcloudcalendar import NextCloudCalendar
 from weather import Weather
+from kwyk import Kwyk
 
 
 
@@ -127,6 +128,7 @@ def processRequest(input):
     'anki_add': functools.partial(anki.add),
     'calendar_add': functools.partial(calendar.addEvent),
     'weather_get': functools.partial(weather.get),
+    'kwyk_get': functools.partial(kwyk.get),
 #    'calendar_remove': functools.partial(calendar.deleteEvents),
     'calendar_search': functools.partial(calendar.search),
     'todo_listAll': functools.partial(todo.listAll),
@@ -190,10 +192,11 @@ calendar = NextCloudCalendar(config)
 todo = NextCloudTodo(config)
 anki = Anki(config)
 weather = Weather(config)
+kwyk = Kwyk(config)
 #pronote = Pronote()
 
 
-tools = calendar.tools + todo.tools + anki.tools + weather.tools
+tools = calendar.tools + todo.tools + anki.tools + weather.tools + kwyk.tools
 
 mistralClient = Mistral(api_key=config["mistral"]["api"])
 

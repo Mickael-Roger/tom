@@ -1,4 +1,7 @@
 config.yml
 *.pyc
-data/*.json
 __pycache__/
+
+data/*
+# Except for the .gitkeep file
+!data/.gitkeep

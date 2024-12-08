@@ -36,5 +36,14 @@ pronote:
     token: data/child2.json
 
 
+kwyk:
+  username: XXXX
+  password: XXXX
+  id: "XXXX"
+
+# Data persistance directory
+data: data/
+
+
 personalContext: |
   My name is xxx. I'm married with YYY and I have 2 daughters: ZZ and RR. My birthdate is YYY-mm-dd. My wide, YYY is born YYY-mm-dd. My oldest daughter ZZ is born YYY-mm-dd and mys youngest one RR is born YYY-mm-dd

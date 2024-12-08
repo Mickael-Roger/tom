@@ -4,3 +4,4 @@ PyYAML
 cherrypy
 openai
 pronotepy
+beautifulsoup4
