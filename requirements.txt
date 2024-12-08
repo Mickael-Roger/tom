@@ -3,3 +3,4 @@ caldav
 PyYAML
 cherrypy
 openai
+pronotepy

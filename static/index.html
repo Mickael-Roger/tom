@@ -1,32 +1,38 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>JarMick</title>
+    <title>Tom</title>
     <link rel="stylesheet" type="text/css" href="static/styles.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
-<h1>Welcome to JarMick</h1>
+<h1>Welcome to Tom</h1>
 <div id="chat">
     <!-- Responses will be displayed here -->
 </div>
 <form id="promptForm">
     <label for="prompt">Enter your prompt:</label>
     <input type="text" id="prompt" name="request"><br>
-    <label for="language">Select Language:</label>
-    <select id="language">
-        <option value="fr-FR">French</option>
-        <option value="en-US">English</option>
-    </select><br>
-    <label for="autoSubmit">
-        <input type="checkbox" id="autoSubmit" name="autoSubmit">
-        Auto Submit
-    </label><br>
-    <input type="submit" value="Submit">
+    <div class="form-row">
+        <label for="language">Select Language:</label>
+        <select id="language">
+            <option value="fr-FR">French</option>
+            <option value="en-US">English</option>
+        </select>
+        <label for="autoSubmit">
+            <input type="checkbox" id="autoSubmit" name="autoSubmit">
+            Auto Submit
+        </label>
+    </div>
+    <input type="button" id="submitButton" value="Submit">
     <button type="button" id="speechButton">Speak</button>
 </form>
 
 <script>
+document.getElementById('submitButton').addEventListener('click', function(event) {
+    document.getElementById('promptForm').dispatchEvent(new Event('submit'));
+});
+
 document.getElementById('promptForm').addEventListener('submit', function(event) {
     event.preventDefault();
     var requestValue = document.getElementById('prompt').value;
@@ -52,7 +58,7 @@ document.getElementById('promptForm').addEventListener('submit', function(event)
         // Display the response on the page
         var responseDiv = document.createElement('div');
         responseDiv.className = 'response';
-        responseDiv.innerHTML = '<strong>JarMick:</strong> ' + data.response;
+        responseDiv.innerHTML = '<strong>Tom:</strong> ' + data.response;
         chatDiv.appendChild(responseDiv);
         // Scroll to the bottom of the chat
         chatDiv.scrollTop = chatDiv.scrollHeight;
@@ -100,15 +106,18 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
 
     recognition.onerror = function(event) {
         console.error('Speech recognition error:', event.error);
+        speechButton.classList.remove('recording');
     };
 
     recognition.onend = function() {
         console.log('Speech recognition ended.');
+        speechButton.classList.remove('recording');
     };
 
     speechButton.addEventListener('click', function() {
         recognition.lang = languageSelect.value;
         recognition.start();
+        speechButton.classList.add('recording');
     });
 } else {
     speechButton.disabled = true;
@@ -135,6 +144,11 @@ function speakText(text) {
         utterance.onboundary = function(event) {
             console.log('Speech synthesis boundary:', event);
         };
+
+        // Ensure speech synthesis is not paused
+        if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+        }
 
         window.speechSynthesis.speak(utterance);
     } else {

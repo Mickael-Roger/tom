@@ -1,4 +1,4 @@
 config.yml
 *.pyc
-
+data/*.json
 __pycache__/
