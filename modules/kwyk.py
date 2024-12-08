@@ -16,7 +16,10 @@ class Kwyk:
   def __init__(self, config) -> None:
     self.url = "https://www.kwyk.fr/"
 
-    self.db = config['data'] + 'kwyk.sqlite'
+    self.db = config['kwyk']['db']
+    self.username = config['kwyk']['username']
+    self.password = config['kwyk']['password']
+    self.id = config['kwyk']['id']
 
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
@@ -76,13 +79,13 @@ class Kwyk:
       csrf_token_input = soup.find('input', {'name': 'csrfmiddlewaretoken'})
       csrf_token = csrf_token_input.get('value')
       
-      data = {'csrfmiddlewaretoken': csrf_token, 'login': 'ambre.roger', 'password': 'PYMHFK'}
+      data = {'csrfmiddlewaretoken': csrf_token, 'login': self.username, 'password': self.password}
 
-      headers['Referer'] = 'https://www.kwyk.fr/bilan/73047/onglets/autonomie/student/'
+      headers['Referer'] = f'https://www.kwyk.fr/bilan/{self.id}/onglets/autonomie/student/'
       response2=session.post('https://www.kwyk.fr/accounts/login/', data=data, headers=headers, allow_redirects=False)
 
       if response2.status_code == 200:
-        autonomousStatus = session.get('https://www.kwyk.fr/bilan/73047/onglets/autonomie/student/', headers=headers, allow_redirects=False)
+        autonomousStatus = session.get(f'https://www.kwyk.fr/bilan/{self.id}/onglets/autonomie/student/', headers=headers, allow_redirects=False)
 
         if autonomousStatus.status_code == 200:
           # Convert the JSON response to a dictionary

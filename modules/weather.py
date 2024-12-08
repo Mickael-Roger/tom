@@ -19,7 +19,7 @@ class Weather:
     self.lastUpdate = dateUpdate.strftime('%Y-%m-%d %H:%M:%S')
     self.data = None
 
-    self.data_file = config['data'] + 'weather.data'
+    self.data_file = config['weather']['cache']
 
     if os.path.exists(self.data_file):
       try:

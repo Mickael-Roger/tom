@@ -32,8 +32,10 @@ anki:
 pronote:
   - name: child1
     token: data/child1.json
+    cache: data/child1.sqlite
   - name: child2
     token: data/child2.json
+    cache: data/child2.sqlite
 
 
 kwyk:
@@ -41,8 +43,8 @@ kwyk:
   password: XXXX
   id: "XXXX"
 
-# Data persistance directory
-data: data/
+weather: 
+  cache: data/weather.json
 
 
 personalContext: |

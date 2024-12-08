@@ -22,6 +22,7 @@ from nextcloudtodo import NextCloudTodo
 from nextcloudcalendar import NextCloudCalendar
 from weather import Weather
 from kwyk import Kwyk
+from pronote import Pronote
 
 
 
@@ -193,7 +194,7 @@ todo = NextCloudTodo(config)
 anki = Anki(config)
 weather = Weather(config)
 kwyk = Kwyk(config)
-#pronote = Pronote()
+pronote = Pronote(config)
 
 
 tools = calendar.tools + todo.tools + anki.tools + weather.tools + kwyk.tools
