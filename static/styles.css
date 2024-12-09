@@ -1,100 +1,93 @@
 body {
     font-family: Arial, sans-serif;
-    background-color: #f0f0f0;
-    margin: 0;
-    padding: 0;
     display: flex;
-    flex-direction: column;
-    align-items: center;
     justify-content: center;
+    align-items: center;
     height: 100vh;
+    margin: 0;
+    background-color: #f0f0f0;
 }
-h1 {
-    color: #333;
-}
-#chat {
-    width: 80%;
+
+.chat-container {
+    width: 90%;
     max-width: 600px;
-    background-color: #fff;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 20px;
+    background: #fff;
+    border-radius: 10px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.chat-box {
+    height: 300px;
     overflow-y: auto;
-    max-height: 400px;
-}
-#chat div {
-    margin-bottom: 10px;
     padding: 10px;
-    border-radius: 4px;
-}
-#chat .user {
-    background-color: #e1ffc7;
-    text-align: right;
-}
-#chat .response {
-    background-color: #dcf8c6;
-    text-align: left;
-}
-form {
-    width: 80%;
-    max-width: 600px;
+    border-bottom: 1px solid #ddd;
     display: flex;
     flex-direction: column;
 }
-label {
-    margin-bottom: 10px;
+
+.message {
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 5px;
+    max-width: 70%;
+    word-wrap: break-word;
 }
-input[type="text"] {
+
+.message.sent {
+    background-color: #007bff;
+    color: #fff;
+    align-self: flex-end;
+}
+
+.message.received {
+    background-color: #28a745;
+    color: #fff;
+    align-self: flex-start;
+}
+
+.prompt-input {
+    width: calc(100% - 20px);
     padding: 10px;
     border: 1px solid #ddd;
-    border-radius: 4px;
-    margin-bottom: 10px;
+    border-radius: 5px;
+    margin: 10px;
 }
-input[type="button"], #speechButton {
-    font-size: 1.5em; /* Increase font size */
-    padding: 15px 30px; /* Increase padding */
-    margin-top: 10px; /* Add some margin for spacing */
-    color: white; /* White text */
-    border: none; /* Remove border */
-    border-radius: 5px; /* Rounded corners */
-    cursor: pointer; /* Pointer cursor on hover */
-    width: 100%; /* Make buttons full width on mobile */
-}
-input[type="button"] {
-    background-color: #4CAF50; /* Green background */
-}
-input[type="button"]:hover {
-    background-color: #45a049; /* Darker green on hover */
-}
-#speechButton {
-    background-color: #007BFF; /* Blue background */
-}
-#speechButton.recording {
-    background-color: #DC3545; /* Red background */
-}
-#language, #autoSubmit {
-    display: inline-block;
-    vertical-align: middle;
-}
-#language {
-    width: 40%; /* Reduce width of the language select field */
-}
-#autoSubmit {
-    width: 55%; /* Adjust width of the auto-submit checkbox */
-    margin-left: 5%; /* Add some margin for spacing */
-}
-.form-row {
+
+.options {
     display: flex;
-    align-items: center;
     justify-content: space-between;
+    align-items: center;
+    padding: 0 10px;
     margin-bottom: 10px;
 }
-@media (max-width: 600px) {
-    input[type="button"], #speechButton {
-        font-size: 2em; /* Increase font size for mobile */
-        padding: 20px 40px; /* Increase padding for mobile */
-    }
+
+.options select, .options label {
+    margin-right: 10px;
+}
+
+.send-button, .speak-button {
+    width: calc(100% - 20px);
+    padding: 10px;
+    border: none;
+    border-radius: 5px;
+    margin: 10px;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.send-button {
+    background-color: #28a745;
+    color: #fff;
+}
+
+.send-button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+.speak-button {
+    background-color: #007bff;
+    color: #fff;
 }
 

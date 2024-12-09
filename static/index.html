@@ -1,161 +1,119 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Tom</title>
-    <link rel="stylesheet" type="text/css" href="static/styles.css">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tom</title>
+    <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
-<h1>Welcome to Tom</h1>
-<div id="chat">
-    <!-- Responses will be displayed here -->
-</div>
-<form id="promptForm">
-    <label for="prompt">Enter your prompt:</label>
-    <input type="text" id="prompt" name="request"><br>
-    <div class="form-row">
-        <label for="language">Select Language:</label>
-        <select id="language">
-            <option value="fr-FR">French</option>
-            <option value="en-US">English</option>
-        </select>
-        <label for="autoSubmit">
-            <input type="checkbox" id="autoSubmit" name="autoSubmit">
-            Auto Submit
-        </label>
+    <div class="chat-container">
+        <div class="chat-box" id="chat-box">
+            <!-- Messages will be displayed here -->
+        </div>
+        <input type="text" id="prompt" placeholder="Prompt" class="prompt-input">
+        <div class="options">
+            <select id="language-select">
+                <option value="fr" selected>Français</option>
+                <option value="en">English</option>
+                <!-- Add more languages as needed -->
+            </select>
+            <label>
+                <input type="checkbox" id="auto-submit"> Auto-submit
+            </label>
+        </div>
+        <button id="send-button" class="send-button" disabled>Send</button>
+        <button id="speak-button" class="speak-button">Speak</button>
     </div>
-    <input type="button" id="submitButton" value="Submit">
-    <button type="button" id="speechButton">Speak</button>
-</form>
 
-<script>
-document.getElementById('submitButton').addEventListener('click', function(event) {
-    document.getElementById('promptForm').dispatchEvent(new Event('submit'));
-});
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const promptInput = document.getElementById('prompt');
+            const sendButton = document.getElementById('send-button');
+            const chatBox = document.getElementById('chat-box');
+            const autoSubmitCheckbox = document.getElementById('auto-submit');
+            const speakButton = document.getElementById('speak-button');
+            const languageSelect = document.getElementById('language-select');
 
-document.getElementById('promptForm').addEventListener('submit', function(event) {
-    event.preventDefault();
-    var requestValue = document.getElementById('prompt').value;
-    var jsonData = JSON.stringify({ request: requestValue });
+            promptInput.addEventListener('input', function() {
+                sendButton.disabled = promptInput.value.trim() === '';
+                if (autoSubmitCheckbox.checked && promptInput.value.trim() !== '') {
+                    sendMessage();
+                }
+            });
 
-    // Display the user's prompt in the chat
-    var chatDiv = document.getElementById('chat');
-    var userDiv = document.createElement('div');
-    userDiv.className = 'user';
-    userDiv.innerHTML = '<strong>You:</strong> ' + requestValue;
-    chatDiv.appendChild(userDiv);
+            sendButton.addEventListener('click', sendMessage);
 
-    fetch('/process', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: jsonData
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log('Success:', data);
-        // Display the response on the page
-        var responseDiv = document.createElement('div');
-        responseDiv.className = 'response';
-        responseDiv.innerHTML = '<strong>Tom:</strong> ' + data.response;
-        chatDiv.appendChild(responseDiv);
-        // Scroll to the bottom of the chat
-        chatDiv.scrollTop = chatDiv.scrollHeight;
-        // Clear the input field
-        document.getElementById('prompt').value = '';
+            speakButton.addEventListener('click', startSpeechRecognition);
 
-        // Voice the response
-        console.log('Calling speakText with:', data.response);
-        speakText(data.response);
-    })
-    .catch((error) => {
-        console.error('Error:', error);
-    });
-});
+            function sendMessage() {
+                const message = promptInput.value.trim();
+                if (message === '') return;
 
-// Speech recognition setup
-const speechButton = document.getElementById('speechButton');
-const promptInput = document.getElementById('prompt');
-const languageSelect = document.getElementById('language');
-const promptForm = document.getElementById('promptForm');
-const autoSubmitCheckbox = document.getElementById('autoSubmit');
+                // Display the sent message
+                const sentMessageElement = document.createElement('div');
+                sentMessageElement.className = 'message sent';
+                sentMessageElement.textContent = message;
+                chatBox.appendChild(sentMessageElement);
 
-if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
+                // Send the message to the server
+                fetch('/process', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ request: message })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Display the received message
+                    const receivedMessageElement = document.createElement('div');
+                    receivedMessageElement.className = 'message received';
+                    receivedMessageElement.textContent = data.response;
+                    chatBox.appendChild(receivedMessageElement);
 
-    recognition.onresult = function(event) {
-        const result = event.results[0];
-        const transcript = result[0].transcript;
-        const detectedLanguage = result[0].lang || 'fr-FR'; // Default to French if language is not detected
+                    // Speak the received message
+                    speakText(data.response);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
 
-        // Update the language selection dropdown
-        languageSelect.value = detectedLanguage;
+                // Clear the input field
+                promptInput.value = '';
+                sendButton.disabled = true;
+            }
 
-        promptInput.value = transcript;
+            function startSpeechRecognition() {
+                const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+                recognition.lang = languageSelect.value;
+                recognition.interimResults = false;
+                recognition.maxAlternatives = 1;
 
-        // Check if the auto-submit checkbox is checked
-        if (autoSubmitCheckbox.checked) {
-            // Automatically submit the form
-            promptForm.dispatchEvent(new Event('submit'));
-        }
-    };
+                recognition.onresult = function(event) {
+                    const transcript = event.results[0][0].transcript;
+                    promptInput.value = transcript;
+                    sendButton.disabled = transcript.trim() === '';
+                    if (autoSubmitCheckbox.checked && transcript.trim() !== '') {
+                        sendMessage();
+                    }
+                };
 
-    recognition.onerror = function(event) {
-        console.error('Speech recognition error:', event.error);
-        speechButton.classList.remove('recording');
-    };
+                recognition.onerror = function(event) {
+                    console.error('Speech recognition error:', event.error);
+                };
 
-    recognition.onend = function() {
-        console.log('Speech recognition ended.');
-        speechButton.classList.remove('recording');
-    };
+                recognition.start();
+            }
 
-    speechButton.addEventListener('click', function() {
-        recognition.lang = languageSelect.value;
-        recognition.start();
-        speechButton.classList.add('recording');
-    });
-} else {
-    speechButton.disabled = true;
-    speechButton.title = 'Speech recognition not supported in this browser.';
-}
-
-// Speech synthesis setup
-function speakText(text) {
-    console.log('speakText called with:', text);
-    if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = languageSelect.value;
-
-        // Add event listeners for speech synthesis events
-        utterance.onstart = function(event) {
-            console.log('Speech synthesis started:', event);
-        };
-        utterance.onend = function(event) {
-            console.log('Speech synthesis ended:', event);
-        };
-        utterance.onerror = function(event) {
-            console.error('Speech synthesis error:', event);
-        };
-        utterance.onboundary = function(event) {
-            console.log('Speech synthesis boundary:', event);
-        };
-
-        // Ensure speech synthesis is not paused
-        if (window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-        }
-
-        window.speechSynthesis.speak(utterance);
-    } else {
-        console.error('Speech synthesis not supported in this browser.');
-    }
-}
-</script>
+            function speakText(text) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = languageSelect.value;
+                window.speechSynthesis.speak(utterance);
+            }
+        });
+    </script>
 </body>
 </html>
+
 

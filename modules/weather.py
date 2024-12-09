@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 class Weather:
 
   def __init__(self, config) -> None:
-    self.url = "https://api.open-meteo.com/v1/forecast?latitude=48.82&longitude=2.00&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation_probability,precipitation,rain,showers,snowfall,snow_depth,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,visibility"
+    self.url = "https://api.open-meteo.com/v1/forecast?latitude=48.82&longitude=2.00&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,rain,showers,snowfall"
 
     dateUpdate = datetime.now() - timedelta(hours=24)
     self.lastUpdate = dateUpdate.strftime('%Y-%m-%d %H:%M:%S')
@@ -45,7 +45,17 @@ class Weather:
       },
     ]
 
-    self.systemContext = ""
+    self.systemContext = """
+     The weather forecast is in JSON format, and the response contains several fields:
+        - temperature_2m: Temperature
+        - apparent_temperature: Feels-like temperature
+        - precipitation_probability: Probability of precipitation
+        - precipitation: Total rain + snow + shower in mm
+        - rain: Rain in mm
+        - shower: Shower in mm
+        - snowfall: Snowfall in cm
+     You should always try to respond succinctly. If no snowfall is expected, do not mention it. Keep the response short. For example, if the request is for the weather forecast for an entire day, just indicate the maximum and minimum temperatures and whether there will be precipitation or not and if so just if it's light or heavy. Unles you are asked to, you must not give a per hour wether forecast. Your answer must be short.
+    """
 
 
   def update(self):
