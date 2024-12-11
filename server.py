@@ -111,7 +111,7 @@ class TomWebService:
 def processRequest(input):
 
   today= datetime.now().strftime("%A %d %B %Y %H:%M:%S")
-  systemContext = f"Your name is Tom and you are my personal life assistant. Today is {today}" + "\n" + config['personalContext'] + "\n" + calendar.systemContext + "\n" + todo.systemContext + "\n" + anki.systemContext
+  systemContext = f"Your name is Tom and you are my personal life assistant. Whan your answer contains a date, it must be in the form 'Weekday day month'.Today is {today}" + "\n" + config['personalContext'] + "\n" + calendar.systemContext + "\n" + todo.systemContext + "\n" + anki.systemContext
 
   messages = [
     {

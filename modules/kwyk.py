@@ -23,15 +23,15 @@ class Kwyk:
 
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
-    # Create the table `autonomous` if it does not exist
+    # create the table `autonomous` if it does not exist
     cursor.execute('''
-    CREATE TABLE IF NOT EXISTS autonomous (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-        correct INTEGER,
-        mcq INTEGER,
-        incorrect INTEGER,
-        total INTEGER
+    create table if not exists autonomous (
+        id integer primary key autoincrement,
+        timestamp datetime default current_timestamp,
+        correct integer,
+        mcq integer,
+        incorrect integer,
+        total integer
     )
     ''')
     dbconn.commit()
@@ -67,7 +67,7 @@ class Kwyk:
     else:
       dateUpdate = datetime.now() - timedelta(hours=24)
 
-    if datetime.now() > (dateUpdate + timedelta(minutes=30)):
+    if datetime.now() > (dateUpdate + timedelta(minutes=15)):
 
       session = requests.Session()
 

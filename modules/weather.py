@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 class Weather:
 
   def __init__(self, config) -> None:
-    self.url = "https://api.open-meteo.com/v1/forecast?latitude=48.82&longitude=2.00&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,rain,showers,snowfall"
+    self.url = "https://api.open-meteo.com/v1/forecast?latitude=48.82&longitude=2.00&hourly=temperature_2m,apparent_temperature,weather_code&daily=temperature_2m_min,temperature_2m_max,apparent_temperature_min,apparent_temperature_max,weather_code&forecast_days=16"
 
     dateUpdate = datetime.now() - timedelta(hours=24)
     self.lastUpdate = dateUpdate.strftime('%Y-%m-%d %H:%M:%S')
@@ -32,30 +32,72 @@ class Weather:
         print("Exception while loading weather cache")
         pass
 
+
+    self.WMOTable = {
+      "0": "Clear sky",
+      "1": "Mainly clear sky",
+      "2": "Sky partly cloudy",
+      "3": "Sky overcast",
+      "45": "Fog",
+      "48": "Depositing rime fog",
+      "51": "Light drizzle",
+      "53": "Moderate drizzle",
+      "55": "Dense drizzle",
+      "56": "Freezing drizzle light intensity",
+      "57": "Freezing drizzle dense intensity",
+      "61": "Slight rain",
+      "63": "Moderate rain",
+      "65": "Heavy rain",
+      "66": "Light freezing rain",
+      "67": "Heavy freezing rain",
+      "71": "Slight snow fall",
+      "73": "Moderate snow fall",
+      "75": "Heavy snow fall",
+      "77": "Snow grains",
+      "80": "Slight rain showers",
+      "81": "Moderate rain showers",
+      "82": "Violent rain showers",
+      "85": "Slight snow showers",
+      "86": "Heavy snow showers",
+      "95": "Slight or moderate thunderstorm",
+      "96": "Thunderstorm with slight hail",
+      "99": "Thunderstorm with heavy hail",
+    }
+
     self.update()
+
 
     self.tools = [
       {
         "type": "function",
         "description": "Get the weather forecast. Call this function when user ask information about the weather or anything related to it. For example when a user aks 'What's the weather like', 'How should I dress', 'Will it rain', 'What will the temparature be', 'Will I need an umbrella'. This function does not take any parameter.",
         "function": {
-            "name": "weather_get",
-            "parameters": {},
+          "name": "weather_get",
+            "parameters": {
+#              "type": "object",
+#              "properties": {
+#                "interval": {
+#                  "type": "string",
+#                  "enum": ['hourly', 'daily'],
+#                  "description": f"",
+#                },
+#              },
+#              "required": ["interval"],
+#              "additionalProperties": False,
+          },
         },
       },
     ]
 
-    self.systemContext = """
-     The weather forecast is in JSON format, and the response contains several fields:
-        - temperature_2m: Temperature
-        - apparent_temperature: Feels-like temperature
-        - precipitation_probability: Probability of precipitation
-        - precipitation: Total rain + snow + shower in mm
-        - rain: Rain in mm
-        - shower: Shower in mm
-        - snowfall: Snowfall in cm
-     You should always try to respond succinctly. If no snowfall is expected, do not mention it. Keep the response short. For example, if the request is for the weather forecast for an entire day, just indicate the maximum and minimum temperatures and whether there will be precipitation or not and if so just if it's light or heavy. Unles you are asked to, you must not give a per hour wether forecast. Your answer must be short.
-    """
+    self.systemContext = "Always indicated if it's gonna rain or not. You should mainly base your response using the weather_condition field"
+
+
+  def convertWMO(self, code):
+    if code in self.WMOTable:
+      return self.WMOTable[code]
+    else:
+      return None
+
 
 
   def update(self):
@@ -66,8 +108,21 @@ class Weather:
       response = requests.get(self.url)
       # Check if the request was successful
       if response.status_code == 200:
+
+        self.data = {"hourly": [], "daily": []}
         # Convert the JSON response to a dictionary
-        self.data = response.json()
+        responseDict = response.json()
+
+        # Hourly data
+        for i in range(len(responseDict['hourly']['time'])):
+            self.data['hourly'].append({"timestamp": responseDict['hourly']['time'][i], "temperature": responseDict['hourly']['temperature_2m'][i], "apparent_temperature": responseDict['hourly']['apparent_temperature'][i], "weather_condition": self.convertWMO(str(responseDict['hourly']['weather_code'][i]))})
+          
+
+        # Daily data
+        for i in range(len(responseDict['daily']['time'])):
+            self.data['daily'].append({"timestamp": responseDict['daily']['time'][i], "temperature_min": responseDict['daily']['temperature_2m_min'][i], "temperature_max": responseDict['daily']['temperature_2m_max'][i], "apparent_temperature_min": responseDict['daily']['apparent_temperature_min'][i], "apparent_temperature_max": responseDict['daily']['apparent_temperature_max'][i], "weather_condition": self.convertWMO(str(responseDict['daily']['weather_code'][i]))})
+          
+
         self.lastUpdate = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         try:
@@ -83,7 +138,5 @@ class Weather:
   def get(self, *args, **kwargs):
     self.update()
     return True, self.data
-
-
 
 
