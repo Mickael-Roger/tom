@@ -4,7 +4,7 @@ import os
 from bs4 import BeautifulSoup
 import sqlite3
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 ################################################################################################
 #                                                                                              #
@@ -21,13 +21,15 @@ class Kwyk:
     self.password = config['kwyk']['password']
     self.id = config['kwyk']['id']
 
+
+    self.lastUpdate = datetime.now() - timedelta(hours=24)
+
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
     # create the table `autonomous` if it does not exist
     cursor.execute('''
     create table if not exists autonomous (
-        id integer primary key autoincrement,
-        timestamp datetime default current_timestamp,
+        date date default current_date,
         correct integer,
         mcq integer,
         incorrect integer,
@@ -35,7 +37,6 @@ class Kwyk:
     )
     ''')
     dbconn.commit()
-
     dbconn.close()
 
     self.update()
@@ -43,7 +44,7 @@ class Kwyk:
     self.tools = [
       {
         "type": "function",
-        "description": "Get the Kwyk status. For example when a user aks 'How many kwyk exercises has been done today', 'What is the kwyk status', 'How many math exercise has been done today'. Returned data are incremental values. So to have the number of execercise done a day, you must take the day values and remove the previous day value. All figures are a total increment.",
+        "description": "Get the Kwyk status. For example when a user aks 'How many kwyk exercises has been done today', 'What is the kwyk status', 'How many math exercise has been done today'",
         "function": {
             "name": "kwyk_get",
             "parameters": {},
@@ -56,18 +57,8 @@ class Kwyk:
 
   def update(self):
 
-    dbconn = sqlite3.connect(self.db)
-    cursor = dbconn.cursor()
-    # Retrieve the most recent entry
-    cursor.execute('SELECT timestamp FROM autonomous ORDER BY timestamp DESC LIMIT 1')
-    timeentry = cursor.fetchone()
 
-    if timeentry is not None:
-      dateUpdate = datetime.strptime(timeentry[0], '%Y-%m-%d %H:%M:%S')
-    else:
-      dateUpdate = datetime.now() - timedelta(hours=24)
-
-    if datetime.now() > (dateUpdate + timedelta(minutes=15)):
+    if datetime.now() > (self.lastUpdate + timedelta(minutes=15)):
 
       session = requests.Session()
 
@@ -95,16 +86,37 @@ class Kwyk:
           incorrect = data['instances_done_autonomous']['incorrect']
           total = data['instances_done_autonomous']['total']
 
+          dbconn = sqlite3.connect(self.db)
           cursor = dbconn.cursor()
+
+          today = date.today().isoformat()
+
+          cursor.execute('''
+          DELETE FROM autonomous WHERE date = ? 
+          ''', (today,))
+          
+          dbconn.commit()
+
+          cursor = dbconn.cursor()
+          cursor.execute("SELECT correct, mcq, incorrect, total FROM autonomous WHERE date < DATE('now') ORDER BY date DESC LIMIT 1")
+          lastValues = cursor.fetchone()
+
+          if lastValues:
+            correct = correct - lastValues[0]
+            mcq = mcq - lastValues[1]
+            incorrect = incorrect - lastValues[2]
+            total = total - lastValues[3]
+
           cursor.execute('''
           INSERT INTO autonomous (correct, mcq, incorrect, total) VALUES (?, ?, ?, ?)
           ''', (correct, mcq, incorrect, total))
           
           dbconn.commit()
 
+          self.lastUpdate = datetime.now()
           print("Kwyk DB Updated")
 
-      dbconn.close()
+          dbconn.close()
 
 
   def get(self, *args, **kwargs):
@@ -113,10 +125,12 @@ class Kwyk:
     data = {"math": []}
 
     dbconn = sqlite3.connect(self.db)
-    entries = dbconn.execute('SELECT timestamp, correct, mcq, incorrect, total FROM autonomous ORDER BY timestamp ASC')
+    entries = dbconn.execute('SELECT date, correct, mcq, incorrect, total FROM autonomous ORDER BY date ASC')
 
     for entry in entries:
-      data['math'].append({"timestamp": entry[0], "correct": entry[1], "mcq": entry[2], "incorrect": entry[3], "total": entry[4]})
+      data['math'].append({"date": entry[0], "correct_exercices": entry[1], "mcq_exercices": entry[2], "incorrect_exercices": entry[3], "total_exercices": entry[4]})
+
+    print(data)
 
     dbconn.close()
 
