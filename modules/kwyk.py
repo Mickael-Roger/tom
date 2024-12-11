@@ -3,6 +3,9 @@ import json
 import os
 from bs4 import BeautifulSoup
 import sqlite3
+import threading
+import random
+import time
 
 from datetime import datetime, timedelta, date
 
@@ -53,6 +56,17 @@ class Kwyk:
     ]
 
     self.systemContext = "Kwyk is a math and french exercises plateform."
+
+    self.thread = threading.Thread(target=self.run_update)
+    self.thread.daemon = True  # Allow the thread to exit when the main program exits
+    self.thread.start()
+    
+  def run_update(self):
+    while True:
+      print("Kwyk: Run auto update")
+      self.update()
+      time.sleep(random.randint(3, 12) * 3600)
+
 
 
   def update(self):
