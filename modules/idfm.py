@@ -16,7 +16,7 @@ class Idfm:
 
 
     self.url = "https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia"
-    self.apiKey = config['idfm']['token']
+    self.apiKey = config['token']
 
     self.listLines = ["1", "2", "3", "4", "5", "6", "7", "7bis", "8", "9", "10", "11", "12", "13", "14", "T1", "T2", "T3a", "T3b", "T4", "T5", "T6", "T7", "T8", "T9", "T10", "T11", "T12", "T13", "A", "B", "C", "D", "E", "H", "J", "K", "L", "N", "P", "R", "U", "V"]
 

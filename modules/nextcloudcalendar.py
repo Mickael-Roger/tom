@@ -18,9 +18,9 @@ class NextCloudCalendar:
   def __init__(self, config, tz=None) -> None:
   
     self.client = caldav.DAVClient(
-      url = config['nextcloud']['calendar']['url'],
-      username = config['nextcloud']['calendar']['user'],
-      password = config['nextcloud']['calendar']['password'],
+      url = config['url'],
+      username = config['user'],
+      password = config['password'],
     )
 
     if tz != None:

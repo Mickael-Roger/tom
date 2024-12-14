@@ -10,7 +10,7 @@ import json
 class Anki:
 
   def __init__(self, config) -> None:
-    self.url = config['anki']['url']
+    self.url = config['url']
 
     self.decknames = None
     self.decks = None

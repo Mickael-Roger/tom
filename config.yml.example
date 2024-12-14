@@ -1,56 +1,63 @@
-mistral:
-  api: XXXXX
+global:
+  llm: openai
+  
+  mistral:
+    api: XXXXXXXXXXXXXXXXXXXXXXXX
+  
+  openai:
+    api: XXXXXXXXXXXXXXXXXXXXXXXX
+  
+  tts:
+   langs: 
+     fr: "tts_models/fr/mai/tacotron2-DDC"
+     en: "tts_models/en/ek1/tacotron2"
 
-openai:
-  api: XXXXXXX
+  idfm:
+    token: XXXXXXXXXXXXXXXXXXXXXXXX
 
-tts:
- directory: data/tts/
- langs: 
-   fr: fr_FR-siwis-medium
-   en: en_US-ryan-medium
+users:
+  - username: user1
+    password: password1
+    services:
+      calendar:
+        user: botname
+        password: botpassword
+        url: 'https://xxxxxx/remote.php/dav/'
+     
+      todo:
+        user: botname
+        password: botname
+        url: 'https://xxxxxxxx/remote.php/dav/'
+      
+      obsidian:
+        vault: /home/xxxxxx/Obsidian/xxxxx/
+        defaultNote: Inbox/Notes.md
+        defaultDir: Inbox
+      
+      # Need Anki-connect HTTP add on
+      anki:
+        url: http://localhost:8765
+        profile: profilename
+  
+    # Pronote login documentation: https://github.com/bain3/pronotepy/blob/master/docs/source/quickstart.rst
+      # Procedure:
+      # Generate a QR Code on the Pronote Website
+      # Screenshot it
+      # zbarimg Pictures/Screenshots/Screenshot.png
+      # Run: python3 -m pronotepy.create_login
+      # Get a json
+      # Copy the content of the json in the file
+      # Run the application whitin 10 minutes
+      pronote:
+      - name: child1
+        token: data/child1.json
+        cache: data/child1.sqlite
+      
+      kwyk:
+        username: xxxxxxx
+        password: xxxxxxx
+        id: "aaaaa"
+        db: data/kwyk.sqlite
 
-nextcloud:
-  calendar:
-    user: XXXXX
-    password: XXXXX
-    url: XXXX
-
-obsidian:
-  vault: XXXXX
-  defaultNote: Inbox/Notes.md
-  defaultDir: Inbox
-
-# Need Anki-sync HTTP add on
-anki:
-  url: http://localhost:8765
-
-# Pronote login documentation: https://github.com/bain3/pronotepy/blob/master/docs/source/quickstart.rst
-  # Procedure:
-  # Generate a QR Code on the Pronote Website
-  # Screenshot it
-  # zbarimg Pictures/Screenshots/Screenshot.png
-  # Run: python3 -m pronotepy.create_login
-  # Get a json
-  # Copy the content of the json in the file
-  # Run the application whitin 10 minutes
-
-pronote:
-  - name: child1
-    token: data/child1.json
-    cache: data/child1.sqlite
-  - name: child2
-    token: data/child2.json
-    cache: data/child2.sqlite
-
-
-kwyk:
-  username: XXXX
-  password: XXXX
-  id: "XXXX"
-
-idfm:
-  token: XXXXXXX
-
-personalContext: |
-  My name is xxx. I'm married with YYY and I have 2 daughters: ZZ and RR. My birthdate is YYY-mm-dd. My wide, YYY is born YYY-mm-dd. My oldest daughter ZZ is born YYY-mm-dd and mys youngest one RR is born YYY-mm-dd
+    personalContext: |
+      bla bla bla

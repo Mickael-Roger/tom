@@ -17,9 +17,9 @@ class NextCloudTodo:
   def __init__(self, config, tz=None) -> None:
   
     self.client = caldav.DAVClient(
-      url = config['nextcloud']['todo']['url'],
-      username = config['nextcloud']['todo']['user'],
-      password = config['nextcloud']['todo']['password'],
+      url = config['url'],
+      username = config['user'],
+      password = config['password'],
     )
 
     self.date_format = "%Y-%m-%d %H:%M:%S"
@@ -35,7 +35,7 @@ class NextCloudTodo:
     for calendar in self.calendars:
       if calendar.get_properties() is not None:
         if '{urn:ietf:params:xml:ns:caldav}calendar-timezone' not in calendar.get_properties().keys():
-          if calendar.get_properties([dav.DisplayName()])['{DAV:}displayname'] == "Todo":
+          if calendar.get_properties([dav.DisplayName()])['{DAV:}displayname'] == config['list']:
             self.todoCal = calendar
 
     self.tasks = []

@@ -8,7 +8,7 @@ import requests
 ################################################################################################
 class Weather:
 
-  def __init__(self, config) -> None:
+  def __init__(self) -> None:
     self.url = "https://api.open-meteo.com/v1/forecast?hourly=temperature_2m,apparent_temperature,weather_code&daily=temperature_2m_min,temperature_2m_max,apparent_temperature_min,apparent_temperature_max,weather_code&forecast_days=16"
 
     self.urlGeocoding = "https://geocoding-api.open-meteo.com/v1/search?"

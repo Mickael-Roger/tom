@@ -18,7 +18,7 @@ class Pronote:
 
     self.connexion = []
 
-    self.config = config['pronote']
+    self.config = config
 
     self.lastUpdate = datetime.now() - timedelta(hours=24)
     self.data = {}

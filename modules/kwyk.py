@@ -19,10 +19,10 @@ class Kwyk:
   def __init__(self, config) -> None:
     self.url = "https://www.kwyk.fr/"
 
-    self.db = config['kwyk']['db']
-    self.username = config['kwyk']['username']
-    self.password = config['kwyk']['password']
-    self.id = config['kwyk']['id']
+    self.db = config['db']
+    self.username = config['username']
+    self.password = config['password']
+    self.id = config['id']
 
 
     self.lastUpdate = datetime.now() - timedelta(hours=24)

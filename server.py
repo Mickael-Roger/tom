@@ -66,8 +66,8 @@ class TomTTS:
   def __init__(self, config):
 
     self.models = {}
-    for lang in config['tts']['langs'].keys():
-      self.models[lang] = TTS(config['tts']['langs'][lang], progress_bar=False).to("cpu")
+    for lang in config['global']['tts']['langs'].keys():
+      self.models[lang] = TTS(config['global']['tts']['langs'][lang], progress_bar=False).to("cpu")
 
 
   def infere(self, input, lang):
@@ -112,17 +112,15 @@ class TomTTS:
 ################################################################################################
 class TomWebService:
 
-  def __init__(self):
-    self.sessions = {}
+  #  def __init__(self):
+  #    self.sessions = {}
 
 
   @cherrypy.expose
   @cherrypy.tools.allow(methods=['GET'])
   def index(self):
-
-    session_id = self.get_session_id()
-    if session_id not in self.sessions:
-      self.sessions[session_id] = {"history": []}
+    if not self.check_auth():
+       raise cherrypy.HTTPRedirect("/auth")
     
     with open(os.path.join('static', 'index.html'), 'r') as file:
       return file.read()
@@ -133,38 +131,61 @@ class TomWebService:
   @cherrypy.tools.json_in()
   @cherrypy.tools.json_out()
   def process(self):
-
-    session_id = self.get_session_id()
-    if session_id not in self.sessions:
-      self.sessions[session_id] = {"history": []}
     
+    if not self.check_auth():
+       raise cherrypy.HTTPRedirect("/auth")
+
     input_json = cherrypy.request.json
     
     user = input_json.get('request')
     lang = input_json.get('lang')
     position = input_json.get('position')
 
-    response = processRequest(input=user, session=self.sessions[session_id], lang=lang, position=position)
+    print(cherrypy.session['username'])
 
-    voice = tts.infere(response, lang)
+    response = processRequest(input=user, username=cherrypy.session['username'], lang=lang, position=position)
+
+    voice = userList[username]['tts'].infere(response, lang)
 
     return {"response": response, "voice": voice} 
 
+  @cherrypy.expose
+  def auth(self):
+    with open(os.path.join('static', 'auth.html'), 'r') as file:
+      return file.read()
 
-  def get_session_id(self):
 
-    session_id = cherrypy.request.cookie.get('session_id')
+  @cherrypy.expose
+  def login(self, username, password):
+
+    for user in config['users']:
+      if user['username'] == username and user['password'] == password:
+        cherrypy.session['username'] = username
+        raise cherrypy.HTTPRedirect("/index")
+
+    return "Invalid credentials. <a href='/auth'>Try again</a>"
+
+
+
+    #  def get_session_id(self):
+    #
+    #    session_id = cherrypy.request.cookie.get('session_id')
+    #    
+    #    if session_id is not None:
+    #      if session_id.value:
+    #        return session_id.value
+    #
+    #    session_id = str(uuid.uuid4())
+    #    
+    #    return session_id
+
+
+  def check_auth(self):
+    if cherrypy.session.get('username', None) is not None:
+      return True
+      
+    raise cherrypy.HTTPRedirect("/auth")
     
-    if session_id is not None:
-      if session_id.value:
-        return session_id.value
-
-    session_id = str(uuid.uuid4())
-    cherrypy.response.cookie['session_id'] = session_id
-    cherrypy.response.cookie['session_id']['path'] = '/'
-    cherrypy.response.cookie['session_id']['max-age'] = 86400
-    
-    return session_id
 
 
 
@@ -181,57 +202,43 @@ startNewConversationTools = [
 ]
 
 
-def processRequest(input, session, lang, position):
+def processRequest(input, username, lang, position):
 
-  tools = startNewConversationTools + calendar.tools + todo.tools + anki.tools + weather.tools + kwyk.tools + idfm.tools + groceries.tools
+  print("==================== START ============================")
+  print(userList[username]['history'])
+  print("================================================")
+  
+  tools = userList[username]['tools']
 
   today= datetime.now().strftime("%A %d %B %Y %H:%M:%S")
 
-  if len(session['history']) == 0: 
-    session['history'].append({"role": "system", "content": f"Your name is Tom and you are my personal life assistant. When your answer contains a date, it must be in the form 'Weekday day month'. Today is {today}" +"\n\n" + "Important: 'Do not make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous'" + "\n\n" + config['personalContext'] + "\n\n" + calendar.systemContext + "\n\n" + todo.systemContext + "\n\n" + anki.systemContext + "\n\n" + idfm.systemContext + "\n\n" + groceries.systemContext })
+  if len(userList[username]['history']) == 0: 
+    userList[username]['history'].append({"role": "system", "content": f"Your name is Tom and you are my personal life assistant. When your answer contains a date, it must be in the form 'Weekday day month'. Today is {today}" +"\n\n" + "Important: 'Do not make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous'" + "\n\n" + userList[username]['systemContext']})
 
   if position is not None:
-    session['history'].append({"role": "system", "content": f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}"})
+    userList[username]['history'].append({"role": "system", "content": f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}"})
 
-  session['history'].append({"role": "user", "content": input})
+  userList[username]['history'].append({"role": "user", "content": input})
 
-  functions = {
-    'anki_status': functools.partial(anki.status),
-    'anki_add': functools.partial(anki.add),
-    'calendar_add': functools.partial(calendar.addEvent),
-    'weather_get_by_gps_position': functools.partial(weather.getGps),
-    'weather_get_by_city_name': functools.partial(weather.getCity),
-    'kwyk_get': functools.partial(kwyk.get),
-    'get_train_schedule': functools.partial(idfm.schedule),
-    'get_train_disruption': functools.partial(idfm.disruption),
-#    'calendar_remove': functools.partial(calendar.deleteEvents),
-    'calendar_search': functools.partial(calendar.search),
-    'grocery_list_content': functools.partial(groceries.listProducts),
-    'grocery_list_add': functools.partial(groceries.add),
-    'grocery_list_remove': functools.partial(groceries.remove),
-    'todo_list_all': functools.partial(todo.listTasks),
-    'todo_close_task': functools.partial(todo.close),
-    'todo_create_task': functools.partial(todo.create),
-  }
 
   mistralmodel = "mistral-large-latest"
   openaimodel = "gpt-4o-mini"
 
-  print("==================== START ============================")
-  print(session['history'])
+  print("==================== AFTER ============================")
+  print(userList[username]['history'])
   print("================================================")
   
-  if config['llm'] == "mistral":
+  if config['global']['llm'] == "mistral":
     response = mistralClient.chat.complete(
       model = mistralmodel,
-      messages = session['history'],
+      messages = userList[username]['history'],
       tools = tools,
       tool_choice = "auto",
     )
-  elif config['llm'] == "openai":
+  elif config['global']['llm'] == "openai":
     response = openaiClient.chat.completions.create(
       model = openaimodel,
-      messages = session['history'],
+      messages = userList[username]['history'],
       tools = tools,
     )
   else:
@@ -242,7 +249,7 @@ def processRequest(input, session, lang, position):
     if response.choices is not None:
 
       if response.choices[0].message.content is not None:
-        session['history'].append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
+        userList[username]['history'].append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
 
       if response.choices[0].message.tool_calls is not None:
 
@@ -251,33 +258,35 @@ def processRequest(input, session, lang, position):
         function_name = tool_call.function.name
         function_params = json.loads(tool_call.function.arguments)
 
-        if function_name == "start_new_conversation":
-          session['history'] = None
-          return {"Response": "Hi"} 
-
-        res, function_result = functions[function_name](**function_params)
-
         print(function_name)
         print(function_params)
 
-        session['history'].append({"role": response.choices[0].message.role, "name":function_name, "content": json.dumps(function_result), "tool_call_id":tool_call.id})
+        if function_name == "start_new_conversation":
+          print("History cleaning")
+          userList[username]['history'] = []
+          return {"Response": "Hi"} 
 
-        if config['llm'] == "mistral":
+
+        res, function_result = userList[username]['functions'][function_name](**function_params)
+
+        userList[username]['history'].append({"role": response.choices[0].message.role, "name":function_name, "content": json.dumps(function_result), "tool_call_id":tool_call.id})
+
+        if config['global']['llm'] == "mistral":
           response = mistralClient.chat.complete(
             model = mistralmodel,
-            messages = session['history'],
+            messages = userList[username]['history'],
           )
-        elif config['llm'] == "openai":
+        elif config['global']['llm'] == "openai":
           response = openaiClient.chat.completions.create(
             model = openaimodel,
-            messages = session['history'],
+            messages = userList[username]['history'],
           )
         else:
           print("LLM not defined")
           return False
 
         if response.choices[0].message.content is not None:
-          session['history'].append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
+          userList[username]['history'].append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
 
       return response.choices[0].message.content
 
@@ -296,25 +305,86 @@ config = initConf()
 
 tts = TomTTS(config)
 
-groceries = Groceries(config)
-calendar = NextCloudCalendar(config)
-todo = NextCloudTodo(config)
-anki = Anki(config)
-weather = Weather(config)
-kwyk = Kwyk(config)
-pronote = Pronote(config)
-idfm = Idfm(config)
+userList = {}
+
+for user in config['users']:
+  username = user['username']
+  userList[username] = {}
+  userList[username]['history'] = []
+  userList[username]['services'] = {}
+
+  userList[username]['systemContext'] = user['personalContext'] + "\n\n"
+
+  userList[username]['functions'] = {}
 
 
+  userList[username]['tools'] = startNewConversationTools
+
+  for service_name in user['services'].keys():
+
+    if service_name == "calendar":
+      userList[username]['services']['calendar'] = NextCloudCalendar(user['services']['calendar'])
+      userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['calendar'].tools
+      userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['calendar'].systemContext + "\n\n"
+      userList[username]['functions']['calendar_add'] = functools.partial(userList[username]['services']['calendar'].addEvent)
+      userList[username]['functions']['calendar_search'] = functools.partial(userList[username]['services']['calendar'].search)
+
+    if service_name == "groceries":
+      userList[username]['services']['groceries'] = Groceries(user['services']['groceries'])
+      userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['groceries'].tools
+      userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['groceries'].systemContext + "\n\n"
+      userList[username]['functions']['grocery_list_content'] = functools.partial(userList[username]['services']['groceries'].listProducts)
+      userList[username]['functions']['grocery_list_add'] = functools.partial(userList[username]['services']['groceries'].add)
+      userList[username]['functions']['grocery_list_remove'] = functools.partial(userList[username]['services']['groceries'].remove)
+
+    if service_name == "todo":
+      userList[username]['services']['todo'] = NextCloudTodo(user['services']['todo'])
+      userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['todo'].tools
+      userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['todo'].systemContext + "\n\n"
+      userList[username]['functions']['todo_list_all'] = functools.partial(userList[username]['services']['todo'].listTasks)
+      userList[username]['functions']['todo_close_task'] = functools.partial(userList[username]['services']['todo'].close)
+      userList[username]['functions']['todo_create_task'] = functools.partial(userList[username]['services']['todo'].create)
+
+    if service_name == "anki":
+      userList[username]['services']['anki'] = Anki(user['services']['anki'])
+      userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['anki'].tools
+      userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['anki'].systemContext + "\n\n"
+      userList[username]['functions']['anki_status'] = functools.partial(userList[username]['services']['anki'].status)
+      userList[username]['functions']['anki_add'] = functools.partial(userList[username]['services']['anki'].add)
+
+    if service_name == "kwyk":
+      userList[username]['services']['kwyk'] = Kwyk(user['services']['kwyk'])
+      userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['kwyk'].tools
+      userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['kwyk'].systemContext + "\n\n"
+      userList[username]['functions']['kwyk_get'] = functools.partial(userList[username]['services']['kwyk'].get)
+
+    if service_name == "pronote":
+      userList[username]['services']['pronote'] = Pronote(user['services']['pronote'])
+      userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['pronote'].tools
+      userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['pronote'].systemContext + "\n\n"
+
+    userList[username]['services']['weather'] = Weather()
+    userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['weather'].tools
+    userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['weather'].systemContext + "\n\n"
+    userList[username]['functions']['weather_get_by_gps_position'] = functools.partial(userList[username]['services']['weather'].getGps)
+    userList[username]['functions']['weather_get_by_city_name'] = functools.partial(userList[username]['services']['weather'].getCity)
+
+    #userList[username]['services']['idfm'] = Idfm(config['global']['idfm'])
+    #userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['idfm'].tools
+    #userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['idfm'].systemContext + "\n\n"
+    #userList[username]['functions']['get_train_schedule'] = functools.partial(userList[username]['services']['idfm'].schedule),
+    #userList[username]['functions']['get_train_disruption'] = functools.partial(userList[username]['services']['idfm'].disruption),
+    
+    userList[username]['tts'] = tts
 
 
+mistralClient = Mistral(api_key=config['global']["mistral"]["api"])
+openaiClient = OpenAI(api_key=config['global']["openai"]["api"])
 
-mistralClient = Mistral(api_key=config["mistral"]["api"])
-openaiClient = OpenAI(api_key=config["openai"]["api"])
 
 if __name__ == "__main__":    
 
-  cherrypy.config.update({'server.socket_host': '0.0.0.0', 'server.socket_port': 8082})
+  cherrypy.config.update({'server.socket_host': '0.0.0.0', 'server.socket_port': 8082, 'tools.sessions.on': True})
   cherrypy.quickstart(TomWebService(), '/', config={
       '/static': {
           'tools.staticdir.on': True,
