@@ -89,7 +89,7 @@ class TomTTS:
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as mp3File:
       mp3FileName = mp3File.name
   
-      subprocess.run(['ffmpeg', '-y', '-i', wavfile, '-c:a', 'mp3', mp3FileName], check=True)
+      subprocess.run(['ffmpeg', '-y', '-i', wavfile, '-c:a', 'mp3', mp3FileName], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
   
       with open(mp3FileName, 'rb') as temp_file2:
         output_data = temp_file2.read()
@@ -238,8 +238,6 @@ def processRequest(input, session, lang, position):
     print("LLM not defined")
     return False
 
-  print(response)
-
   if response is not None:
     if response.choices is not None:
 
@@ -277,8 +275,6 @@ def processRequest(input, session, lang, position):
         else:
           print("LLM not defined")
           return False
-
-        print(response.choices[0])
 
         if response.choices[0].message.content is not None:
           session['history'].append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})

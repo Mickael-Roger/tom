@@ -65,7 +65,6 @@ document.addEventListener("DOMContentLoaded", () => {
         .then(data => {
             if (data.response) {
                 addMessageToChat("bot", data.response);
-                playResponseAudio(data.response, selectedLanguage);
 
                 // Lecture de l'audio si le champ 'voice' est présent
                 if (data.voice) {
@@ -89,13 +88,6 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = text;
         chatBox.appendChild(messageDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
-    }
-
-    // Fonction Text-to-Speech pour jouer la réponse
-    function playResponseAudio(text, lang) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = lang === "fr" ? "fr-FR" : "en-US";
-        speechSynthesis.speak(utterance);
     }
 
     // Fonction pour jouer un fichier audio MP3 encodé en base64
