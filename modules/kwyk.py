@@ -33,10 +33,14 @@ class Kwyk:
     cursor.execute('''
     create table if not exists autonomous (
         date date default current_date,
-        correct integer,
-        mcq integer,
-        incorrect integer,
-        total integer
+        daycorrect integer,
+        daymcq integer,
+        dayincorrect integer,
+        daytotal integer,
+        fullcorrect integer,
+        fullmcq integer,
+        fullincorrect integer,
+        fulltotal integer
     )
     ''')
     dbconn.commit()
@@ -112,18 +116,23 @@ class Kwyk:
           dbconn.commit()
 
           cursor = dbconn.cursor()
-          cursor.execute("SELECT correct, mcq, incorrect, total FROM autonomous WHERE date < DATE('now') ORDER BY date DESC LIMIT 1")
+          cursor.execute("SELECT fullcorrect, fullmcq, fullincorrect, fulltotal FROM autonomous WHERE date < DATE('now') ORDER BY date DESC LIMIT 1")
           lastValues = cursor.fetchone()
 
           if lastValues:
-            correct = correct - lastValues[0]
-            mcq = mcq - lastValues[1]
-            incorrect = incorrect - lastValues[2]
-            total = total - lastValues[3]
+            daycorrect = correct - lastValues[0]
+            daymcq = mcq - lastValues[1]
+            dayincorrect = incorrect - lastValues[2]
+            daytotal = total - lastValues[3]
+          else:
+            daycorrect = correct
+            daymcq = mcq
+            dayincorrect = incorrect
+            daytotal = total
 
           cursor.execute('''
-          INSERT INTO autonomous (correct, mcq, incorrect, total) VALUES (?, ?, ?, ?)
-          ''', (correct, mcq, incorrect, total))
+          INSERT INTO autonomous (fullcorrect, fullmcq, fullincorrect, fulltotal, daycorrect, daymcq, dayincorrect, daytotal) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ''', (correct, mcq, incorrect, total, daycorrect, daymcq, dayincorrect, daytotal))
           
           dbconn.commit()
 
@@ -139,7 +148,7 @@ class Kwyk:
     data = {"math": []}
 
     dbconn = sqlite3.connect(self.db)
-    entries = dbconn.execute('SELECT date, correct, mcq, incorrect, total FROM autonomous ORDER BY date ASC')
+    entries = dbconn.execute('SELECT date, daycorrect, daymcq, dayincorrect, daytotal FROM autonomous ORDER BY date ASC')
 
     for entry in entries:
       data['math'].append({"date": entry[0], "correct_exercices": entry[1], "mcq_exercices": entry[2], "incorrect_exercices": entry[3], "total_exercices": entry[4]})

@@ -6,6 +6,7 @@ import json
 import sys
 import time
 from datetime import datetime, timedelta
+import uuid
 
 
 # OpenAI
@@ -23,6 +24,8 @@ from nextcloudcalendar import NextCloudCalendar
 from weather import Weather
 from kwyk import Kwyk
 from pronote import Pronote
+from idfm import Idfm
+from groceries import Groceries
 
 
 
@@ -66,9 +69,9 @@ class TomWebService:
   @cherrypy.tools.allow(methods=['GET'])
   def index(self):
 
-#    session_id = self.get_session_id()
-#    if session_id not in self.sessions:
-#      self.sessions[session_id] = {"history": ""}
+    session_id = self.get_session_id()
+    if session_id not in self.sessions:
+      self.sessions[session_id] = {"history": []}
     
     with open(os.path.join('static', 'index.html'), 'r') as file:
       return file.read()
@@ -80,49 +83,59 @@ class TomWebService:
   @cherrypy.tools.json_out()
   def process(self):
 
-#    session_id = self.get_session_id()
-#    if session_id not in self.sessions:
-#      self.sessions[session_id] = {"history": ""}
-#    
+    session_id = self.get_session_id()
+    if session_id not in self.sessions:
+      self.sessions[session_id] = {"history": []}
+    
     input_json = cherrypy.request.json
     
     user = input_json.get('request')
 
-    response = processRequest(input=user)
+    response = processRequest(input=user, session=self.sessions[session_id])
 
     return {"response": response}
 
 
-#  def get_session_id(self):
-#
-#    session_id = cherrypy.request.cookie.get('session_id')
-#    
-#    if session_id.value:
-#      session_id = session_id.value
-#    else:
-#      session_id = str(uuid.uuid4())
-#      cherrypy.response.cookie['session_id'] = session_id
-#      cherrypy.response.cookie['session_id']['path'] = '/'
-#      cherrypy.response.cookie['session_id']['max-age'] = 86400
-#    
-#    return session_id
+  def get_session_id(self):
+
+    session_id = cherrypy.request.cookie.get('session_id')
+    
+    if session_id is not None:
+      if session_id.value:
+        return session_id.value
+
+    session_id = str(uuid.uuid4())
+    cherrypy.response.cookie['session_id'] = session_id
+    cherrypy.response.cookie['session_id']['path'] = '/'
+    cherrypy.response.cookie['session_id']['max-age'] = 86400
+    
+    return session_id
 
 
-def processRequest(input):
+
+startNewConversationTools = [
+  {
+    "type": "function",
+    "description": "This function must be called to start a new conversation with the user. Must be called when the user say: 'Hey', 'Hi', 'Hi Tom', 'Hey Tom'",
+    "function": {
+        "name": "start_new_conversation",
+        "parameters": {
+        },
+    },
+  },
+]
+
+
+def processRequest(input, session):
+
+  tools = startNewConversationTools + calendar.tools + todo.tools + anki.tools + weather.tools + kwyk.tools + idfm.tools + groceries.tools
 
   today= datetime.now().strftime("%A %d %B %Y %H:%M:%S")
-  systemContext = f"Your name is Tom and you are my personal life assistant. Whan your answer contains a date, it must be in the form 'Weekday day month'.Today is {today}" + "\n" + config['personalContext'] + "\n" + calendar.systemContext + "\n" + todo.systemContext + "\n" + anki.systemContext
 
-  messages = [
-    {
-      "role": "system",
-      "content": systemContext
-    },
-    {
-      "role": "user",
-      "content": input,
-    }
-  ]
+  if len(session['history']) == 0: 
+    session['history'].append({"role": "system", "content": f"Your name is Tom and you are my personal life assistant. When your answer contains a date, it must be in the form 'Weekday day month'. Today is {today}" +"\n\n" + "Important: 'Do not make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous'" + "\n\n" + config['personalContext'] + "\n\n" + calendar.systemContext + "\n\n" + todo.systemContext + "\n\n" + anki.systemContext + "\n\n" + idfm.systemContext + "\n\n" + groceries.systemContext })
+
+  session['history'].append({"role": "user", "content": input})
 
   functions = {
     'anki_status': functools.partial(anki.status),
@@ -130,50 +143,84 @@ def processRequest(input):
     'calendar_add': functools.partial(calendar.addEvent),
     'weather_get': functools.partial(weather.get),
     'kwyk_get': functools.partial(kwyk.get),
+    'get_train_schedule': functools.partial(idfm.schedule),
+    'get_train_disruption': functools.partial(idfm.disruption),
 #    'calendar_remove': functools.partial(calendar.deleteEvents),
     'calendar_search': functools.partial(calendar.search),
-    'todo_listAll': functools.partial(todo.listAll),
-    'todo_closeTask': functools.partial(todo.closeTask),
-    'todo_createTask': functools.partial(todo.createTask),
+    'grocery_list_content': functools.partial(groceries.listProducts),
+    'grocery_list_add': functools.partial(groceries.add),
+    'grocery_list_remove': functools.partial(groceries.remove),
+    'todo_list_all': functools.partial(todo.listTasks),
+    'todo_close_task': functools.partial(todo.close),
+    'todo_create_task': functools.partial(todo.create),
   }
 
-  model = "mistral-large-latest"
+  mistralmodel = "mistral-large-latest"
+  openaimodel = "gpt-4o-mini"
+
+  print("==================== START ============================")
+  print(session['history'])
+  print("================================================")
   
-  response = mistralClient.chat.complete(
-    model = model,
-    messages = messages,
-    tools = tools,
-    tool_choice = "auto",
-  )
+  if config['llm'] == "mistral":
+    response = mistralClient.chat.complete(
+      model = mistralmodel,
+      messages = session['history'],
+      tools = tools,
+      tool_choice = "auto",
+    )
+  elif config['llm'] == "openai":
+    response = openaiClient.chat.completions.create(
+      model = openaimodel,
+      messages = session['history'],
+      tools = tools,
+    )
+  else:
+    print("LLM not defined")
+    return False
 
-  messages.append(response.choices[0].message)
-
+  print(response)
 
   if response is not None:
     if response.choices is not None:
 
-      print(response.choices[0].message)
+      if response.choices[0].message.content is not None:
+        session['history'].append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
 
-      tool_call = response.choices[0].message.tool_calls[0]
-      function_name = tool_call.function.name
-      function_params = json.loads(tool_call.function.arguments)
+      if response.choices[0].message.tool_calls is not None:
 
-      print(function_name)
-      print(function_params)
+        tool_call = response.choices[0].message.tool_calls[0]
 
-      res, function_result = functions[function_name](**function_params)
+        function_name = tool_call.function.name
+        function_params = json.loads(tool_call.function.arguments)
 
+        if function_name == "start_new_conversation":
+          session['history'] = None
+          return {"Response": "Hi"} 
 
-      messages.append({"role":"tool", "name":function_name, "content": json.dumps(function_result), "tool_call_id":tool_call.id})
+        res, function_result = functions[function_name](**function_params)
 
-      time.sleep(1.5)
+        print(function_name)
+        print(function_params)
 
-      response = mistralClient.chat.complete(
-        model = model, 
-        messages = messages
-      )
+        session['history'].append({"role": response.choices[0].message.role, "name":function_name, "content": json.dumps(function_result), "tool_call_id":tool_call.id})
 
-      print(response)
+        if config['llm'] == "mistral":
+          response = mistralClient.chat.complete(
+            model = mistralmodel,
+            messages = session['history'],
+          )
+        elif config['llm'] == "openai":
+          response = openaiClient.chat.completions.create(
+            model = openaimodel,
+            messages = session['history'],
+          )
+        else:
+          print("LLM not defined")
+          return False
+
+        if response.choices[0].message.content is not None:
+          session['history'].append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
 
       return response.choices[0].message.content
 
@@ -189,17 +236,21 @@ config = {}
 mods = []
 
 config = initConf()
+groceries = Groceries(config)
 calendar = NextCloudCalendar(config)
 todo = NextCloudTodo(config)
 anki = Anki(config)
 weather = Weather(config)
 kwyk = Kwyk(config)
 pronote = Pronote(config)
+idfm = Idfm(config)
 
 
-tools = calendar.tools + todo.tools + anki.tools + weather.tools + kwyk.tools
+
+
 
 mistralClient = Mistral(api_key=config["mistral"]["api"])
+openaiClient = OpenAI(api_key=config["openai"]["api"])
 
 if __name__ == "__main__":    
 
