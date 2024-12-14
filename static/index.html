@@ -1,59 +1,32 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>JarMick</title>
-    <link rel="stylesheet" type="text/css" href="static/styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tom</title>
+    <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-<h1>Welcome to JarMick</h1>
-<div id="chat">
-    <!-- Responses will be displayed here -->
-</div>
-<form id="promptForm">
-    <label for="prompt">Enter your prompt:</label>
-    <input type="text" id="prompt" name="request"><br>
-    <input type="submit" value="Submit">
-</form>
+    <div class="chat-container">
+        <div class="chat-box" id="chat-box">
+            <!-- Messages will be displayed here -->
+        </div>
+        <input type="text" id="prompt" placeholder="Prompt" class="prompt-input">
+        <div class="options">
+            <select id="language-select">
+                <option value="fr" selected>Français</option>
+                <option value="en">English</option>
+                <!-- Add more languages as needed -->
+            </select>
+            <label>
+                <input type="checkbox" id="auto-submit"> Auto-submit
+            </label>
+        </div>
+        <button id="send-button" class="send-button" disabled>Send</button>
+        <button id="speak-button" class="speak-button">Speak</button>
+    </div>
 
-<script>
-document.getElementById('promptForm').addEventListener('submit', function(event) {
-    event.preventDefault();
-    var requestValue = document.getElementById('prompt').value;
-    var jsonData = JSON.stringify({ request: requestValue });
-
-    // Display the user's prompt in the chat
-    var chatDiv = document.getElementById('chat');
-    chatDiv.innerHTML = ''; // Clear previous responses
-    var userDiv = document.createElement('div');
-    userDiv.className = 'user';
-    userDiv.innerHTML = '<strong>You:</strong> ' + requestValue;
-    chatDiv.appendChild(userDiv);
-
-    fetch('/process', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: jsonData
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log('Success:', data);
-        // Display the response on the page
-        var responseDiv = document.createElement('div');
-        responseDiv.className = 'response';
-        responseDiv.innerHTML = '<strong>JarMick:</strong> ' + data.response;
-        chatDiv.appendChild(responseDiv);
-        // Scroll to the bottom of the chat
-        chatDiv.scrollTop = chatDiv.scrollHeight;
-        // Clear the input field
-        document.getElementById('prompt').value = '';
-    })
-    .catch((error) => {
-        console.error('Error:', error);
-    });
-});
-</script>
+    <script src="/static/app.js"></script>
 </body>
 </html>
 

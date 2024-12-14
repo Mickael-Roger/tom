@@ -1,6 +1,15 @@
 mistral:
   api: XXXXX
 
+openai:
+  api: XXXXXXX
+
+tts:
+ directory: data/tts/
+ langs: 
+   fr: fr_FR-siwis-medium
+   en: en_US-ryan-medium
+
 nextcloud:
   calendar:
     user: XXXXX
@@ -11,6 +20,37 @@ obsidian:
   vault: XXXXX
   defaultNote: Inbox/Notes.md
   defaultDir: Inbox
+
+# Need Anki-sync HTTP add on
+anki:
+  url: http://localhost:8765
+
+# Pronote login documentation: https://github.com/bain3/pronotepy/blob/master/docs/source/quickstart.rst
+  # Procedure:
+  # Generate a QR Code on the Pronote Website
+  # Screenshot it
+  # zbarimg Pictures/Screenshots/Screenshot.png
+  # Run: python3 -m pronotepy.create_login
+  # Get a json
+  # Copy the content of the json in the file
+  # Run the application whitin 10 minutes
+
+pronote:
+  - name: child1
+    token: data/child1.json
+    cache: data/child1.sqlite
+  - name: child2
+    token: data/child2.json
+    cache: data/child2.sqlite
+
+
+kwyk:
+  username: XXXX
+  password: XXXX
+  id: "XXXX"
+
+idfm:
+  token: XXXXXXX
 
 personalContext: |
   My name is xxx. I'm married with YYY and I have 2 daughters: ZZ and RR. My birthdate is YYY-mm-dd. My wide, YYY is born YYY-mm-dd. My oldest daughter ZZ is born YYY-mm-dd and mys youngest one RR is born YYY-mm-dd

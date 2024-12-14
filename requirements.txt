@@ -2,3 +2,7 @@ mistralai
 caldav
 PyYAML
 cherrypy
+openai
+pronotepy
+beautifulsoup4
+TTS
