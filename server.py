@@ -7,6 +7,12 @@ import sys
 import time
 from datetime import datetime, timedelta
 import uuid
+import tempfile
+import base64
+import subprocess
+#import requests
+import torch
+from TTS.api import TTS
 
 
 # OpenAI
@@ -50,6 +56,51 @@ def initConf():
 
 
 
+################################################################################################
+#                                                                                              #
+#                                       TTS Capabilities                                       #
+#                                                                                              #
+################################################################################################
+class TomTTS:
+
+  def __init__(self, config):
+
+    self.models = {}
+    for lang in config['tts']['langs'].keys():
+      self.models[lang] = TTS(config['tts']['langs'][lang], progress_bar=False).to("cpu")
+
+
+  def infere(self, input, lang):
+  
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as wavFile:
+      wavFileName = wavFile.name
+      self.models[lang].tts_to_file(text=input, file_path=wavFileName)
+  
+      base64_result = self.ConvertToMp3(wavFileName)
+  
+      os.remove(wavFileName)
+  
+    return base64_result
+  
+  
+  
+  
+  def ConvertToMp3(self, wavfile):
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as mp3File:
+      mp3FileName = mp3File.name
+  
+      subprocess.run(['ffmpeg', '-y', '-i', wavfile, '-c:a', 'mp3', mp3FileName], check=True)
+  
+      with open(mp3FileName, 'rb') as temp_file2:
+        output_data = temp_file2.read()
+  
+      base64_data = base64.b64encode(output_data).decode('utf-8')
+  
+      os.remove(mp3FileName)
+  
+      return base64_data
+
+
 
 
 
@@ -90,10 +141,14 @@ class TomWebService:
     input_json = cherrypy.request.json
     
     user = input_json.get('request')
+    lang = input_json.get('lang')
+    position = input_json.get('position')
 
-    response = processRequest(input=user, session=self.sessions[session_id])
+    response = processRequest(input=user, session=self.sessions[session_id], lang=lang, position=position)
 
-    return {"response": response}
+    voice = tts.infere(response, lang)
+
+    return {"response": response, "voice": voice} 
 
 
   def get_session_id(self):
@@ -116,7 +171,7 @@ class TomWebService:
 startNewConversationTools = [
   {
     "type": "function",
-    "description": "This function must be called to start a new conversation with the user. Must be called when the user say: 'Hey', 'Hi', 'Hi Tom', 'Hey Tom'",
+    "description": "This function must be called to start a new conversation with the user. Must be called when the user say: 'Hey', 'Hi', 'Hi Tom', 'Hey Tom' or 'Change of topic' or 'Let\'s change the subject'",
     "function": {
         "name": "start_new_conversation",
         "parameters": {
@@ -126,7 +181,7 @@ startNewConversationTools = [
 ]
 
 
-def processRequest(input, session):
+def processRequest(input, session, lang, position):
 
   tools = startNewConversationTools + calendar.tools + todo.tools + anki.tools + weather.tools + kwyk.tools + idfm.tools + groceries.tools
 
@@ -135,13 +190,17 @@ def processRequest(input, session):
   if len(session['history']) == 0: 
     session['history'].append({"role": "system", "content": f"Your name is Tom and you are my personal life assistant. When your answer contains a date, it must be in the form 'Weekday day month'. Today is {today}" +"\n\n" + "Important: 'Do not make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous'" + "\n\n" + config['personalContext'] + "\n\n" + calendar.systemContext + "\n\n" + todo.systemContext + "\n\n" + anki.systemContext + "\n\n" + idfm.systemContext + "\n\n" + groceries.systemContext })
 
+  if position is not None:
+    session['history'].append({"role": "system", "content": f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}"})
+
   session['history'].append({"role": "user", "content": input})
 
   functions = {
     'anki_status': functools.partial(anki.status),
     'anki_add': functools.partial(anki.add),
     'calendar_add': functools.partial(calendar.addEvent),
-    'weather_get': functools.partial(weather.get),
+    'weather_get_by_gps_position': functools.partial(weather.getGps),
+    'weather_get_by_city_name': functools.partial(weather.getCity),
     'kwyk_get': functools.partial(kwyk.get),
     'get_train_schedule': functools.partial(idfm.schedule),
     'get_train_disruption': functools.partial(idfm.disruption),
@@ -219,6 +278,8 @@ def processRequest(input, session):
           print("LLM not defined")
           return False
 
+        print(response.choices[0])
+
         if response.choices[0].message.content is not None:
           session['history'].append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
 
@@ -236,6 +297,9 @@ config = {}
 mods = []
 
 config = initConf()
+
+tts = TomTTS(config)
+
 groceries = Groceries(config)
 calendar = NextCloudCalendar(config)
 todo = NextCloudTodo(config)
@@ -254,7 +318,7 @@ openaiClient = OpenAI(api_key=config["openai"]["api"])
 
 if __name__ == "__main__":    
 
-  cherrypy.config.update({'server.socket_host': '0.0.0.0', 'server.socket_port': 8444})
+  cherrypy.config.update({'server.socket_host': '0.0.0.0', 'server.socket_port': 8082})
   cherrypy.quickstart(TomWebService(), '/', config={
       '/static': {
           'tools.staticdir.on': True,

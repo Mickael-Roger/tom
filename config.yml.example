@@ -4,6 +4,12 @@ mistral:
 openai:
   api: XXXXXXX
 
+tts:
+ directory: data/tts/
+ langs: 
+   fr: fr_FR-siwis-medium
+   en: en_US-ryan-medium
+
 nextcloud:
   calendar:
     user: XXXXX
@@ -42,9 +48,6 @@ kwyk:
   username: XXXX
   password: XXXX
   id: "XXXX"
-
-weather: 
-  cache: data/weather.json
 
 idfm:
   token: XXXXXXX

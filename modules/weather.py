@@ -1,8 +1,4 @@
 import requests
-import json
-import os
-
-from datetime import datetime, timedelta
 
 
 ################################################################################################
@@ -13,25 +9,9 @@ from datetime import datetime, timedelta
 class Weather:
 
   def __init__(self, config) -> None:
-    self.url = "https://api.open-meteo.com/v1/forecast?latitude=48.82&longitude=2.00&hourly=temperature_2m,apparent_temperature,weather_code&daily=temperature_2m_min,temperature_2m_max,apparent_temperature_min,apparent_temperature_max,weather_code&forecast_days=16"
+    self.url = "https://api.open-meteo.com/v1/forecast?hourly=temperature_2m,apparent_temperature,weather_code&daily=temperature_2m_min,temperature_2m_max,apparent_temperature_min,apparent_temperature_max,weather_code&forecast_days=16"
 
-    dateUpdate = datetime.now() - timedelta(hours=24)
-    self.lastUpdate = dateUpdate.strftime('%Y-%m-%d %H:%M:%S')
-    self.data = None
-
-    self.data_file = config['weather']['cache']
-
-    if os.path.exists(self.data_file):
-      try:
-        with open(self.data_file, 'r') as file:
-          weatherdata = json.load(file)
-          self.data = weatherdata["data"]
-          self.lastUpdate = weatherdata["lastUpdate"]
-          print("Weather cache loaded")
-      except:
-        print("Exception while loading weather cache")
-        pass
-
+    self.urlGeocoding = "https://geocoding-api.open-meteo.com/v1/search?"
 
     self.WMOTable = {
       "0": "Clear sky",
@@ -64,26 +44,46 @@ class Weather:
       "99": "Thunderstorm with heavy hail",
     }
 
-    self.update()
-
-
     self.tools = [
       {
         "type": "function",
-        "description": "Get the weather forecast. Call this function when user ask information about the weather or anything related to it. For example when a user aks 'What's the weather like', 'How should I dress', 'Will it rain', 'What will the temparature be', 'Will I need an umbrella'. This function does not take any parameter.",
         "function": {
-          "name": "weather_get",
+          "name": "weather_get_by_gps_position",
+          "description": "Get the weather forecast. Call this function when user ask information about the weather or anything related to it. For example when a user aks 'What's the weather like', 'How should I dress', 'Will it rain', 'What will the temparature be', 'Will I need an umbrella'. This function needs to be called with the exact GPS position.",
+          "strict": True,
             "parameters": {
-#              "type": "object",
-#              "properties": {
-#                "interval": {
-#                  "type": "string",
-#                  "enum": ['hourly', 'daily'],
-#                  "description": f"",
-#                },
-#              },
-#              "required": ["interval"],
-#              "additionalProperties": False,
+              "type": "object",
+              "properties": {
+                "gps_latitude": {
+                  "type": "string",
+                  "description": f"GPS latitude",
+                },
+                "gps_longitude": {
+                  "type": "string",
+                  "description": f"GPS longitude",
+                },
+              },
+              "required": ["gps_latitude", "gps_longitude"],
+              "additionalProperties": False,
+          },
+        },
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "weather_get_by_city_name",
+          "description": "Get the weather forecast by a city name. Call this function when user ask information about the weather or anything related to it. For example when a user aks 'What's the weather like', 'How should I dress', 'Will it rain', 'What will the temparature be', 'Will I need an umbrella'. This function when you do not have the GPS position but you have the name of the city you want the weather forecast for. Don't make assumptions about my GPS position. Ask for clarification if a user request is ambiguous.",
+          "strict": True,
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "city_name": {
+                  "type": "string",
+                  "description": f"Name of the city you are looking for weather forecast",
+                },
+              },
+              "required": ["city_name"],
+              "additionalProperties": False,
           },
         },
       },
@@ -98,45 +98,42 @@ class Weather:
     else:
       return None
 
+  def getCity(self, city_name):
+
+    url = self.urlGeocoding + 'name=' + str(city_name) + '&count=1&language=fr&format=json'
+
+    response = requests.get(url)
+    if response.status_code == 200:
+      # Convert the JSON response to a dictionary
+      responseDict = response.json()
+
+      if responseDict['results'][0] is not None:
+        return self.getGps(gps_latitude=responseDict['results'][0]['latitude'], gps_longitude=responseDict['results'][0]['longitude'])
+
+    return False, {}
 
 
-  def update(self):
 
-    dateUpdate = datetime.strptime(self.lastUpdate, '%Y-%m-%d %H:%M:%S')
+  def getGps(self, gps_latitude, gps_longitude):
 
-    if datetime.now() > (dateUpdate + timedelta(hours=4)):
-      response = requests.get(self.url)
-      # Check if the request was successful
-      if response.status_code == 200:
+    url = self.url + '&latitude=' + str(gps_latitude) + '&longitude=' + str(gps_longitude)
 
-        self.data = {"hourly": [], "daily": []}
-        # Convert the JSON response to a dictionary
-        responseDict = response.json()
+    data = {"hourly": [], "daily": []}
 
-        # Hourly data
-        for i in range(len(responseDict['hourly']['time'])):
-            self.data['hourly'].append({"timestamp": responseDict['hourly']['time'][i], "temperature": responseDict['hourly']['temperature_2m'][i], "apparent_temperature": responseDict['hourly']['apparent_temperature'][i], "weather_condition": self.convertWMO(str(responseDict['hourly']['weather_code'][i]))})
-          
+    response = requests.get(url)
+    # Check if the request was successful
+    if response.status_code == 200:
+      # Convert the JSON response to a dictionary
+      responseDict = response.json()
 
-        # Daily data
-        for i in range(len(responseDict['daily']['time'])):
-            self.data['daily'].append({"timestamp": responseDict['daily']['time'][i], "temperature_min": responseDict['daily']['temperature_2m_min'][i], "temperature_max": responseDict['daily']['temperature_2m_max'][i], "apparent_temperature_min": responseDict['daily']['apparent_temperature_min'][i], "apparent_temperature_max": responseDict['daily']['apparent_temperature_max'][i], "weather_condition": self.convertWMO(str(responseDict['daily']['weather_code'][i]))})
-          
+      # Hourly data
+      for i in range(len(responseDict['hourly']['time'])):
+          data['hourly'].append({"timestamp": responseDict['hourly']['time'][i], "temperature": responseDict['hourly']['temperature_2m'][i], "apparent_temperature": responseDict['hourly']['apparent_temperature'][i], "weather_condition": self.convertWMO(str(responseDict['hourly']['weather_code'][i]))})
 
-        self.lastUpdate = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        try:
-          json_data = json.dumps({"data": self.data, "lastUpdate": self.lastUpdate})
-          with open(self.data_file, 'w') as file:
-            file.write(json_data)
-            print("Weather cache saved")
-        except Exception as e:
-          print("Exception while saving weather cache")
-          pass
+      # Daily data
+      for i in range(len(responseDict['daily']['time'])):
+          data['daily'].append({"timestamp": responseDict['daily']['time'][i], "temperature_min": responseDict['daily']['temperature_2m_min'][i], "temperature_max": responseDict['daily']['temperature_2m_max'][i], "apparent_temperature_min": responseDict['daily']['apparent_temperature_min'][i], "apparent_temperature_max": responseDict['daily']['apparent_temperature_max'][i], "weather_condition": self.convertWMO(str(responseDict['daily']['weather_code'][i]))})
 
-
-  def get(self, *args, **kwargs):
-    self.update()
-    return True, self.data
+    return True, data
 
 

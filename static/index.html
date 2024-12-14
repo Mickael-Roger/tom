@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tom</title>
-    <link rel="stylesheet" href="static/styles.css">
+    <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
     <div class="chat-container">
@@ -26,94 +26,7 @@
         <button id="speak-button" class="speak-button">Speak</button>
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const promptInput = document.getElementById('prompt');
-            const sendButton = document.getElementById('send-button');
-            const chatBox = document.getElementById('chat-box');
-            const autoSubmitCheckbox = document.getElementById('auto-submit');
-            const speakButton = document.getElementById('speak-button');
-            const languageSelect = document.getElementById('language-select');
-
-            promptInput.addEventListener('input', function() {
-                sendButton.disabled = promptInput.value.trim() === '';
-                if (autoSubmitCheckbox.checked && promptInput.value.trim() !== '') {
-                    sendMessage();
-                }
-            });
-
-            sendButton.addEventListener('click', sendMessage);
-
-            speakButton.addEventListener('click', startSpeechRecognition);
-
-            function sendMessage() {
-                const message = promptInput.value.trim();
-                if (message === '') return;
-
-                // Display the sent message
-                const sentMessageElement = document.createElement('div');
-                sentMessageElement.className = 'message sent';
-                sentMessageElement.textContent = message;
-                chatBox.appendChild(sentMessageElement);
-
-                // Send the message to the server
-                fetch('/process', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ request: message })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    // Display the received message
-                    const receivedMessageElement = document.createElement('div');
-                    receivedMessageElement.className = 'message received';
-                    receivedMessageElement.textContent = data.response;
-                    chatBox.appendChild(receivedMessageElement);
-
-                    // Speak the received message
-                    speakText(data.response);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
-
-                // Clear the input field
-                promptInput.value = '';
-                sendButton.disabled = true;
-            }
-
-            function startSpeechRecognition() {
-                const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-                recognition.lang = languageSelect.value;
-                recognition.interimResults = false;
-                recognition.maxAlternatives = 1;
-
-                recognition.onresult = function(event) {
-                    const transcript = event.results[0][0].transcript;
-                    promptInput.value = transcript;
-                    sendButton.disabled = transcript.trim() === '';
-                    if (autoSubmitCheckbox.checked && transcript.trim() !== '') {
-                        sendMessage();
-                    }
-                };
-
-                recognition.onerror = function(event) {
-                    console.error('Speech recognition error:', event.error);
-                };
-
-                recognition.start();
-            }
-
-            function speakText(text) {
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = languageSelect.value;
-                window.speechSynthesis.speak(utterance);
-            }
-        });
-    </script>
+    <script src="/static/app.js"></script>
 </body>
 </html>
-
 
