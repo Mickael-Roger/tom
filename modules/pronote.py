@@ -51,8 +51,8 @@ class Pronote:
     self.tools = [
       {
         "type": "function",
-        "description": "Get all information from pronote.",
         "function": {
+           "description": "Get all information from pronote.",
             "name": "pronote_status",
             "parameters": {
             },
@@ -61,6 +61,10 @@ class Pronote:
     ]
 
     self.systemContext = "Pronote is the application that manage children's school life. Pronote is the only way to have access to children's timetable, homework to do, grades, grade book, evaluations, parent/teachers communication and mainly information about school and college."
+
+    self.answerContext = {
+      "pronote_status": "",
+    }
 
 
   def update(self):

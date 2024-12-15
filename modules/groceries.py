@@ -96,12 +96,20 @@ class Groceries:
     ]
 
     self.systemContext = ""
+    self.answerContext = {
+      "grocery_list_content": """You should always answered in a consise way: For example, when a user ask "What are in my grocery list?", your answer should be like "You have 4 products: pears, milk, water and sugar" or if the user asks "Do I have milk in my grocery list?", your answer should be like "Yes, you have" """,
+      "grocery_list_add": """You should always answered in a consise way: For example, when a user ask "Add milk to my grocery list?", your answer should be like "Milk added" """,
+      "grocery_list_remove": """You should always answered in a consise way: For example, when a user ask "Remove milk from my grocery list", your answer should be like "Milk removed"
+      """
+    }
+
+
 
 
   def update(self):
 
     for product in self.groceryCal.todos():
-      self.groceryList.append({"product": str(product.icalendar_instance.subcomponents[0].get("summary")), "id": str(product.icalendar_instance.subcomponents[0].get("uid"))})
+      self.groceryList.append({"product": str(product.icalendar_component.get('summary')), "id": str(product.icalendar_component.get('uid'))})
 
 
   def listProducts(self):

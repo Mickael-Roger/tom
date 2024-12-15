@@ -35,8 +35,7 @@ class NextCloudCalendar:
     self.calendarsContent = []
 
     self.update()
-
-    self.systemContext = "When a user ask for a appointment, an event or any information from it's calendar, you must give him information about the weekday, the date and the hour of the event an the title of the event"
+    
     self.tools = [
       {
         "type": "function",
@@ -102,6 +101,16 @@ class NextCloudCalendar:
 #        }
 #      },
     ]
+
+    self.systemContext = ""
+    self.answerContext = {
+      "calendar_search": """When a user ask for a appointment, an event or any information from it's calendar, you must give him information about the weekday, the date and the hour of the event an the title of the event
+       For example, if the user asks "What appointments do I have tommorrow?", your answer must be like "Tommorrow, saturday december the 2nd, you have 2 appointments: 'Doctor' at 9am and 'Meeting with John at 4pm'". If the user asks "What appointments do I have next week?" your answer should be like "Next week, you will have 3 appointments: 'Doctor' on monday morning, 'Meeting with John' on monday afternoon and 'Playing chess' on wednesday afternoon"
+      """,
+      "calendar_add": """Your answer must be consise like 'Appointment 'Doctor' on monday december the 15th added to your calendar""",
+    }
+
+    
 
 
   def update(self):

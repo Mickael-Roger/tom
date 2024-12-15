@@ -60,6 +60,10 @@ class Kwyk:
     ]
 
     self.systemContext = "Kwyk is a math and french exercises plateform."
+    self.answerContext = {
+      "kwyk_get": """When the user asks for kwyk status, you always must answer in a consise way. For example 'This week john has done 23 kwywk exercices', 'Today, so far, Bryan hasn't done any kwyk exercice'"""
+    }
+
 
     self.thread = threading.Thread(target=self.run_update)
     self.thread.daemon = True  # Allow the thread to exit when the main program exits

@@ -95,7 +95,7 @@ class NextCloudTodo:
             "properties": {
               "id": {
                 "type": "string",
-                "description": f"The id of the task or entry name to remove or close in a list.",
+                "description": f"The id of the task or entry name to remove or close in a list. Cannot be null",
               },
             },
             "required": ["id"],
@@ -107,7 +107,14 @@ class NextCloudTodo:
 
     ]
 
-    self.systemContext = "Unless the user explicitly asks for it, if the user is asking for the todo list content, do not return any other information except the name of the tasks (no priority or due date). Tasks must be ordered by due date and if multiple tasks have no due date or same due date, they must be ordered by priority level (the lower the priority value is, the higher the priority level is). The due value correspond the the deadline for closing a task. If a task still exists and has a due date in the past, it means it is an overdue task. Tasks without any due value cannot be overdue."
+    self.systemContext = ""
+    self.answerContext = {
+      "todo_list_all": """Unless the user explicitly asks for it, name of the tasks (no priority or due date). Tasks must be ordered by due date and if multiple tasks have no due date or same due date, they must be ordered by priority level (the lower the priority value is, the higher the priority level is). The due value correspond the the deadline for closing a task. If a task still exists and has a due date in the past, it means it is an overdue task. Tasks without any due value cannot be overdue. 
+       For example, your answer should be like "You have 4 tasks: create a new app, do the groceries, paint the wall and mow the lawn" or if the user asks for overdue tasks, your answer should be like "You have 2 overdue tasks: 'mow the lawn' that is 2 day late and 'paint the wall' that is 1 week late"
+      """,
+      "todo_create_task": """Your answer must be consise like 'Task "mow the lawn" added'""",
+      "todo_close_task": """Your answer must be consise like 'Task "mow the lawn" closed'""",
+    }
 
 
   def update(self):
@@ -115,16 +122,19 @@ class NextCloudTodo:
     self.tasks = []
 
     for task in self.todoCal.todos():
-      due = task.icalendar_instance.subcomponents[0].get("due")
+      due = task.icalendar_component.get('due')
       if due != None:
-        due = task.icalendar_instance.subcomponents[0].get("due").dt.strftime("%Y-%m-%d %H:%M:%S")
+        due = due.dt.strftime("%Y-%m-%d %H:%M:%S")
 
-      self.tasks.append({"name": str(task.icalendar_instance.subcomponents[0].get("summary")), "due": due, "priority": task.icalendar_instance.subcomponents[0].get("priority"), "id": str(task.icalendar_instance.subcomponents[0].get("uid"))})
+      self.tasks.append({"name": str(task.icalendar_component.get('summary')), "due": due, "priority": task.icalendar_component.get('priority'), "id": str(task.icalendar_component.get('uid'))})
 
      
 
   def listTasks(self):
     self.update()
+    print("====================")
+    print(self.tasks)
+    print("====================")
     return True, self.tasks
 
 

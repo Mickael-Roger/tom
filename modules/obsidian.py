@@ -18,6 +18,10 @@ class JarMick():
     self.conf = config
     self.callLLM = callLLM
 
+    self.answerContext = {
+      "pronote_status": "",
+    }
+
 
   def addToNote(self, note, content):
     try:

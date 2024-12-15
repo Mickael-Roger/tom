@@ -10,7 +10,7 @@ import uuid
 import tempfile
 import base64
 import subprocess
-#import requests
+import copy
 import torch
 from TTS.api import TTS
 
@@ -67,14 +67,14 @@ class TomTTS:
 
     self.models = {}
     for lang in config['global']['tts']['langs'].keys():
-      self.models[lang] = TTS(config['global']['tts']['langs'][lang], progress_bar=False).to("cpu")
+      self.models[lang] = TTS(config['global']['tts']['langs'][lang]['model'], progress_bar=False).to("cpu")
 
 
   def infere(self, input, lang):
   
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as wavFile:
       wavFileName = wavFile.name
-      self.models[lang].tts_to_file(text=input, file_path=wavFileName)
+      self.models[lang].tts_to_file(text=input, language=config['global']['tts']['langs'][lang]['language'], speaker=config['global']['tts']['langs'][lang]['speaker'], file_path=wavFileName)
   
       base64_result = self.ConvertToMp3(wavFileName)
   
@@ -192,8 +192,8 @@ class TomWebService:
 startNewConversationTools = [
   {
     "type": "function",
-    "description": "This function must be called to start a new conversation with the user. Must be called when the user say: 'Hey', 'Hi', 'Hi Tom', 'Hey Tom' or 'Change of topic' or 'Let\'s change the subject'",
     "function": {
+        "description": "This function must be called to start a new conversation with the user. Must be called when the user say: 'Hey', 'Hi', 'Hi Tom', 'Hey Tom' or 'Change of topic' or 'Let\'s change the subject'",
         "name": "start_new_conversation",
         "parameters": {
         },
@@ -204,10 +204,6 @@ startNewConversationTools = [
 
 def processRequest(input, username, lang, position):
 
-  print("==================== START ============================")
-  print(userList[username]['history'])
-  print("================================================")
-  
   tools = userList[username]['tools']
 
   today= datetime.now().strftime("%A %d %B %Y %H:%M:%S")
@@ -224,9 +220,6 @@ def processRequest(input, username, lang, position):
   mistralmodel = "mistral-large-latest"
   openaimodel = "gpt-4o-mini"
 
-  print("==================== AFTER ============================")
-  print(userList[username]['history'])
-  print("================================================")
   
   if config['global']['llm'] == "mistral":
     response = mistralClient.chat.complete(
@@ -244,6 +237,12 @@ def processRequest(input, username, lang, position):
   else:
     print("LLM not defined")
     return False
+
+  print("--------------")
+  print(response)
+  print("--------------")
+  print(userList[username]['history'])
+  print("--------------")
 
   if response is not None:
     if response.choices is not None:
@@ -264,22 +263,25 @@ def processRequest(input, username, lang, position):
         if function_name == "start_new_conversation":
           print("History cleaning")
           userList[username]['history'] = []
-          return {"Response": "Hi"} 
+          return f"Hi {username}" 
 
 
-        res, function_result = userList[username]['functions'][function_name](**function_params)
+        res, function_result = userList[username]['functions'][function_name]['function'](**function_params)
 
         userList[username]['history'].append({"role": response.choices[0].message.role, "name":function_name, "content": json.dumps(function_result), "tool_call_id":tool_call.id})
 
+        message = copy.deepcopy(userList[username]['history'])
+        message.append({"role": "system", "content": userList[username]['functions'][function_name]['responseContext']})
+  
         if config['global']['llm'] == "mistral":
           response = mistralClient.chat.complete(
             model = mistralmodel,
-            messages = userList[username]['history'],
+            messages = message,
           )
         elif config['global']['llm'] == "openai":
           response = openaiClient.chat.completions.create(
             model = openaimodel,
-            messages = userList[username]['history'],
+            messages = message,
           )
         else:
           print("LLM not defined")
@@ -326,37 +328,37 @@ for user in config['users']:
       userList[username]['services']['calendar'] = NextCloudCalendar(user['services']['calendar'])
       userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['calendar'].tools
       userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['calendar'].systemContext + "\n\n"
-      userList[username]['functions']['calendar_add'] = functools.partial(userList[username]['services']['calendar'].addEvent)
-      userList[username]['functions']['calendar_search'] = functools.partial(userList[username]['services']['calendar'].search)
+      userList[username]['functions']['calendar_add'] = {"function": functools.partial(userList[username]['services']['calendar'].addEvent), "responseContext": userList[username]['services']['calendar'].answerContext['calendar_add']}
+      userList[username]['functions']['calendar_search'] = {"function": functools.partial(userList[username]['services']['calendar'].search), "responseContext": userList[username]['services']['calendar'].answerContext['calendar_search']}
 
     if service_name == "groceries":
       userList[username]['services']['groceries'] = Groceries(user['services']['groceries'])
       userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['groceries'].tools
       userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['groceries'].systemContext + "\n\n"
-      userList[username]['functions']['grocery_list_content'] = functools.partial(userList[username]['services']['groceries'].listProducts)
-      userList[username]['functions']['grocery_list_add'] = functools.partial(userList[username]['services']['groceries'].add)
-      userList[username]['functions']['grocery_list_remove'] = functools.partial(userList[username]['services']['groceries'].remove)
+      userList[username]['functions']['grocery_list_content'] = {"function": functools.partial(userList[username]['services']['groceries'].listProducts), "responseContext": userList[username]['services']['groceries'].answerContext['grocery_list_content']}
+      userList[username]['functions']['grocery_list_add'] = {"function": functools.partial(userList[username]['services']['groceries'].add), "responseContext": userList[username]['services']['groceries'].answerContext['grocery_list_add']}
+      userList[username]['functions']['grocery_list_remove'] = {"function": functools.partial(userList[username]['services']['groceries'].remove), "responseContext": userList[username]['services']['groceries'].answerContext['grocery_list_remove']}
 
     if service_name == "todo":
       userList[username]['services']['todo'] = NextCloudTodo(user['services']['todo'])
       userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['todo'].tools
       userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['todo'].systemContext + "\n\n"
-      userList[username]['functions']['todo_list_all'] = functools.partial(userList[username]['services']['todo'].listTasks)
-      userList[username]['functions']['todo_close_task'] = functools.partial(userList[username]['services']['todo'].close)
-      userList[username]['functions']['todo_create_task'] = functools.partial(userList[username]['services']['todo'].create)
+      userList[username]['functions']['todo_list_all'] = {"function": functools.partial(userList[username]['services']['todo'].listTasks), "responseContext": userList[username]['services']['todo'].answerContext['todo_list_all']}
+      userList[username]['functions']['todo_close_task'] = {"function": functools.partial(userList[username]['services']['todo'].close), "responseContext": userList[username]['services']['todo'].answerContext['todo_close_task']}
+      userList[username]['functions']['todo_create_task'] = {"function": functools.partial(userList[username]['services']['todo'].create), "responseContext": userList[username]['services']['todo'].answerContext['todo_create_task']}
 
     if service_name == "anki":
       userList[username]['services']['anki'] = Anki(user['services']['anki'])
       userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['anki'].tools
       userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['anki'].systemContext + "\n\n"
-      userList[username]['functions']['anki_status'] = functools.partial(userList[username]['services']['anki'].status)
-      userList[username]['functions']['anki_add'] = functools.partial(userList[username]['services']['anki'].add)
+      userList[username]['functions']['anki_status'] = {"function": functools.partial(userList[username]['services']['anki'].status), "responseContext": userList[username]['services']['anki'].answerContext['anki_status']}
+      userList[username]['functions']['anki_add'] = {"function": functools.partial(userList[username]['services']['anki'].add), "responseContext": userList[username]['services']['anki'].answerContext['anki_add']}
 
     if service_name == "kwyk":
       userList[username]['services']['kwyk'] = Kwyk(user['services']['kwyk'])
       userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['kwyk'].tools
       userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['kwyk'].systemContext + "\n\n"
-      userList[username]['functions']['kwyk_get'] = functools.partial(userList[username]['services']['kwyk'].get)
+      userList[username]['functions']['kwyk_get'] = {"function": functools.partial(userList[username]['services']['kwyk'].get), "responseContext": userList[username]['services']['kwyk'].answerContext['kwyk_get']}
 
     if service_name == "pronote":
       userList[username]['services']['pronote'] = Pronote(user['services']['pronote'])
@@ -366,14 +368,14 @@ for user in config['users']:
     userList[username]['services']['weather'] = Weather()
     userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['weather'].tools
     userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['weather'].systemContext + "\n\n"
-    userList[username]['functions']['weather_get_by_gps_position'] = functools.partial(userList[username]['services']['weather'].getGps)
-    userList[username]['functions']['weather_get_by_city_name'] = functools.partial(userList[username]['services']['weather'].getCity)
+    userList[username]['functions']['weather_get_by_gps_position'] = {"function": functools.partial(userList[username]['services']['weather'].getGps), "responseContext": userList[username]['services']['weather'].answerContext['weather_get_by_gps_position']}
+    userList[username]['functions']['weather_get_by_city_name'] = {"function": functools.partial(userList[username]['services']['weather'].getCity), "responseContext": userList[username]['services']['weather'].answerContext['weather_get_by_city_name']}
 
     #userList[username]['services']['idfm'] = Idfm(config['global']['idfm'])
     #userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['idfm'].tools
     #userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['idfm'].systemContext + "\n\n"
-    #userList[username]['functions']['get_train_schedule'] = functools.partial(userList[username]['services']['idfm'].schedule),
-    #userList[username]['functions']['get_train_disruption'] = functools.partial(userList[username]['services']['idfm'].disruption),
+    #userList[username]['functions']['get_train_schedule'] = {"function": functools.partial(userList[username]['services']['idfm'].schedule), "responseContext": userList[username]['services']['idfm'].answerContext['get_train_schedule']}
+    #userList[username]['functions']['get_train_disruption'] = {"function": functools.partial(userList[username]['services']['idfm'].disruption), "responseContext": userList[username]['services']['idfm'].answerContext['get_train_disruption']}
     
     userList[username]['tts'] = tts
 

@@ -57,7 +57,14 @@ class Anki:
       },
     ]
 
-    self.systemContext = "Anki is a flashcard program. It uses cards. It uses technics from cognitive science such as active recall testing and spaced repetition to help me in my memorization. I use Anki to train myself on memorizing and reinforcing my knowledge. If a user ask for Anki deck status, unless you are explicitly asked to, do not indicate decks with 0 cards to review"
+    self.systemContext = "Anki is a flashcard program. It uses cards. It uses technics from cognitive science such as active recall testing and spaced repetition to help me in my memorization. I use Anki to train myself on memorizing and reinforcing my knowledge."
+
+    self.answerContext =     self.answerContext = {
+      "anki_status": """You should always answered in a consise way. If a user ask for Anki deck status, unless you are explicitly asked to, do not indicate decks with 0 cards to review. For example, when a user ask "What is my anki decks status?", your answer should be like "You have 4 reviews in 'English', 3 reviews in 'Tech' and 2 reviews in 'Culture G'"
+      """,
+      "anki_add": """You should always answered in a consise way: For example, your answer should be like "Card 'front label of my card' with the back 'back sentence of my card' added to deck 'Tech'" """
+    }
+
 
 
   def ankiCall(self, call):

@@ -89,7 +89,12 @@ class Weather:
       },
     ]
 
-    self.systemContext = "Always indicated if it's gonna rain or not. You should mainly base your response using the weather_condition field"
+    self.systemContext = ""
+    answerText = """When you are asked about the weather, you always must be consise. For example, when the user asked "What will the weather be like tommorrow?", your answer should be like "Tommorrow, saturday december the 1st, temperature will be from 2°C to 7°C and it will have moderate rain in the afternoon" or "Tommorrow, saturday december the 1st, temperature will be from 2°C to 7°C and it's not gonna rain" or if the user asks "Will it rain tommorrow?" your answer should be like "No, it's not gonna rain tommorrow". """
+    self.answerContext = {
+      "weather_get_by_gps_position": answerText,
+      "weather_get_by_city_name": answerText
+    }
 
 
   def convertWMO(self, code):

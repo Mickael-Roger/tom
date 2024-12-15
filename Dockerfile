@@ -11,6 +11,8 @@ COPY requirements.txt /app
 
 RUN pip install -r requirements.txt
 
+RUN yes y | tts --list_language_idxs --model_name "tts_models/multilingual/multi-dataset/xtts_v2"
+
 COPY . /app
 
 EXPOSE 8082

@@ -9,8 +9,14 @@ global:
   
   tts:
    langs: 
-     fr: "tts_models/fr/mai/tacotron2-DDC"
-     en: "tts_models/en/ek1/tacotron2"
+     fr: 
+       model: "XXXXXX"
+       langage: fr
+       speaker: 'XXXX'
+     en:
+       model: "XXXXXX"
+       langage: fr
+       speaker: 'XXXX'
 
   idfm:
     token: XXXXXXXXXXXXXXXXXXXXXXXX

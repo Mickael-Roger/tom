@@ -130,6 +130,12 @@ class Idfm:
     ]
 
     self.systemContext = ""
+    self.answerContext = {
+      "get_train_schedule": "",
+      "get_train_planner": "",
+      "get_train_disruption": ""
+    }
+
 
 
   def apiCall(self, url):
