@@ -161,23 +161,13 @@ class TomWebService:
     for user in config['users']:
       if user['username'] == username and user['password'] == password:
         cherrypy.session['username'] = username
+        print(f"History cleaning for user {username}")
+        userList[username]['history'] = []
+
         raise cherrypy.HTTPRedirect("/index")
 
     return "Invalid credentials. <a href='/auth'>Try again</a>"
 
-
-
-    #  def get_session_id(self):
-    #
-    #    session_id = cherrypy.request.cookie.get('session_id')
-    #    
-    #    if session_id is not None:
-    #      if session_id.value:
-    #        return session_id.value
-    #
-    #    session_id = str(uuid.uuid4())
-    #    
-    #    return session_id
 
 
   def check_auth(self):
@@ -202,49 +192,72 @@ startNewConversationTools = [
 ]
 
 
-def processRequest(input, username, lang, position):
-
-  tools = userList[username]['tools']
-
-  today= datetime.now().strftime("%A %d %B %Y %H:%M:%S")
-
-  if len(userList[username]['history']) == 0: 
-    userList[username]['history'].append({"role": "system", "content": f"Your name is Tom and you are my personal life assistant. When your answer contains a date, it must be in the form 'Weekday day month'. Today is {today}" +"\n\n" + "Important: 'Do not make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous'" + "\n\n" + userList[username]['systemContext']})
-
-  if position is not None:
-    userList[username]['history'].append({"role": "system", "content": f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}"})
-
-  userList[username]['history'].append({"role": "user", "content": input})
+def processLLM(messages, tools):
 
 
   mistralmodel = "mistral-large-latest"
   openaimodel = "gpt-4o-mini"
 
+  print("-------- EXECUTE ---------")
+  print(messages)
+  print("--------------")
+
   
   if config['global']['llm'] == "mistral":
     response = mistralClient.chat.complete(
       model = mistralmodel,
-      messages = userList[username]['history'],
+      messages = messages,
       tools = tools,
       tool_choice = "auto",
     )
   elif config['global']['llm'] == "openai":
     response = openaiClient.chat.completions.create(
       model = openaimodel,
-      messages = userList[username]['history'],
+      messages = messages,
       tools = tools,
     )
   else:
     print("LLM not defined")
-    return False
+    return False, "LLM not defined"
 
-  print("--------------")
+  print("-------- RESPONSE ---------")
   print(response)
   print("--------------")
-  print(userList[username]['history'])
-  print("--------------")
 
-  if response is not None:
+  return True, response
+
+
+
+def processRequest(input, username, lang, position):
+
+  tools = userList[username]['tools']
+
+  today= datetime.now().strftime("%A %d %B %Y %H:%M:%S")
+  todayMsg = {"role": "system", "content": f"Today is {today}.\n\n"}
+
+  if userList[username]['history']: 
+    userList[username]['history'][0] = todayMsg
+  else:
+    userList[username]['history'].append(todayMsg)
+
+  if len(userList[username]['history']) == 1: 
+    userList[username]['history'].append({"role": "system", "content": "Your name is Tom and you are my personal life assistant. When your answer contains a date, it must be in the form 'Weekday day month'." +"\n\n" + "Important: 'Do not make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous'" + "\n\n" + userList[username]['systemContext']})
+
+  if position is not None:
+    userList[username]['history'].append({"role": "system", "content": f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}"})
+
+  userList[username]['history'].append({"role": "user", "content": input})
+
+  while True:
+    
+    ret, response = processLLM(userList[username]['history'], tools)
+
+    if not ret:
+      return f"Error: {response}"
+    elif response is None:
+      return f"Error: No response from LLM"
+
+
     if response.choices is not None:
 
       if response.choices[0].message.content is not None:
@@ -257,8 +270,7 @@ def processRequest(input, username, lang, position):
         function_name = tool_call.function.name
         function_params = json.loads(tool_call.function.arguments)
 
-        print(function_name)
-        print(function_params)
+        print("Call: " + str(function_name) + "with " + str(function_params))
 
         if function_name == "start_new_conversation":
           print("History cleaning")
@@ -268,29 +280,20 @@ def processRequest(input, username, lang, position):
 
         res, function_result = userList[username]['functions'][function_name]['function'](**function_params)
 
+        if not res:
+          return "Error execution the function"
+
         userList[username]['history'].append({"role": response.choices[0].message.role, "name":function_name, "content": json.dumps(function_result), "tool_call_id":tool_call.id})
 
         message = copy.deepcopy(userList[username]['history'])
         message.append({"role": "system", "content": userList[username]['functions'][function_name]['responseContext']})
-  
-        if config['global']['llm'] == "mistral":
-          response = mistralClient.chat.complete(
-            model = mistralmodel,
-            messages = message,
-          )
-        elif config['global']['llm'] == "openai":
-          response = openaiClient.chat.completions.create(
-            model = openaimodel,
-            messages = message,
-          )
-        else:
-          print("LLM not defined")
-          return False
 
-        if response.choices[0].message.content is not None:
-          userList[username]['history'].append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
+      else:
 
-      return response.choices[0].message.content
+        return response.choices[0].message.content
+
+    else:
+      return "Error: Response choices is None"
 
 
 
@@ -386,7 +389,7 @@ openaiClient = OpenAI(api_key=config['global']["openai"]["api"])
 
 if __name__ == "__main__":    
 
-  cherrypy.config.update({'server.socket_host': '0.0.0.0', 'server.socket_port': 8082, 'tools.sessions.on': True})
+  cherrypy.config.update({'server.socket_host': '0.0.0.0', 'server.socket_port': 8082, 'tools.sessions.on': True, 'tools.sessions.timeout': 180})
   cherrypy.quickstart(TomWebService(), '/', config={
       '/static': {
           'tools.staticdir.on': True,
