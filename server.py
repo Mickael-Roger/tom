@@ -292,32 +292,32 @@ def processRequest(input, username, lang, position):
 
       if response.choices[0].message.tool_calls is not None:
 
-        tool_call = response.choices[0].message.tool_calls[0]
+        for tool_call in response.choices[0].message.tool_calls:
 
-        function_name = tool_call.function.name
-        function_params = json.loads(tool_call.function.arguments)
+          function_name = tool_call.function.name
+          function_params = json.loads(tool_call.function.arguments)
 
-        print("Call: " + str(function_name) + "with " + str(function_params))
+          print("Call: " + str(function_name) + "with " + str(function_params))
 
-        if function_name == "start_new_conversation":
-          if resetAndSave(username=cherrypy.session['username']):
-            return f"Hi {username}"
-          else:
-            return "Error while saving your history"
+          if function_name == "start_new_conversation":
+            if resetAndSave(username=cherrypy.session['username']):
+              return f"Hi {username}"
+            else:
+              return "Error while saving your history"
 
 
-        res, function_result = userList[username]['functions'][function_name]['function'](**function_params)
+          res, function_result = userList[username]['functions'][function_name]['function'](**function_params)
 
-        print(res)
-        print(function_result)
+          print(res)
+          print(function_result)
 
-        if res is False:
-          return "Error execution the function"
+          if res is False:
+            return "Error execution the function"
 
-        userList[username]['history'].append({"role": response.choices[0].message.role, "name":function_name, "content": json.dumps(function_result), "tool_call_id":tool_call.id})
+          userList[username]['history'].append({"role": response.choices[0].message.role, "name":function_name, "content": json.dumps(function_result), "tool_call_id":tool_call.id})
 
-        message = copy.deepcopy(userList[username]['history'])
-        message.append({"role": "system", "content": userList[username]['functions'][function_name]['responseContext']})
+          message = copy.deepcopy(userList[username]['history'])
+          message.append({"role": "system", "content": userList[username]['functions'][function_name]['responseContext']})
 
       else:
 
