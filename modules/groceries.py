@@ -97,7 +97,7 @@ class Groceries:
 
     self.systemContext = ""
     self.answerContext = {
-      "grocery_list_content": """You should always answered in a consise way: For example, when a user ask "What are in my grocery list?", your answer should be like "You have 4 products: pears, milk, water and sugar" or if the user asks "Do I have milk in my grocery list?", your answer should be like "Yes, you have" """,
+      "grocery_list_content": """You should always answered in a consise way. Your answer must be in the form of a sentence and not a list that contains '-' or element number. For example, when a user ask "What are in my grocery list?", your answer should be like "You have 4 products: pears, milk, water and sugar" or if the user asks "Do I have milk in my grocery list?", your answer should be like "Yes, you have" """,
       "grocery_list_add": """You should always answered in a consise way: For example, when a user ask "Add milk to my grocery list?", your answer should be like "Milk added" """,
       "grocery_list_remove": """You should always answered in a consise way: For example, when a user ask "Remove milk from my grocery list", your answer should be like "Milk removed"
       """
@@ -110,6 +110,7 @@ class Groceries:
 
     for product in self.groceryCal.todos():
       self.groceryList.append({"product": str(product.icalendar_component.get('summary')), "id": str(product.icalendar_component.get('uid'))})
+
 
 
   def listProducts(self):
@@ -130,24 +131,26 @@ class Groceries:
 
     self.update()
 
-    return True, f"Product '{product}' has been added."
+    return True, f"{self.groceryList}.\n\nProduct '{product}' has been added to the grocery list."
 
   def remove(self, id):
 
-    task = self.groceryCal.todo_by_uid(id)
-    if not task:
-        return False, (f"Product with ID '{id}' not found.")
+    print(datetime.now())
 
-    vtodo = task.instance.vtodo
-    productName = vtodo.contents.get('summary', ['No summary'])[0].value
-    vtodo.add('status').value = 'COMPLETED'
+    tasks = self.groceryCal.todos()
 
-    task.save()
+    for task in tasks:
+      task_uid = task.icalendar_component.get('UID')
+      if task_uid == id:
+        productName = task.icalendar_component.get('SUMMARY')
 
-    self.update()
+        task.delete()
+        print(f"Task with UID '{task_uid}' has been deleted.")
+        return True, f"Task '{productName}' has been removed."
 
-    print(f"Product '{productName}' has been removed.")
-    return True, f"Task '{productName}' has been removed."
+    return False, f"Product with ID '{id}' not found."
+
+
 
 
 

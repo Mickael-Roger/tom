@@ -131,6 +131,7 @@ button:disabled {
     cursor: not-allowed;
 }
 
+/* Requête Media pour les petits écrans (Mobile uniquement) */
 @media (max-width: 768px) {
     .container {
         width: 95%;
@@ -148,7 +149,34 @@ button:disabled {
     }
 
     button {
-        font-size: 0.9rem;
+        font-size: 1.4rem; /* Agrandir la taille du texte sur mobile */
+        padding: 22px; /* Augmenter la hauteur des boutons */
     }
+
+    #send-button, #speak-button {
+        min-height: 60px; /* Augmenter la hauteur spécifique des boutons */
+        margin-bottom: 15px; /* Ajouter plus d'espace vertical entre les deux boutons */
+    }
+}
+
+/* Style pour le bouton Reset */
+#reset-button {
+    background-color: #dc3545; /* Couleur rouge */
+    min-height: 60px; /* Même hauteur que les autres boutons */
+    margin-bottom: 20px; /* Ajouter un espace plus grand entre les boutons */
+    font-size: 1.4rem; /* Agrandir la taille du texte */
+    padding: 22px; /* Augmenter la hauteur */
+    width: 50%; /* Largeur égale à la moitié du bouton Speak */
+    margin: 0 auto; /* Centrer horizontalement */
+    display: block; /* Faire du bouton un élément de bloc pour l'aligner correctement */
+}
+
+#reset-button:hover {
+    background-color: #c82333; /* Couleur rouge plus foncée au survol */
+}
+
+button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
 }
 

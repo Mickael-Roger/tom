@@ -15,6 +15,9 @@ RUN yes y | tts --list_language_idxs --model_name "tts_models/multilingual/multi
 
 COPY . /app
 
+RUN version=`date +"%s"` && \
+    sed -i "s/%version%/${version}/g" /app/static/index.html
+
 EXPOSE 8082
 
 ENTRYPOINT ["python", "server.py"]

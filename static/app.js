@@ -32,6 +32,13 @@ document.addEventListener("DOMContentLoaded", () => {
     // Appel initial pour récupérer la position dès que la page est chargée
     fetchUserPosition();
 
+    // Fonction pour vérifier si le client est un mobile Android avec Chrome et supporte TTS
+    function isTTSAvailable() {
+        const isAndroid = /android/i.test(navigator.userAgent);
+        const isChrome = /chrome/i.test(navigator.userAgent) && !/edge/i.test(navigator.userAgent);
+        return isAndroid && isChrome && 'speechSynthesis' in window;
+    }
+
     // Activer/désactiver le bouton Send
     promptInput.addEventListener("input", () => {
         sendButton.disabled = !promptInput.value.trim();
@@ -53,7 +60,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const payload = {
             request: message,
             lang: selectedLanguage,
-            position: userPosition // Ajout de la position GPS
+            position: userPosition, // Ajout de la position GPS
+            tts: isTTSAvailable() // Ajout du champ tts
         };
 
         fetch("/process", {
@@ -66,9 +74,12 @@ document.addEventListener("DOMContentLoaded", () => {
             if (data.response) {
                 addMessageToChat("bot", data.response);
 
-                // Lecture de l'audio si le champ 'voice' est présent
-                if (data.voice) {
+                // Lecture de l'audio si le champ 'voice' est présent et tts est false
+                if (data.voice && !payload.tts) {
                     playAudioFromBase64(data.voice);
+                } else if (payload.tts) {
+                    // Si tts est true, lire le texte localement
+                    speakText(data.response, selectedLanguage);
                 }
             }
         })
@@ -96,6 +107,13 @@ document.addEventListener("DOMContentLoaded", () => {
         audio.play().catch(error => {
             console.error("Erreur de lecture audio :", error);
         });
+    }
+
+    // Fonction pour faire parler le texte via la synthèse vocale
+    function speakText(text, language) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = language === "fr" ? "fr-FR" : "en-US"; // Choisir la langue
+        window.speechSynthesis.speak(utterance);
     }
 
     // Fonction Speech-to-Text pour le bouton Speak

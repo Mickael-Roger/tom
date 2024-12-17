@@ -125,6 +125,19 @@ class TomWebService:
     with open(os.path.join('static', 'index.html'), 'r') as file:
       return file.read()
 
+  @cherrypy.expose
+  @cherrypy.tools.allow(methods=['POST'])
+  @cherrypy.tools.json_out()
+  def reset(self):
+    if resetAndSave(username=cherrypy.session['username']):
+      return {"status": "success"}
+    else:
+      raise cherrypy.HTTPError(500, "Could not reset and save the session")
+
+
+
+
+    
 
   @cherrypy.expose
   @cherrypy.tools.allow(methods=['POST'])
@@ -136,16 +149,23 @@ class TomWebService:
        raise cherrypy.HTTPRedirect("/auth")
 
     input_json = cherrypy.request.json
+
+    print("+++++++")
+    print(input_json)
+    print("+++++++")
     
     user = input_json.get('request')
     lang = input_json.get('lang')
     position = input_json.get('position')
+    localTTS = input_json.get('tts')
 
     print(cherrypy.session['username'])
 
     response = processRequest(input=user, username=cherrypy.session['username'], lang=lang, position=position)
 
-    voice = userList[username]['tts'].infere(response, lang)
+    voice= None
+    if not localTTS:
+      voice = userList[username]['tts'].infere(response, lang)
 
     return {"response": response, "voice": voice} 
 
@@ -227,6 +247,13 @@ def processLLM(messages, tools):
   return True, response
 
 
+def resetAndSave(username):
+
+  print("History cleaning")
+  userList[username]['history'] = []
+  return f"Hi {username}" 
+
+
 
 def processRequest(input, username, lang, position):
 
@@ -273,14 +300,18 @@ def processRequest(input, username, lang, position):
         print("Call: " + str(function_name) + "with " + str(function_params))
 
         if function_name == "start_new_conversation":
-          print("History cleaning")
-          userList[username]['history'] = []
-          return f"Hi {username}" 
+          if resetAndSave(username=cherrypy.session['username']):
+            return f"Hi {username}"
+          else:
+            return "Error while saving your history"
 
 
         res, function_result = userList[username]['functions'][function_name]['function'](**function_params)
 
-        if not res:
+        print(res)
+        print(function_result)
+
+        if res is False:
           return "Error execution the function"
 
         userList[username]['history'].append({"role": response.choices[0].message.role, "name":function_name, "content": json.dumps(function_result), "tool_call_id":tool_call.id})
