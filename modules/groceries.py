@@ -107,7 +107,7 @@ class Groceries:
 
 
   def update(self):
-
+    self.groceryList = []
     for product in self.groceryCal.todos():
       self.groceryList.append({"product": str(product.icalendar_component.get('summary')), "id": str(product.icalendar_component.get('uid'))})
 
@@ -131,7 +131,7 @@ class Groceries:
 
     self.update()
 
-    return True, f"{self.groceryList}.\n\nProduct '{product}' has been added to the grocery list."
+    return True, f"Product '{product}' has been added to the grocery list."
 
   def remove(self, id):
 

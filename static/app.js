@@ -5,6 +5,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const chatBox = document.getElementById("chat-box");
     const autoSubmitCheckbox = document.getElementById("auto-submit");
     const languageSelect = document.getElementById("language-select");
+    const resetButton = document.getElementById("reset-button");
 
     let userPosition = null; // Position GPS de l'utilisateur
 
@@ -34,9 +35,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Fonction pour vérifier si le client est un mobile Android avec Chrome et supporte TTS
     function isTTSAvailable() {
-        const isAndroid = /android/i.test(navigator.userAgent);
-        const isChrome = /chrome/i.test(navigator.userAgent) && !/edge/i.test(navigator.userAgent);
-        return isAndroid && isChrome && 'speechSynthesis' in window;
+        //const isAndroid = /android/i.test(navigator.userAgent);
+        //const isChrome = /chrome/i.test(navigator.userAgent) && !/edge/i.test(navigator.userAgent);
+        //return isAndroid && isChrome && 'speechSynthesis' in window;
+        return 'speechSynthesis' in window;
     }
 
     // Activer/désactiver le bouton Send
@@ -138,6 +140,25 @@ document.addEventListener("DOMContentLoaded", () => {
         recognition.onerror = (event) => {
             console.error("Erreur de reconnaissance vocale :", event.error);
         };
+    });
+
+
+    // Handle Reset button click
+    resetButton.addEventListener("click", () => {
+        fetch("/reset", { method: "POST" })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Clear the chat box content
+                    const chatBox = document.getElementById("chat-box");
+                    chatBox.innerHTML = "";
+                } else {
+                    console.error("Failed to reset:", data.message);
+                }
+            })
+            .catch(error => {
+                console.error("Error during reset:", error);
+            });
     });
 
     // Auto-submit lorsque Enter est pressé
