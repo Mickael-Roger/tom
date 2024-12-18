@@ -16,6 +16,8 @@ from datetime import datetime, timedelta, date
 ################################################################################################
 class Kwyk:
 
+  _update_thread_started = False
+
   def __init__(self, config) -> None:
     self.url = "https://www.kwyk.fr/"
 
@@ -65,10 +67,13 @@ class Kwyk:
     }
 
 
-    self.thread = threading.Thread(target=self.run_update)
-    self.thread.daemon = True  # Allow the thread to exit when the main program exits
-    self.thread.start()
+    if not Kwyk._update_thread_started:
+      Kwyk._update_thread_started = True
+      self.thread = threading.Thread(target=self.run_update)
+      self.thread.daemon = True  # Allow the thread to exit when the main program exits
+      self.thread.start()
     
+
   def run_update(self):
     while True:
       print("Kwyk: Run auto update")

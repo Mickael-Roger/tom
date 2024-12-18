@@ -6,6 +6,8 @@ global:
   
   openai:
     api: XXXXXXXXXXXXXXXXXXXXXXXX
+
+  sessions: /xxxx/ # Path for the session storage directory
   
   tts:
    langs: 

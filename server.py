@@ -4,15 +4,14 @@ import yaml
 import os
 import json
 import sys
-import time
+import importlib.util
 from datetime import datetime, timedelta
-import uuid
 import tempfile
 import base64
 import subprocess
 import copy
-import torch
 from TTS.api import TTS
+import functools
 
 
 # OpenAI
@@ -20,7 +19,6 @@ from openai import OpenAI
 
 # Mistral
 from mistralai import Mistral
-import functools
 
 # Import all modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'modules')))
@@ -54,6 +52,47 @@ def initConf():
   return conf
 
 
+
+################################################################################################
+#                                                                                              #
+#                                     Modules loading                                          #
+#                                                                                              #
+################################################################################################
+#mod_dir = "./modules"
+#
+#mods = {}
+#
+#for mod_file in os.listdir(mod_dir):
+#
+#  if mod_file.endswith(".py") and mod_file != "__init__.py":
+#    mod_name = mod_file[:-3]
+#
+#    # Is the module already imported?
+#    if mod_name not in sys.modules:
+#      mod_path = os.path.join(mod_dir, mod_file)
+#      
+#      mod_spec = importlib.util.spec_from_file_location(mod_name, mod_path)
+#      module = importlib.util.module_from_spec(mod_spec)
+#  
+#      sys.modules[mod_name] = module
+#
+#      toto = mod_spec.loader.exec_module(module)
+#      print(toto)
+#
+#      print(f"{mod_name} loaded")
+
+        # Import module classe
+        #classes = [attr for attr in dir(module) if isinstance(getattr(module, attr), type)]
+        #
+        #if classes:
+        #    class_name = classes[0]
+        #    class_mod = getattr(module, class_name)
+        #    print(class_mod)
+
+        #    mods[class_name] = class_mod
+
+        #    # Créer une instance de la classe
+        #    print(f"{class_name} loaded")
 
 
 ################################################################################################
@@ -125,6 +164,15 @@ class TomWebService:
     with open(os.path.join('static', 'index.html'), 'r') as file:
       return file.read()
 
+  @cherrypy.expose
+  @cherrypy.tools.allow(methods=['POST'])
+  @cherrypy.tools.json_out()
+  def reset(self):
+    if resetAndSave(username=cherrypy.session['username']):
+      return {"success": True}
+    else:
+      raise cherrypy.HTTPError(500, "Could not reset and save the session")
+
 
   @cherrypy.expose
   @cherrypy.tools.allow(methods=['POST'])
@@ -136,16 +184,23 @@ class TomWebService:
        raise cherrypy.HTTPRedirect("/auth")
 
     input_json = cherrypy.request.json
+
+    print("+++++++")
+    print(input_json)
+    print("+++++++")
     
     user = input_json.get('request')
     lang = input_json.get('lang')
     position = input_json.get('position')
+    localTTS = input_json.get('tts')
 
     print(cherrypy.session['username'])
 
     response = processRequest(input=user, username=cherrypy.session['username'], lang=lang, position=position)
 
-    voice = userList[username]['tts'].infere(response, lang)
+    voice= None
+    if not localTTS:
+      voice = userList[username]['tts'].infere(response, lang)
 
     return {"response": response, "voice": voice} 
 
@@ -198,9 +253,9 @@ def processLLM(messages, tools):
   mistralmodel = "mistral-large-latest"
   openaimodel = "gpt-4o-mini"
 
-  print("-------- EXECUTE ---------")
-  print(messages)
-  print("--------------")
+  print("-------- EXECUTE ---------", flush=True)
+  print(messages, flush=True)
+  print("--------------", flush=True)
 
   
   if config['global']['llm'] == "mistral":
@@ -220,17 +275,21 @@ def processLLM(messages, tools):
     print("LLM not defined")
     return False, "LLM not defined"
 
-  print("-------- RESPONSE ---------")
-  print(response)
-  print("--------------")
+  print("-------- RESPONSE ---------", flush=True)
+  print(response, flush=True)
+  print("--------------", flush=True)
 
   return True, response
 
 
+def resetAndSave(username):
 
-def processRequest(input, username, lang, position):
+  print("History cleaning")
+  userList[username]['history'] = []
+  return True
 
-  tools = userList[username]['tools']
+
+def generateContextPrompt(input, username, lang, position):
 
   today= datetime.now().strftime("%A %d %B %Y %H:%M:%S")
   todayMsg = {"role": "system", "content": f"Today is {today}.\n\n"}
@@ -247,6 +306,14 @@ def processRequest(input, username, lang, position):
     userList[username]['history'].append({"role": "system", "content": f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}"})
 
   userList[username]['history'].append({"role": "user", "content": input})
+
+
+
+def processRequest(input, username, lang, position):
+
+  tools = userList[username]['tools']
+
+  generateContextPrompt(input, username, lang, position)
 
   while True:
     
@@ -265,30 +332,57 @@ def processRequest(input, username, lang, position):
 
       if response.choices[0].message.tool_calls is not None:
 
-        tool_call = response.choices[0].message.tool_calls[0]
+        userList[username]['history'].append(response.choices[0].message)
 
-        function_name = tool_call.function.name
-        function_params = json.loads(tool_call.function.arguments)
+        print("\n\n\n*******************************************************")
+        print(userList[username]['history'])
+        print("********************************************************\n\n\n")
 
-        print("Call: " + str(function_name) + "with " + str(function_params))
+        responseContext = {"functions": [], "rules": []}
 
-        if function_name == "start_new_conversation":
-          print("History cleaning")
-          userList[username]['history'] = []
-          return f"Hi {username}" 
+        for tool_call in response.choices[0].message.tool_calls:
+
+          #tool_call = response.choices[0].message.tool_calls[0]
+
+          function_name = tool_call.function.name
+          function_params = json.loads(tool_call.function.arguments)
+
+          print("Call: " + str(function_name) + " with " + str(function_params))
+
+          if function_name == "start_new_conversation":
+            if resetAndSave(username=cherrypy.session['username']):
+              return f"Hi {username}"
+            else:
+              return "Error while saving your history"
 
 
-        res, function_result = userList[username]['functions'][function_name]['function'](**function_params)
+          res, function_result = userList[username]['functions'][function_name]['function'](**function_params)
 
-        if not res:
-          return "Error execution the function"
+          print(res)
+          print(function_result)
 
-        userList[username]['history'].append({"role": response.choices[0].message.role, "name":function_name, "content": json.dumps(function_result), "tool_call_id":tool_call.id})
+          if res is False:
+            return "Error execution the function"
 
-        message = copy.deepcopy(userList[username]['history'])
-        message.append({"role": "system", "content": userList[username]['functions'][function_name]['responseContext']})
+          userList[username]['history'].append({"role": 'tool', "content": json.dumps(function_result), "tool_call_id": tool_call.id})
+          
+          # TODODODODODDODODO
+          if function_name not in responseContext['functions']:
+            responseContext['functions'].append(function_name)
+            responseContext['rules'].append({"role": "system", "content": userList[username]['functions'][function_name]['responseContext']})
+
+        userList[username]['history'] = userList[username]['history'] + responseContext['rules']
+
+        print("\n\n\n********************** 2 *********************************")
+        print(userList[username]['history'])
+        print("********************************************************\n\n\n")
+
 
       else:
+
+        print("\n\n\n********************** 3 *********************************")
+        print(response.choices[0].message.content)
+        print("********************************************************\n\n\n")
 
         return response.choices[0].message.content
 
@@ -304,7 +398,6 @@ def processRequest(input, username, lang, position):
 ################################################################################################
 
 config = {}
-mods = []
 
 config = initConf()
 
@@ -389,7 +482,14 @@ openaiClient = OpenAI(api_key=config['global']["openai"]["api"])
 
 if __name__ == "__main__":    
 
-  cherrypy.config.update({'server.socket_host': '0.0.0.0', 'server.socket_port': 8082, 'tools.sessions.on': True, 'tools.sessions.timeout': 180})
+  cherrypy.config.update({
+    'server.socket_host': '0.0.0.0', 
+    'server.socket_port': 8082, 
+    'tools.sessions.on': True, 
+    'tools.sessions.timeout': 3600 * 24 * 30,
+    'tools.sessions.storage_type': 'file',
+    'tools.sessions.storage_path': config['global']['sessions'] 
+  })
   cherrypy.quickstart(TomWebService(), '/', config={
       '/static': {
           'tools.staticdir.on': True,

@@ -5,6 +5,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const chatBox = document.getElementById("chat-box");
     const autoSubmitCheckbox = document.getElementById("auto-submit");
     const languageSelect = document.getElementById("language-select");
+    const resetButton = document.getElementById("reset-button");
 
     let userPosition = null; // Position GPS de l'utilisateur
 
@@ -32,6 +33,14 @@ document.addEventListener("DOMContentLoaded", () => {
     // Appel initial pour récupérer la position dès que la page est chargée
     fetchUserPosition();
 
+    // Fonction pour vérifier si le client est un mobile Android avec Chrome et supporte TTS
+    function isTTSAvailable() {
+        //const isAndroid = /android/i.test(navigator.userAgent);
+        //const isChrome = /chrome/i.test(navigator.userAgent) && !/edge/i.test(navigator.userAgent);
+        //return isAndroid && isChrome && 'speechSynthesis' in window;
+        return 'speechSynthesis' in window;
+    }
+
     // Activer/désactiver le bouton Send
     promptInput.addEventListener("input", () => {
         sendButton.disabled = !promptInput.value.trim();
@@ -53,7 +62,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const payload = {
             request: message,
             lang: selectedLanguage,
-            position: userPosition // Ajout de la position GPS
+            position: userPosition, // Ajout de la position GPS
+            tts: isTTSAvailable() // Ajout du champ tts
         };
 
         fetch("/process", {
@@ -66,9 +76,12 @@ document.addEventListener("DOMContentLoaded", () => {
             if (data.response) {
                 addMessageToChat("bot", data.response);
 
-                // Lecture de l'audio si le champ 'voice' est présent
-                if (data.voice) {
+                // Lecture de l'audio si le champ 'voice' est présent et tts est false
+                if (data.voice && !payload.tts) {
                     playAudioFromBase64(data.voice);
+                } else if (payload.tts) {
+                    // Si tts est true, lire le texte localement
+                    speakText(data.response, selectedLanguage);
                 }
             }
         })
@@ -98,6 +111,13 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // Fonction pour faire parler le texte via la synthèse vocale
+    function speakText(text, language) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = language === "fr" ? "fr-FR" : "en-US"; // Choisir la langue
+        window.speechSynthesis.speak(utterance);
+    }
+
     // Fonction Speech-to-Text pour le bouton Speak
     speakButton.addEventListener("click", () => {
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
@@ -120,6 +140,25 @@ document.addEventListener("DOMContentLoaded", () => {
         recognition.onerror = (event) => {
             console.error("Erreur de reconnaissance vocale :", event.error);
         };
+    });
+
+
+    // Handle Reset button click
+    resetButton.addEventListener("click", () => {
+        fetch("/reset", { method: "POST" })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Clear the chat box content
+                    const chatBox = document.getElementById("chat-box");
+                    chatBox.innerHTML = "";
+                } else {
+                    console.error("Failed to reset:", data.message);
+                }
+            })
+            .catch(error => {
+                console.error("Error during reset:", error);
+            });
     });
 
     // Auto-submit lorsque Enter est pressé
