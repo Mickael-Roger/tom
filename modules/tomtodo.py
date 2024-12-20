@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 #                                       CalDAV TODO                                            #
 #                                                                                              #
 ################################################################################################
-class NextCloudTodo:
+class TomTodo:
 
   def __init__(self, config, tz=None) -> None:
   
@@ -132,9 +132,6 @@ class NextCloudTodo:
 
   def listTasks(self):
     self.update()
-    print("====================")
-    print(self.tasks)
-    print("====================")
     return True, self.tasks
 
 

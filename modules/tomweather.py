@@ -1,4 +1,5 @@
 import requests
+from datetime import datetime
 
 
 ################################################################################################
@@ -6,7 +7,7 @@ import requests
 #                                         Weather                                              #
 #                                                                                              #
 ################################################################################################
-class Weather:
+class TomWeather:
 
   def __init__(self) -> None:
     self.url = "https://api.open-meteo.com/v1/forecast?hourly=temperature_2m,apparent_temperature,weather_code&daily=temperature_2m_min,temperature_2m_max,apparent_temperature_min,apparent_temperature_max,weather_code&forecast_days=16"
@@ -51,19 +52,27 @@ class Weather:
           "name": "weather_get_by_gps_position",
           "description": "Get the weather forecast. Call this function when user ask information about the weather or anything related to it. For example when a user aks 'What's the weather like', 'How should I dress', 'Will it rain', 'What will the temparature be', 'Will I need an umbrella'. This function needs to be called with the exact GPS position.",
           "strict": True,
-            "parameters": {
-              "type": "object",
-              "properties": {
-                "gps_latitude": {
-                  "type": "string",
-                  "description": f"GPS latitude",
-                },
-                "gps_longitude": {
-                  "type": "string",
-                  "description": f"GPS longitude",
-                },
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "gps_latitude": {
+                "type": "string",
+                "description": f"GPS latitude",
               },
-              "required": ["gps_latitude", "gps_longitude"],
+              "gps_longitude": {
+                "type": "string",
+                "description": f"GPS longitude",
+              },
+              "period_from": {
+                "type": "string",
+                "description": f"Must be in the form of '%Y-%m-%d'. Define the starting date to search for. Oldest starting date is '2020-01-01' and could be used when the user request are about events in the past with no more precision about the period like 'When was my last medical appointment?'.",
+              },
+              "period_to": {
+                "type": "string",
+                "description": f"Must be in the form of '%Y-%m-%d'. Define the ending date to search for. Maximum ending date is today plus 5 years and could be used when the user request are about events in the futur no more precision about the period like 'When will be my next medial appointment?'.",
+              },
+              },
+              "required": ["gps_latitude", "gps_longitude", "period_from", "period_to"],
               "additionalProperties": False,
           },
         },
@@ -71,19 +80,19 @@ class Weather:
       {
         "type": "function",
         "function": {
-          "name": "weather_get_by_city_name",
-          "description": "Get the weather forecast by a city name. Call this function when user ask information about the weather or anything related to it. For example when a user aks 'What's the weather like', 'How should I dress', 'Will it rain', 'What will the temparature be', 'Will I need an umbrella'. This function when you do not have the GPS position but you have the name of the city you want the weather forecast for. Don't make assumptions about my GPS position. Ask for clarification if a user request is ambiguous.",
+          "name": "get_gps_position_by_city_name",
+          "description": "Get the the GPS position for a city by its name. Call this function when you need a GPS position and you only have the City name.",
           "strict": True,
-            "parameters": {
-              "type": "object",
-              "properties": {
-                "city_name": {
-                  "type": "string",
-                  "description": f"Name of the city you are looking for weather forecast",
-                },
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "city_name": {
+                "type": "string",
+                "description": f"Name of the city you are looking for GPS position",
               },
-              "required": ["city_name"],
-              "additionalProperties": False,
+            },
+            "required": ["city_name"],
+            "additionalProperties": False,
           },
         },
       },
@@ -93,7 +102,7 @@ class Weather:
     answerText = """When you are asked about the weather, you always must be consise. For example, when the user asked "What will the weather be like tommorrow?", your answer should be like "Tommorrow, saturday december the 1st, temperature will be from 2°C to 7°C and it will have moderate rain in the afternoon" or "Tommorrow, saturday december the 1st, temperature will be from 2°C to 7°C and it's not gonna rain" or if the user asks "Will it rain tommorrow?" your answer should be like "No, it's not gonna rain tommorrow". """
     self.answerContext = {
       "weather_get_by_gps_position": answerText,
-      "weather_get_by_city_name": answerText
+      "get_gps_position_by_city_name": ""
     }
 
 
@@ -105,21 +114,24 @@ class Weather:
 
   def getCity(self, city_name):
 
-    url = self.urlGeocoding + 'name=' + str(city_name) + '&count=1&language=fr&format=json'
+    url = self.urlGeocoding + 'name=' + str(city_name) + '&count=10&language=fr&format=json'
+
+    cities = []
 
     response = requests.get(url)
     if response.status_code == 200:
       # Convert the JSON response to a dictionary
       responseDict = response.json()
 
-      if responseDict['results'][0] is not None:
-        return self.getGps(gps_latitude=responseDict['results'][0]['latitude'], gps_longitude=responseDict['results'][0]['longitude'])
+      for city in responseDict['results']:
+        cities.append({"name": city['name'], "country": city['country'], "gps_latitude": city['latitude'], "gps_longitude": city['longitude']})
+      return True, cities
 
     return False, {}
 
 
 
-  def getGps(self, gps_latitude, gps_longitude):
+  def getGps(self, gps_latitude, gps_longitude, period_from, period_to):
 
     url = self.url + '&latitude=' + str(gps_latitude) + '&longitude=' + str(gps_longitude)
 
@@ -131,12 +143,17 @@ class Weather:
       # Convert the JSON response to a dictionary
       responseDict = response.json()
 
+      search_from = datetime.strptime(period_from, '%Y-%m-%d').replace(hour=0, minute=0, second=0)
+      search_to = datetime.strptime(period_to, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+
       # Hourly data
       for i in range(len(responseDict['hourly']['time'])):
+        if datetime.strptime(responseDict['hourly']['time'][i], "%Y-%m-%dT%H:%M") >= search_from and datetime.strptime(responseDict['hourly']['time'][i], "%Y-%m-%dT%H:%M") <= search_to: 
           data['hourly'].append({"timestamp": responseDict['hourly']['time'][i], "temperature": responseDict['hourly']['temperature_2m'][i], "apparent_temperature": responseDict['hourly']['apparent_temperature'][i], "weather_condition": self.convertWMO(str(responseDict['hourly']['weather_code'][i]))})
 
       # Daily data
       for i in range(len(responseDict['daily']['time'])):
+        if datetime.strptime(responseDict['daily']['time'][i], "%Y-%m-%d") >= search_from and datetime.strptime(responseDict['daily']['time'][i], "%Y-%m-%d") <= search_to: 
           data['daily'].append({"timestamp": responseDict['daily']['time'][i], "temperature_min": responseDict['daily']['temperature_2m_min'][i], "temperature_max": responseDict['daily']['temperature_2m_max'][i], "apparent_temperature_min": responseDict['daily']['apparent_temperature_min'][i], "apparent_temperature_max": responseDict['daily']['apparent_temperature_max'][i], "weather_condition": self.convertWMO(str(responseDict['daily']['weather_code'][i]))})
 
     return True, data

@@ -14,14 +14,14 @@ from datetime import datetime, timedelta, date
 #                                           Kwyk                                               #
 #                                                                                              #
 ################################################################################################
-class Kwyk:
+class TomKwyk:
 
   _update_thread_started = False
 
   def __init__(self, config) -> None:
     self.url = "https://www.kwyk.fr/"
 
-    self.db = config['db']
+    self.db = config['cache_db']
     self.username = config['username']
     self.password = config['password']
     self.id = config['id']
@@ -53,10 +53,25 @@ class Kwyk:
     self.tools = [
       {
         "type": "function",
-        "description": "Get the Kwyk status. For example when a user aks 'How many kwyk exercises has been done today', 'What is the kwyk status', 'How many math exercise has been done today'",
         "function": {
-            "name": "kwyk_get",
-            "parameters": {},
+          "name": "kwyk_get",
+          "description": "Get the Kwyk status. For example when a user aks 'How many kwyk exercises has been done today', 'What is the kwyk status', 'How many math exercise has been done today'",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "period_from": {
+                "type": "string",
+                "description": f"Must be in the form of '%Y-%m-%d'. Define the starting date to search for. Oldest starting date is '2020-01-01'.",
+              },
+              "period_to": {
+                "type": "string",
+                "description": f"Must be in the form of '%Y-%m-%d'. Define the ending date to search for. Maximum ending date is today.",
+              },
+            },
+            "required": ["period_from", "period_to"],
+            "additionalProperties": False,
+          },
         },
       },
     ]
@@ -67,8 +82,8 @@ class Kwyk:
     }
 
 
-    if not Kwyk._update_thread_started:
-      Kwyk._update_thread_started = True
+    if not TomKwyk._update_thread_started:
+      TomKwyk._update_thread_started = True
       self.thread = threading.Thread(target=self.run_update)
       self.thread.daemon = True  # Allow the thread to exit when the main program exits
       self.thread.start()
@@ -151,13 +166,13 @@ class Kwyk:
           dbconn.close()
 
 
-  def get(self, *args, **kwargs):
+  def get(self, period_from, period_to):
 
     self.update()
     data = {"math": []}
 
     dbconn = sqlite3.connect(self.db)
-    entries = dbconn.execute('SELECT date, daycorrect, daymcq, dayincorrect, daytotal FROM autonomous ORDER BY date ASC')
+    entries = dbconn.execute('SELECT date, daycorrect, daymcq, dayincorrect, daytotal FROM autonomous WHERE date BETWEEN ? AND ? ORDER BY date ASC', (period_from, period_to))
 
     for entry in entries:
       data['math'].append({"date": entry[0], "correct_exercices": entry[1], "mcq_exercices": entry[2], "incorrect_exercices": entry[3], "total_exercices": entry[4]})

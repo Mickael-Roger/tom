@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 #                                    CalDAV Calendar                                           #
 #                                                                                              #
 ################################################################################################
-class NextCloudCalendar:
+class TomCalendar:
 
   def __init__(self, config, tz=None) -> None:
   
@@ -42,16 +42,20 @@ class NextCloudCalendar:
         "function": {
           "name": "calendar_search",
           "description": f"Search for events, appointments or meeting in calendars. For example when a user aks 'Do I have an appointment?', 'When is my next', 'When was my last', 'What is planned for'. This function does not add, remove or update any event in the calendar.",
+          "strict": True,
           "parameters": {
             "type": "object",
             "properties": {
-              "period": {
+              "period_from": {
                 "type": "string",
-                "enum": ["futur", "past"],
-                "description": f"Determine if the searched event is in the past or the futur. The tense used in the user input must be used to determine this. Questions like 'When will be my next', 'When will I see' or 'Do I have' are in the futur. Questions like 'When was' or 'Do I had' are in the past",
+                "description": f"Must be in the form of '%Y-%m-%d'. Define the starting date to search for. Oldest starting date is '2020-01-01' and could be used when the user request are about events in the past with no more precision about the period like 'When was my last medical appointment?'.",
+              },
+              "period_to": {
+                "type": "string",
+                "description": f"Must be in the form of '%Y-%m-%d'. Define the ending date to search for. Maximum ending date is today plus 5 years and could be used when the user request are about events in the futur no more precision about the period like 'When will be my next medial appointment?'.",
               },
             },
-            "required": [],
+            "required": ["period_from", "period_to"],
             "additionalProperties": False,
           },
         }
@@ -61,6 +65,7 @@ class NextCloudCalendar:
         "function": {
           "name": "calendar_add",
           "description": "Add an appointment, meeting or event in my calendar. For example when a user aks 'Add this to my calendar', 'Add this appoitment', 'Add this meeting', 'create this appoitnment'",
+          "strict": True,
           "parameters": {
             "type": "object",
             "properties": {
@@ -70,11 +75,11 @@ class NextCloudCalendar:
               },
               "start": {
                 "type": "string",
-                "description": f"Start date and time of the event. Must be in the form of '%Y-%m-%d %H:%M:%S'. If no information is provided about the day of the event, must be set to today. If no information is provided about the hour of the event, time must be set to 9am.",
+                "description": f"Start date and time of the event. Must be in the form of '%Y-%m-%d %H:%M'. If no information is provided about the day of the event, must be set to today. If no information is provided about the hour of the event, you must ask the user for it.",
               },
               "end": {
                 "type": "string",
-                "description": f"End date and time of the event. Must be in the form of '%Y-%m-%d %H:%M:%S'. By default and if no information is provided, event, appoitnment or meeting are 1h of duration. If no information is provided about the end of the event, the end value must be set to the start value plus one hour",
+                "description": f"End date and time of the event. Must be in the form of '%Y-%m-%d %H:%M'. By default and if no information is provided, event, appointment or meeting are 1h of duration.",
               },
             },
             "required": ["title", "start", "end"],
@@ -126,19 +131,16 @@ class NextCloudCalendar:
 
 
 
-  def search(self, period=None):
+  def search(self, period_from, period_to):
     self.update()
 
     events = []
 
+    search_from = datetime.strptime(period_from, '%Y-%m-%d').replace(hour=0, minute=0, second=0)
+    search_to = datetime.strptime(period_to, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+
     for evt in self.calendarsContent:
-      if period == "futur":
-        if datetime.strptime(evt['start'], '%Y-%m-%d %H:%M:%S') > datetime.now():
-          events.append(evt)
-      elif period == "past":
-        if datetime.strptime(evt['start'], '%Y-%m-%d %H:%M:%S') < datetime.now():
-          events.append(evt)
-      else:
+      if datetime.strptime(evt['start'], '%Y-%m-%d %H:%M:%S') >= search_from and datetime.strptime(evt['start'], '%Y-%m-%d %H:%M:%S') <= search_to:
         events.append(evt)
 
     calendarsContentJson = json.dumps(events)
@@ -239,7 +241,7 @@ class NextCloudCalendar:
     if calendar == None:
       calendar = self.defaultCalendar
   
-    date_format = "%Y-%m-%d %H:%M:%S"
+    date_format = "%Y-%m-%d %H:%M"
 
     calendar.save_event(
         dtstart = self.tz.localize(datetime.strptime(start, date_format)),
@@ -251,7 +253,7 @@ class NextCloudCalendar:
 
     self.update()
 
-    return True, f"I just added an event in your calendar named {title}, that is planned from {start} to {end}" 
+    return True, f"Event '{title}' from {start} to {end} added" 
 
 
 

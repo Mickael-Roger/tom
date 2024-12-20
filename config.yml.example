@@ -23,6 +23,7 @@ global:
   idfm:
     token: XXXXXXXXXXXXXXXXXXXXXXXX
 
+
 users:
   - username: user1
     password: password1
@@ -45,7 +46,9 @@ users:
       # Need Anki-connect HTTP add on
       anki:
         url: http://localhost:8765
-        profile: profilename
+        db_dir: data/user1/anki/
+        username: xxxx
+        password: xxxx
   
     # Pronote login documentation: https://github.com/bain3/pronotepy/blob/master/docs/source/quickstart.rst
       # Procedure:
@@ -65,7 +68,7 @@ users:
         username: xxxxxxx
         password: xxxxxxx
         id: "aaaaa"
-        db: data/kwyk.sqlite
+        cache_db: "data/users/all/kwyk.sqlite"
 
     personalContext: |
       bla bla bla

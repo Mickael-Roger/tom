@@ -6,3 +6,4 @@ openai
 pronotepy
 beautifulsoup4
 TTS
+anki

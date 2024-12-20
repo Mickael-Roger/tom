@@ -5,11 +5,11 @@ import os
 import json
 import sys
 import importlib.util
+import inspect
 from datetime import datetime, timedelta
 import tempfile
 import base64
 import subprocess
-import copy
 from TTS.api import TTS
 import functools
 
@@ -19,18 +19,6 @@ from openai import OpenAI
 
 # Mistral
 from mistralai import Mistral
-
-# Import all modules
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'modules')))
-from anki import Anki
-from nextcloudtodo import NextCloudTodo
-from nextcloudcalendar import NextCloudCalendar
-from weather import Weather
-from kwyk import Kwyk
-from pronote import Pronote
-from idfm import Idfm
-from groceries import Groceries
-
 
 
 ################################################################################################
@@ -58,41 +46,23 @@ def initConf():
 #                                     Modules loading                                          #
 #                                                                                              #
 ################################################################################################
-#mod_dir = "./modules"
-#
-#mods = {}
-#
-#for mod_file in os.listdir(mod_dir):
-#
-#  if mod_file.endswith(".py") and mod_file != "__init__.py":
-#    mod_name = mod_file[:-3]
-#
-#    # Is the module already imported?
-#    if mod_name not in sys.modules:
-#      mod_path = os.path.join(mod_dir, mod_file)
-#      
-#      mod_spec = importlib.util.spec_from_file_location(mod_name, mod_path)
-#      module = importlib.util.module_from_spec(mod_spec)
-#  
-#      sys.modules[mod_name] = module
-#
-#      toto = mod_spec.loader.exec_module(module)
-#      print(toto)
-#
-#      print(f"{mod_name} loaded")
+mod_dir = './modules'
 
-        # Import module classe
-        #classes = [attr for attr in dir(module) if isinstance(getattr(module, attr), type)]
-        #
-        #if classes:
-        #    class_name = classes[0]
-        #    class_mod = getattr(module, class_name)
-        #    print(class_mod)
-
-        #    mods[class_name] = class_mod
-
-        #    # Créer une instance de la classe
-        #    print(f"{class_name} loaded")
+# Iterate over the files in the 'modules' directory
+for filename in os.listdir(mod_dir):
+    if filename.endswith('.py') and filename != '__init__.py':
+        # Construct the full path to the module file
+        module_name = filename[:-3]  # Remove the '.py' extension
+        file_path = os.path.join(mod_dir, filename)
+        
+        # Dynamically import the module
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        
+        # Inspect the module and add all classes to the global namespace
+        for name, obj in inspect.getmembers(module, inspect.isclass):
+            globals()[name] = obj
 
 
 ################################################################################################
@@ -292,7 +262,8 @@ def resetAndSave(username):
 def generateContextPrompt(input, username, lang, position):
 
   today= datetime.now().strftime("%A %d %B %Y %H:%M:%S")
-  todayMsg = {"role": "system", "content": f"Today is {today}.\n\n"}
+  weeknumber = datetime.now().isocalendar().week
+  todayMsg = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}.\n\n"}
 
   if userList[username]['history']: 
     userList[username]['history'][0] = todayMsg
@@ -421,14 +392,14 @@ for user in config['users']:
   for service_name in user['services'].keys():
 
     if service_name == "calendar":
-      userList[username]['services']['calendar'] = NextCloudCalendar(user['services']['calendar'])
+      userList[username]['services']['calendar'] = TomCalendar(user['services']['calendar'])
       userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['calendar'].tools
       userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['calendar'].systemContext + "\n\n"
       userList[username]['functions']['calendar_add'] = {"function": functools.partial(userList[username]['services']['calendar'].addEvent), "responseContext": userList[username]['services']['calendar'].answerContext['calendar_add']}
       userList[username]['functions']['calendar_search'] = {"function": functools.partial(userList[username]['services']['calendar'].search), "responseContext": userList[username]['services']['calendar'].answerContext['calendar_search']}
 
     if service_name == "groceries":
-      userList[username]['services']['groceries'] = Groceries(user['services']['groceries'])
+      userList[username]['services']['groceries'] = TomGroceries(user['services']['groceries'])
       userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['groceries'].tools
       userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['groceries'].systemContext + "\n\n"
       userList[username]['functions']['grocery_list_content'] = {"function": functools.partial(userList[username]['services']['groceries'].listProducts), "responseContext": userList[username]['services']['groceries'].answerContext['grocery_list_content']}
@@ -436,7 +407,7 @@ for user in config['users']:
       userList[username]['functions']['grocery_list_remove'] = {"function": functools.partial(userList[username]['services']['groceries'].remove), "responseContext": userList[username]['services']['groceries'].answerContext['grocery_list_remove']}
 
     if service_name == "todo":
-      userList[username]['services']['todo'] = NextCloudTodo(user['services']['todo'])
+      userList[username]['services']['todo'] = TomTodo(user['services']['todo'])
       userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['todo'].tools
       userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['todo'].systemContext + "\n\n"
       userList[username]['functions']['todo_list_all'] = {"function": functools.partial(userList[username]['services']['todo'].listTasks), "responseContext": userList[username]['services']['todo'].answerContext['todo_list_all']}
@@ -444,28 +415,39 @@ for user in config['users']:
       userList[username]['functions']['todo_create_task'] = {"function": functools.partial(userList[username]['services']['todo'].create), "responseContext": userList[username]['services']['todo'].answerContext['todo_create_task']}
 
     if service_name == "anki":
-      userList[username]['services']['anki'] = Anki(user['services']['anki'])
+      userList[username]['services']['anki'] = TomAnki(user['services']['anki'])
       userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['anki'].tools
       userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['anki'].systemContext + "\n\n"
-      userList[username]['functions']['anki_status'] = {"function": functools.partial(userList[username]['services']['anki'].status), "responseContext": userList[username]['services']['anki'].answerContext['anki_status']}
-      userList[username]['functions']['anki_add'] = {"function": functools.partial(userList[username]['services']['anki'].add), "responseContext": userList[username]['services']['anki'].answerContext['anki_add']}
+      userList[username]['functions']['anki_list_decks'] = {"function": functools.partial(userList[username]['services']['anki'].slist_decks), "responseContext": userList[username]['services']['anki'].answerContext['anki_list_decks']}
+      userList[username]['functions']['anki_list_due_cards'] = {"function": functools.partial(userList[username]['services']['anki'].due_cards), "responseContext": userList[username]['services']['anki'].answerContext['anki_list_due_cards']}
+      userList[username]['functions']['anki_list_all_cards'] = {"function": functools.partial(userList[username]['services']['anki'].list_cards), "responseContext": userList[username]['services']['anki'].answerContext['anki_list_all_cards']}
+      userList[username]['functions']['anki_review_card'] = {"function": functools.partial(userList[username]['services']['anki'].card_review), "responseContext": userList[username]['services']['anki'].answerContext['anki_review_card']}
+      userList[username]['functions']['anki_add_card'] = {"function": functools.partial(userList[username]['services']['anki'].add_card), "responseContext": userList[username]['services']['anki'].answerContext['anki_add_card']}
 
     if service_name == "kwyk":
-      userList[username]['services']['kwyk'] = Kwyk(user['services']['kwyk'])
+      userList[username]['services']['kwyk'] = TomKwyk(user['services']['kwyk'])
       userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['kwyk'].tools
       userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['kwyk'].systemContext + "\n\n"
       userList[username]['functions']['kwyk_get'] = {"function": functools.partial(userList[username]['services']['kwyk'].get), "responseContext": userList[username]['services']['kwyk'].answerContext['kwyk_get']}
 
     if service_name == "pronote":
-      userList[username]['services']['pronote'] = Pronote(user['services']['pronote'])
+      userList[username]['services']['pronote'] = TomPronote(user['services']['pronote'])
       userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['pronote'].tools
       userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['pronote'].systemContext + "\n\n"
+      userList[username]['functions']['list_grade_averages'] = {"function": functools.partial(userList[username]['services']['pronote'].averages), "responseContext": userList[username]['services']['pronote'].answerContext['list_grade_averages']}
+      userList[username]['functions']['list_grades'] = {"function": functools.partial(userList[username]['services']['pronote'].grades), "responseContext": userList[username]['services']['pronote'].answerContext['list_grades']}
+      userList[username]['functions']['list_homeworks'] = {"function": functools.partial(userList[username]['services']['pronote'].homeworks), "responseContext": userList[username]['services']['pronote'].answerContext['list_homeworks']}
+      userList[username]['functions']['list_school_absences'] = {"function": functools.partial(userList[username]['services']['pronote'].absences), "responseContext": userList[username]['services']['pronote'].answerContext['list_school_absences']}
+      userList[username]['functions']['list_school_delays'] = {"function": functools.partial(userList[username]['services']['pronote'].delays), "responseContext": userList[username]['services']['pronote'].answerContext['list_school_delays']}
+      userList[username]['functions']['list_school_punishments'] = {"function": functools.partial(userList[username]['services']['pronote'].punishments), "responseContext": userList[username]['services']['pronote'].answerContext['list_school_punishments']}
+      userList[username]['functions']['list_school_teachers'] = {"function": functools.partial(userList[username]['services']['pronote'].teachers), "responseContext": userList[username]['services']['pronote'].answerContext['list_grades']}
+      userList[username]['functions']['get_school_calendar'] = {"function": functools.partial(userList[username]['services']['pronote'].getCal), "responseContext": userList[username]['services']['pronote'].answerContext['get_school_calendar']}
 
-    userList[username]['services']['weather'] = Weather()
+    userList[username]['services']['weather'] = TomWeather()
     userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['weather'].tools
     userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['weather'].systemContext + "\n\n"
     userList[username]['functions']['weather_get_by_gps_position'] = {"function": functools.partial(userList[username]['services']['weather'].getGps), "responseContext": userList[username]['services']['weather'].answerContext['weather_get_by_gps_position']}
-    userList[username]['functions']['weather_get_by_city_name'] = {"function": functools.partial(userList[username]['services']['weather'].getCity), "responseContext": userList[username]['services']['weather'].answerContext['weather_get_by_city_name']}
+    userList[username]['functions']['get_gps_position_by_city_name'] = {"function": functools.partial(userList[username]['services']['weather'].getCity), "responseContext": userList[username]['services']['weather'].answerContext['get_gps_position_by_city_name']}
 
     #userList[username]['services']['idfm'] = Idfm(config['global']['idfm'])
     #userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['idfm'].tools

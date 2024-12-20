@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, date
 #                                           IDFM                                               #
 #                                                                                              #
 ################################################################################################
-class Idfm:
+class TomIdfm:
 
   def __init__(self, config) -> None:
 

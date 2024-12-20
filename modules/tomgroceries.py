@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 #                                       CalDAV TODO                                            #
 #                                                                                              #
 ################################################################################################
-class Groceries:
+class TomGroceries:
 
   def __init__(self, config, tz=None) -> None:
   
@@ -107,7 +107,9 @@ class Groceries:
 
 
   def update(self):
+
     self.groceryList = []
+
     for product in self.groceryCal.todos():
       self.groceryList.append({"product": str(product.icalendar_component.get('summary')), "id": str(product.icalendar_component.get('uid'))})
 
@@ -134,8 +136,6 @@ class Groceries:
     return True, f"Product '{product}' has been added to the grocery list."
 
   def remove(self, id):
-
-    print(datetime.now())
 
     tasks = self.groceryCal.todos()
 
