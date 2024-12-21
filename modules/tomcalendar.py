@@ -35,7 +35,7 @@ class TomCalendar:
     self.calendarsContent = []
 
     self.update()
-    
+
     self.tools = [
       {
         "type": "function",
