@@ -58,7 +58,7 @@ class TomPronote:
          max NUMERIC,
          average NUMERIC,
          comment TEXT,
-         viewed INTEGER DEFAULT 0
+         is_new BOOLEAN DEFAULT 1
       )
       ''')
       cursor.execute('''
@@ -67,7 +67,7 @@ class TomPronote:
          subject TEXT,
          date DATETIME,
          description TEXT,
-         done INTEGER DEFAULT 0
+         done BOOLEAN DEFAULT 0
       )
       ''')
       cursor.execute('''
@@ -77,7 +77,7 @@ class TomPronote:
          date_to DATETIME,
          duration TEXT,
          reasons TEXT,
-         justified INTEGER DEFAULT 0
+         justified BOOLEAN DEFAULT 0
       )
       ''')
       cursor.execute('''
@@ -87,7 +87,7 @@ class TomPronote:
          minutes INTEGER,
          justification TEXT,
          reasons TEXT,
-         justified INTEGER DEFAULT 0
+         justified BOOLEAN DEFAULT 0
       )
       ''')
       cursor.execute('''
@@ -98,7 +98,7 @@ class TomPronote:
          subject TEXT,
          description TEXT,
          acquisitions TEXT,
-         viewed INTEGER DEFAULT 0
+         is_new BOOLEAN DEFAULT 1
       )
       ''')
       cursor.execute('''
@@ -109,7 +109,7 @@ class TomPronote:
          nature TEXT,
          reasons TEXT,
          giver TEXT,
-         viewed INTEGER DEFAULT 0
+         is_new BOOLEAN DEFAULT 1
       )
       ''')
       cursor.execute('''
@@ -127,8 +127,9 @@ class TomPronote:
          teacher TEXT,
          title TEXT,
          comment TEXT,
-         is_read INTEGER,
-         with_ar INTEGER
+         is_read BOOLEAN,
+         with_ar BOOLEAN,
+         is_new BOOLEAN DEFAULT 1
       )
       ''')
       cursor.execute('''
@@ -139,7 +140,8 @@ class TomPronote:
          content TEXT,
          author TEXT,
          date DATETIME,
-         is_read INTEGER
+         is_read BOOLEAN,
+         is_new BOOLEAN DEFAULT 1
       )
       ''')
       dbconn.commit()
@@ -365,7 +367,7 @@ class TomPronote:
               },
               "object_type": {
                 "type": "string",
-                "enum": ["grade", "evaluation", "punishment", "information", "communication"],
+                "enum": ["grade", "evaluation", "information", "observation"],
                 "description": f"Type of the element to mark as seen.",
               },
               "object_id": {
@@ -373,7 +375,7 @@ class TomPronote:
                 "description": f"ID of the element to mark as seen.",
               },
             },
-            "required": ["child_name", "type", "id"],
+            "required": ["child_name", "object_type", "object_id"],
             "additionalProperties": False,
           },
         },
@@ -407,22 +409,28 @@ class TomPronote:
     self.systemContext = "Pronote is the application that manage children's school life. Pronote is the only way to have access to children's timetable, homework to do, grades, grade book, evaluations, parent/teachers communication and mainly information about school and college."
 
     self.answerContext = {
-      "list_grade_averages": "",
-      "list_grades": "",
-      "list_homeworks": "",
-      "list_school_absences": "",
-      "list_school_delays": "",
-      "list_school_evaluations": "",
-      "list_school_punishments": "",
-      "list_school_teachers": "",
-      "get_school_calendar": "",
-      "list_school_observations": "",
-      "list_school_information_communication": "",
-      "pronote_mark_as_seen": "",
+      "list_grade_averages": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. For example: '14 in maths, 12 in history and 11.5 in english'.""",
+      "list_grades": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. If the grade is out of 20, no need to precise, otherwise you must. For example: '12 in geography september the 13th, 4.5 out of 5 in history yesterday and 13 in English today'. When the question was about new notes and there are some, at the end you should propose me to mark them as viewed. Never mark something a viewed by yourself, it must always come from an explicite request from me. When you are asked about new grades, it means only grades with 'is_new' set to 'True' are concerned.""",
+      "list_homeworks": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. Unless your are asked for specific information like 'Give me more details about the tomorrow homework in math', you just need to short like 'For tomorrow, there are 2 homeworks in english and 1 in math'.""",
+      "list_school_absences": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
+      "list_school_delays": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
+      "list_school_evaluations": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
+      "list_school_punishments": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
+      "list_school_teachers": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
+      "get_school_calendar": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
+      "list_school_observations": """"You should always answered in the form of a sentence and not contains '-' or element numbers.""",
+      "list_school_information_communication": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. Unless your are asked for specific information like 'Give me more details about this information content', you just need to short like 'You have 3 new information messages. The first one is about gradebook, the scond one about school restaurant menu and the last one is about teacher strikes'. When the question was about new information and there are some, at the end you should propose me to mark them as viewed. Never mark something a viewed by yourself, it must always come from an explicite request from me. When you are asked about new information or communication, it means only communication with 'is_new' set to 'True' are concerned.""",
+      "pronote_mark_as_seen": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
     }
 
 
   def connect(self, child_name, token):
+
+    #######
+    #
+    # TODO: Try if we are connected, otherwise connect
+    #
+    #######
     # Connect
     credentials = json.loads(Path(token).read_text())
     client = pronotepy.ParentClient.token_login(**credentials)
@@ -479,20 +487,20 @@ class TomPronote:
           # Update the Grades DB content
           res = dbconn.execute('SELECT date FROM grades ORDER BY date DESC LIMIT 1').fetchone()
           if res:  
-            max_date = datetime.strptime(res[0], "%Y-%m-%d %H:%M:%S").date()
+            max_date = datetime.strptime(res[0], "%Y-%m-%d").date()
           else:
-            max_date = datetime.strptime("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S").date()
+            max_date = datetime.strptime("2020-01-01", "%Y-%m-%d").date()
 
           for period in client.periods:
             for grade in period.grades:
               if grade.date >= max_date:
                 if grade.date == max_date:
                   # Check for pre-existance
-                  res = dbconn.execute('SELECT 1 FROM grades WHERE subject = ? AND date = ? AND comment = ?', (grade.subject.name, grade.date.strftime('%Y-%m-%d %H:%M:%S'), grade.comment)).fetchone()
+                  res = dbconn.execute('SELECT 1 FROM grades WHERE subject = ? AND date = ? AND comment = ?', (grade.subject.name, grade.date.strftime('%Y-%m-%d'), grade.comment)).fetchone()
                   if res:
                     break
                 
-                dbconn.execute('INSERT INTO grades (subject, date, grade, out_of, min, max, average, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (grade.subject.name, grade.date.strftime('%Y-%m-%d %H:%M:%S'), str(grade.grade), str(grade.out_of), str(grade.min), str(grade.max), str(grade.average), grade.comment))
+                dbconn.execute('INSERT INTO grades (subject, date, grade, out_of, min, max, average, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (grade.subject.name, grade.date.strftime('%Y-%m-%d'), str(grade.grade), str(grade.out_of), str(grade.min), str(grade.max), str(grade.average), grade.comment))
 
 
 
@@ -502,12 +510,7 @@ class TomPronote:
           dbconn.execute('DELETE FROM homeworks WHERE date >= ?', (todayTxt,))
 
           for homework in client.homework(date_from=datetime.now().date()):
-            if homework.done:
-              done = "1"
-            else:
-              done = "0"
-
-              dbconn.execute('INSERT INTO homeworks (subject, date, description, done) VALUES (?, ?, ?, ?)', (homework.subject.name, homework.date.strftime('%Y-%m-%d'), homework.description, done))
+              dbconn.execute('INSERT INTO homeworks (subject, date, description, done) VALUES (?, ?, ?, ?)', (homework.subject.name, homework.date.strftime('%Y-%m-%d'), homework.description, homework.done))
 
 
 
@@ -524,12 +527,7 @@ class TomPronote:
               for reason in absence.reasons:
                 reasonTxt = reasonTxt + str(reason) + "\n"
 
-              if absence.justified:
-                justified = "1"
-              else:
-                justified = "0"
-
-              dbconn.execute('INSERT INTO absences (date_from, date_to, duration, reasons, justified) VALUES (?, ?, ?, ?, ?)', (absence.from_date.strftime('%Y-%m-%d %H:%M:%S'), absence.to_date.strftime('%Y-%m-%d %H:%M:%S'), absence.hours, reasonTxt, justified))
+              dbconn.execute('INSERT INTO absences (date_from, date_to, duration, reasons, justified) VALUES (?, ?, ?, ?, ?)', (absence.from_date.strftime('%Y-%m-%d %H:%M:%S'), absence.to_date.strftime('%Y-%m-%d %H:%M:%S'), absence.hours, reasonTxt, absence.justified))
 
 
           # Update the Delays DB content
@@ -546,12 +544,7 @@ class TomPronote:
               for reason in delay.reasons:
                 reasonTxt = reasonTxt + str(reason) + "\n"
 
-              if delay.justified:
-                justified = "1"
-              else:
-                justified = "0"
-
-              dbconn.execute('INSERT INTO delays (datetime, minutes, justification, reasons, justified) VALUES (?, ?, ?, ?, ?)', (delay.datetime.strftime('%Y-%m-%d %H:%M:%S'), str(delay.minutes), delay.justification, reasonTxt, justified))
+              dbconn.execute('INSERT INTO delays (datetime, minutes, justification, reasons, justified) VALUES (?, ?, ?, ?, ?)', (delay.datetime.strftime('%Y-%m-%d %H:%M:%S'), str(delay.minutes), delay.justification, reasonTxt, delay.justified))
 
 
           # Update the Evaluations DB content
@@ -597,7 +590,7 @@ class TomPronote:
 
 
           # Update the Teachers DB content
-          entries = dbconn.execute('DELETE FROM teachers')
+          dbconn.execute('DELETE FROM teachers')
 
 
           for teacher in client.get_teaching_staff():
@@ -615,12 +608,7 @@ class TomPronote:
           for information in informations:
             if information.creation_date > max_date:
 
-              if information.read:
-                is_read = "1"
-              else:
-                is_read = "0"
-
-              dbconn.execute('INSERT INTO informations (creation_date, date, title, author, content, is_read) VALUES (?, ?, ?, ?, ?, ?)', (information.creation_date, information.start_date.strftime('%Y-%m-%d'), information.title, information.author, information.content, is_read))
+              dbconn.execute('INSERT INTO informations (creation_date, date, title, author, content, is_read) VALUES (?, ?, ?, ?, ?, ?)', (information.creation_date, information.start_date.strftime('%Y-%m-%d'), information.title, information.author, information.content, information.read))
 
 
 
@@ -659,14 +647,14 @@ class TomPronote:
               if date > max_date:
 
                 if observation['estLue']:
-                  is_read = "1"
+                  is_read = True
                 else:
-                  is_read = "0"
+                  is_read = False
 
                 if observation['avecARObservation']:
-                  with_ar = "1"
+                  with_ar = True
                 else:
-                  with_ar = "0"
+                  with_ar = False
 
 
                 dbconn.execute('INSERT INTO observations (datetime, subject, teacher, title, comment, is_read, with_ar) VALUES (?, ?, ?, ?, ?, ?, ?)', (date.strftime('%Y-%m-%d %H:%M:%S'), observation['matiere']['V']['L'], observation['demandeur']['V']['L'], observation['L'], observation['commentaire'], is_read, with_ar ))
@@ -800,14 +788,12 @@ class TomPronote:
     for avg in avgs:
       averages['grades_averages'].append({"period": avg[0], "subject": avg[1], "student_avg": avg[2], "class_min_avg": avg[3], "class_max_avg": avg[4], "class_avg": avg[5]})
 
-    print(averages)
-
     return True, averages
 
 
   def grades(self, child_name):
 
-    res, val = self.execSelect(child_name=child_name, req='SELECT date, subject, grade, out_of, min, max, average, comment, viewed FROM grades ORDER BY date, subject ASC')
+    res, val = self.execSelect(child_name=child_name, req='SELECT date, subject, grade, out_of, min, max, average, comment, is_new, id FROM grades ORDER BY date, subject ASC')
 
     if res is False:
       return False, val
@@ -816,13 +802,11 @@ class TomPronote:
 
     for grade in val:
       if grade[8] == "1":
-        new = False
-      else:
         new = True
+      else:
+        new = False
 
-      grades.append({"date": grade[0].replace(" 00:00:00", ""), "subject": grade[1], "grade": grade[2], "grade_out_of": grade[3], "class_min_grade": grade[4], "class_max_grade": grade[5], "class_avg_grade": grade[6], "grade_comment": grade[7], "is_new": new})
-
-    print(grades)
+      grades.append({"id": grade[9], "date": grade[0].replace(" 00:00:00", ""), "subject": grade[1], "grade": grade[2], "grade_out_of": grade[3], "class_min_grade": grade[4], "class_max_grade": grade[5], "class_avg_grade": grade[6], "grade_comment": grade[7], "is_new": new})
 
     return True, grades
 
@@ -846,15 +830,13 @@ class TomPronote:
 
       homeworks.append({"due_date": homework[0].replace(" 00:00:00", ""), "subject": homework[1], "description": homework[2], "is_done": done})
 
-    print(homeworks)
-
     return True, homeworks
 
 
 
   def absences(self, child_name):
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT date_from, date_to, duration, reasons, justified FROM absences ORDER BY date_from DESC")
+    res, val = self.execSelect(child_name=child_name, req="SELECT date_from, date_to, duration, reasons, justified, id FROM absences ORDER BY date_from DESC")
 
     if res is False:
       return False, val
@@ -867,16 +849,14 @@ class TomPronote:
       else:
         justified = True
 
-      absences.append({"date_from": absence[0], "date_to": absence[1], "duration": absence[2], "reasons": absence[3], "is_justified": justified})
-
-    print(absences)
+      absences.append({"id": absence[5], "date_from": absence[0], "date_to": absence[1], "duration": absence[2], "reasons": absence[3], "is_justified": justified})
 
     return True, absences
 
 
   def delays(self, child_name):
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT datetime, minutes, justificaton, reasons, justified FROM delays ORDER BY datetime DESC")
+    res, val = self.execSelect(child_name=child_name, req="SELECT datetime, minutes, justificaton, reasons, justified, id FROM delays ORDER BY datetime DESC")
 
     if res is False:
       return False, val
@@ -889,16 +869,14 @@ class TomPronote:
       else:
         justified = True
 
-      delays.append({"date": delay[0], "minutes": delay[1], "justification": delay[2], "reasons": delay[3], "is_justified": justified})
-
-    print(delays)
+      delays.append({"id": delay[5], "date": delay[0], "minutes": delay[1], "justification": delay[2], "reasons": delay[3], "is_justified": justified})
 
     return True, delays
 
 
   def evaluations(self, child_name):
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT datetime, name, subject, description, acquisitions, viewed FROM evaluations ORDER BY datetime DESC")
+    res, val = self.execSelect(child_name=child_name, req="SELECT datetime, name, subject, description, acquisitions, is_new, id FROM evaluations ORDER BY datetime DESC")
 
     if res is False:
       return False, val
@@ -907,20 +885,18 @@ class TomPronote:
 
     for evaluation in val:
       if evaluation[5] == "1":
-        new = False
-      else:
         new = True
+      else:
+        new = False
 
-      evaluations.append({"date": evaluation[0].replace(" 00:00:00", ""), "name": evaluation[1], "subject": evaluation[2], "description": evaluation[3], "acquisitions": evaluation[4], "is_new": new})
-
-    print(evaluations)
+      evaluations.append({"id": evaluation[6], "date": evaluation[0].replace(" 00:00:00", ""), "name": evaluation[1], "subject": evaluation[2], "description": evaluation[3], "acquisitions": evaluation[4], "is_new": new})
 
     return True, evaluations
 
 
   def punishments(self, child_name):
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT datetime, circumstances, nature, reasons, giver, viewed FROM punishments ORDER BY datetime DESC")
+    res, val = self.execSelect(child_name=child_name, req="SELECT datetime, circumstances, nature, reasons, giver, is_new, id FROM punishments ORDER BY datetime DESC")
 
     if res is False:
       return False, val
@@ -929,13 +905,11 @@ class TomPronote:
 
     for punishment in val:
       if punishment[5] == "1":
-        new = False
-      else:
         new = True
+      else:
+        new = False
 
-      punishments.append({"date": punishment[0].replace(" 00:00:00", ""), "circumstances": punishment[1], "nature": punishment[2], "reasons": punishment[3], "giver": punishment[4], "is_new": new})
-
-    print(punishments)
+      punishments.append({"id": punishment[6], "date": punishment[0].replace(" 00:00:00", ""), "circumstances": punishment[1], "nature": punishment[2], "reasons": punishment[3], "giver": punishment[4], "is_new": new})
 
     return True, punishments
 
@@ -951,8 +925,6 @@ class TomPronote:
 
     for teacher in val:
       teachers.append({"name": teacher[0], "subject": teacher[1]})
-
-    print(teachers)
 
     return True, teachers
 
@@ -970,14 +942,12 @@ class TomPronote:
       if day == date:
         lessons.append(lesson)
 
-    print(lessons)
-
     return True, lessons
 
 
   def observations(self, child_name):
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT id, datetime, subject, teacher, title, comment, is_read, with_ar FROM observations")
+    res, val = self.execSelect(child_name=child_name, req="SELECT id, datetime, subject, teacher, title, comment, is_read, with_ar, is_new FROM observations")
 
     if res is False:
       return False, val
@@ -985,16 +955,14 @@ class TomPronote:
     observations = []
 
     for observation in val:
-      observations.append({"id": observation[0], "date": observation[1], "subject": observation[2], "teacher": observation[3], "observation_title": observation[4], "comment": observation[5],"is_new": observation[6], "need_ar": observation[7]})
-
-    print(observations)
+      observations.append({"id": observation[0], "date": observation[1], "subject": observation[2], "teacher": observation[3], "observation_title": observation[4], "comment": observation[5],"is_new": observation[6], "need_ar": observation[7], "is_new": observation[8]})
 
     return True, observations
 
 
   def informations(self, child_name):
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT id, date, title, author, content, is_read FROM informations ORDER BY date DESC")
+    res, val = self.execSelect(child_name=child_name, req="SELECT id, date, title, author, content, is_read, is_new FROM informations ORDER BY date DESC")
 
     if res is False:
       return False, val
@@ -1002,18 +970,44 @@ class TomPronote:
     informations = []
 
     for information in val:
-      informations.append({"id": information[0], "date": information[1], "title": information[2], "author": information[3], "message": information[4], "is_read": information[5]})
-
-    print(informations)
+      informations.append({"id": information[0], "date": information[1], "title": information[2], "author": information[3], "message": information[4], "is_read": information[5], "is_new": information[6]})
 
     return True, informations
 
 
   def mark_seen(self, child_name, object_type, object_id):
 
-    if child_name not in self.cal:
+    token = None
+    for child in self.config:
+      if child['name'] == child_name:
+        token = child['token']
+
+    if  token == None:
       return False, f"Could not find {child_name} child"
 
+    if object_type not in ["grade", "evaluation", "information", "observation"]:
+      return False, f"Update of {object_type} not supported"
+
+
+    if object_type == "grade":
+      self.execUpdate(child_name=child_name, req="UPDATE grades SET is_new=0 WHERE id = '" + object_id + "'")
+      return True, f"Grade marked as viewed"
+
+    if object_type == "evaluation":
+      self.execUpdate(child_name=child_name, req="UPDATE evaluations SET is_new=0 WHERE id = '" + object_id + "'")
+      return True, f"Evaluation marked as viewed"
+
+
+
+
+    if object_type == "observation":
+      self.execUpdate(child_name=child_name, req="UPDATE observations SET is_new=0 WHERE id = '" + object_id + "'")
+      return True, "Observation marked as viewed."
+
+
+    if object_type == "information":
+      self.execUpdate(child_name=child_name, req="UPDATE informations SET is_new=0 WHERE id = '" + object_id + "'")
+      return True, "Information marked as viewd."
 
 
 

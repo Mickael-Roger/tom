@@ -443,7 +443,9 @@ for user in config['users']:
       userList[username]['functions']['list_school_teachers'] = {"function": functools.partial(userList[username]['services']['pronote'].teachers), "responseContext": userList[username]['services']['pronote'].answerContext['list_grades']}
       userList[username]['functions']['get_school_calendar'] = {"function": functools.partial(userList[username]['services']['pronote'].getCal), "responseContext": userList[username]['services']['pronote'].answerContext['get_school_calendar']}
       userList[username]['functions']['list_school_observations'] = {"function": functools.partial(userList[username]['services']['pronote'].observations), "responseContext": userList[username]['services']['pronote'].answerContext['list_school_observations']}
+      userList[username]['functions']['list_school_evaluations'] = {"function": functools.partial(userList[username]['services']['pronote'].evaluations), "responseContext": userList[username]['services']['pronote'].answerContext['list_school_evaluations']}
       userList[username]['functions']['list_school_information_communication'] = {"function": functools.partial(userList[username]['services']['pronote'].informations), "responseContext": userList[username]['services']['pronote'].answerContext['list_school_information_communication']}
+      userList[username]['functions']['pronote_mark_as_seen'] = {"function": functools.partial(userList[username]['services']['pronote'].mark_seen), "responseContext": userList[username]['services']['pronote'].answerContext['pronote_mark_as_seen']}
 
     userList[username]['services']['weather'] = TomWeather()
     userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['weather'].tools
