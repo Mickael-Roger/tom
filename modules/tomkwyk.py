@@ -48,8 +48,6 @@ class TomKwyk:
     dbconn.commit()
     dbconn.close()
 
-    self.update()
-
     self.tools = [
       {
         "type": "function",
@@ -93,14 +91,13 @@ class TomKwyk:
     while True:
       print("Kwyk: Run auto update")
       self.update()
-      time.sleep(random.randint(3, 12) * 3600)
+      time.sleep(random.randint(3, 10) * 3600)
 
 
 
   def update(self):
 
 
-    if datetime.now() > (self.lastUpdate + timedelta(minutes=15)):
 
       session = requests.Session()
 

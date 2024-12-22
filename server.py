@@ -430,6 +430,15 @@ for user in config['users']:
       userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['kwyk'].systemContext + "\n\n"
       userList[username]['functions']['kwyk_get'] = {"function": functools.partial(userList[username]['services']['kwyk'].get), "responseContext": userList[username]['services']['kwyk'].answerContext['kwyk_get']}
 
+    if service_name == "cafetaria":
+      userList[username]['services']['cafetaria'] = TomCafetaria(user['services']['cafetaria'])
+      userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['cafetaria'].tools
+      userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['cafetaria'].systemContext + "\n\n"
+      userList[username]['functions']['get_cafetaria_credit'] = {"function": functools.partial(userList[username]['services']['cafetaria'].credit), "responseContext": userList[username]['services']['cafetaria'].answerContext['get_cafetaria_credit']}
+      userList[username]['functions']['list_cafetaria_reservations'] = {"function": functools.partial(userList[username]['services']['cafetaria'].reservations), "responseContext": userList[username]['services']['cafetaria'].answerContext['list_cafetaria_reservations']}
+      userList[username]['functions']['make_a_cafetaria_reservation'] = {"function": functools.partial(userList[username]['services']['cafetaria'].add), "responseContext": userList[username]['services']['cafetaria'].answerContext['make_a_cafetaria_reservation']}
+      userList[username]['functions']['cancel_a_cafetaria_reservation'] = {"function": functools.partial(userList[username]['services']['cafetaria'].cancel), "responseContext": userList[username]['services']['cafetaria'].answerContext['cancel_a_cafetaria_reservation']}
+
     if service_name == "pronote":
       userList[username]['services']['pronote'] = TomPronote(user['services']['pronote'])
       userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['pronote'].tools
@@ -446,6 +455,7 @@ for user in config['users']:
       userList[username]['functions']['list_school_evaluations'] = {"function": functools.partial(userList[username]['services']['pronote'].evaluations), "responseContext": userList[username]['services']['pronote'].answerContext['list_school_evaluations']}
       userList[username]['functions']['list_school_information_communication'] = {"function": functools.partial(userList[username]['services']['pronote'].informations), "responseContext": userList[username]['services']['pronote'].answerContext['list_school_information_communication']}
       userList[username]['functions']['pronote_mark_as_seen'] = {"function": functools.partial(userList[username]['services']['pronote'].mark_seen), "responseContext": userList[username]['services']['pronote'].answerContext['pronote_mark_as_seen']}
+      userList[username]['functions']['get_school_information_communication_message'] = {"function": functools.partial(userList[username]['services']['pronote'].information_message), "responseContext": userList[username]['services']['pronote'].answerContext['get_school_information_communication_message']}
 
     userList[username]['services']['weather'] = TomWeather()
     userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['weather'].tools

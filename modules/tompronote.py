@@ -154,7 +154,7 @@ class TomPronote:
       {
         "type": "function",
         "function": {
-          "description": "Get all child averages from pronote.",
+          "description": "Get child averages from pronote.",
           "name": "list_grade_averages",
           "strict": True,
           "parameters": {
@@ -174,7 +174,7 @@ class TomPronote:
       {
         "type": "function",
         "function": {
-          "description": "Get all child grades from pronote.",
+          "description": "Get child grades from pronote.",
           "name": "list_grades",
           "strict": True,
           "parameters": {
@@ -185,8 +185,12 @@ class TomPronote:
                 "enum": self.children,
                 "description": f"Name of the child.",
               },
+              "is_new": {
+                "type": "boolean",
+                "description": f"Set to true to return only new grades. Otherwise set to false to return all grades including the new.",
+              },
             },
-            "required": ["child_name"],
+            "required": ["child_name", "is_new"],
             "additionalProperties": False,
           },
         },
@@ -314,7 +318,7 @@ class TomPronote:
       {
         "type": "function",
         "function": {
-          "description": "Get all child school communication and information messages from pronote.",
+          "description": "Get all child school communication and information messages from pronote. This function does not return the content of the information message",
           "name": "list_school_information_communication",
           "strict": True,
           "parameters": {
@@ -325,8 +329,36 @@ class TomPronote:
                 "enum": self.children,
                 "description": f"Name of the child.",
               },
+              "is_new": {
+                "type": "boolean",
+                "description": f"Set to true to return only new and non read information messages. Otherwise set to false to return all information messages including the new.",
+              },
             },
-            "required": ["child_name"],
+            "required": ["child_name", "is_new"],
+            "additionalProperties": False,
+          },
+        },
+      },
+      {
+        "type": "function",
+        "function": {
+          "description": "Get the message content of an information message",
+          "name": "get_school_information_communication_message",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "child_name": {
+                "type": "string",
+                "enum": self.children,
+                "description": f"Name of the child.",
+              },
+              "id": {
+                "type": "string",
+                "description": f"ID of the information message",
+              },
+            },
+            "required": ["child_name", "id"],
             "additionalProperties": False,
           },
         },
@@ -410,7 +442,7 @@ class TomPronote:
 
     self.answerContext = {
       "list_grade_averages": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. For example: '14 in maths, 12 in history and 11.5 in english'.""",
-      "list_grades": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. If the grade is out of 20, no need to precise, otherwise you must. For example: '12 in geography september the 13th, 4.5 out of 5 in history yesterday and 13 in English today'. When the question was about new notes and there are some, at the end you should propose me to mark them as viewed. Never mark something a viewed by yourself, it must always come from an explicite request from me. When you are asked about new grades, it means only grades with 'is_new' set to 'True' are concerned.""",
+      "list_grades": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. If the grade is out of 20, no need to precise, otherwise you must. For example: '12 in geography september the 13th, 4.5 out of 5 in history yesterday and 13 in English today'. When the question was about new notes and there are some, at the end you could propose me to mark them as viewed if it makes sens. Never mark something a viewed by yourself, it must always come from an explicite request from me. When you are asked about new grades, it means only grades with 'is_new' set to 'True' are concerned.""",
       "list_homeworks": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. Unless your are asked for specific information like 'Give me more details about the tomorrow homework in math', you just need to short like 'For tomorrow, there are 2 homeworks in english and 1 in math'.""",
       "list_school_absences": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
       "list_school_delays": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
@@ -419,8 +451,10 @@ class TomPronote:
       "list_school_teachers": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
       "get_school_calendar": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
       "list_school_observations": """"You should always answered in the form of a sentence and not contains '-' or element numbers.""",
-      "list_school_information_communication": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. Unless your are asked for specific information like 'Give me more details about this information content', you just need to short like 'You have 3 new information messages. The first one is about gradebook, the scond one about school restaurant menu and the last one is about teacher strikes'. When the question was about new information and there are some, at the end you should propose me to mark them as viewed. Never mark something a viewed by yourself, it must always come from an explicite request from me. When you are asked about new information or communication, it means only communication with 'is_new' set to 'True' are concerned.""",
+      "list_school_information_communication": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. Unless your are asked for specific information like 'Give me more details about this information content', you just need to short like 'You have 3 new information messages. The first one is about gradebook, the scond one about school restaurant menu and the last one is about teacher strikes'. When the question was about new information and there are some, at the end you could propose me to mark them as viewed if it makes sens3. Never mark something a viewed by yourself, it must always come from an explicite request from me. When you are asked about new information or communication, it means only communication with 'is_new' set to 'True' are concerned.""",
       "pronote_mark_as_seen": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
+      "get_school_information_communication_message": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
+
     }
 
 
@@ -791,9 +825,13 @@ class TomPronote:
     return True, averages
 
 
-  def grades(self, child_name):
+  def grades(self, child_name, is_new):
 
-    res, val = self.execSelect(child_name=child_name, req='SELECT date, subject, grade, out_of, min, max, average, comment, is_new, id FROM grades ORDER BY date, subject ASC')
+    if is_new:
+      new = " WHERE is_new = 1 "
+    else:
+      new = ""
+    res, val = self.execSelect(child_name=child_name, req='SELECT date, subject, grade, out_of, min, max, average, comment, is_new, id FROM grades ' + new + ' ORDER BY date, subject ASC')
 
     if res is False:
       return False, val
@@ -960,9 +998,14 @@ class TomPronote:
     return True, observations
 
 
-  def informations(self, child_name):
+  def informations(self, child_name, is_new):
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT id, date, title, author, content, is_read, is_new FROM informations ORDER BY date DESC")
+    if is_new:
+      new = " WHERE is_new = 1 "
+    else:
+      new = ""
+
+    res, val = self.execSelect(child_name=child_name, req="SELECT id, date, title, author, is_read, is_new FROM informations " + new + " ORDER BY date DESC")
 
     if res is False:
       return False, val
@@ -970,7 +1013,22 @@ class TomPronote:
     informations = []
 
     for information in val:
-      informations.append({"id": information[0], "date": information[1], "title": information[2], "author": information[3], "message": information[4], "is_read": information[5], "is_new": information[6]})
+      informations.append({"id": information[0], "date": information[1], "title": information[2], "author": information[3], "is_read": information[4], "is_new": information[5]})
+
+    return True, informations
+
+
+  def information_message(self, child_name, id):
+
+    res, val = self.execSelect(child_name=child_name, req="SELECT id, date, title, author, content, is_read, is_new FROM informations WHERE id = " + str(id))
+
+    if res is False:
+      return False, val
+
+    informations = []
+
+    for information in val:
+      informations.append({"id": information[0], "date": information[1], "title": information[2], "author": information[3], "message_content": information[4], "is_read": information[5], "is_new": information[6]})
 
     return True, informations
 

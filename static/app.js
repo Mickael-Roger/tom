@@ -7,7 +7,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const languageSelect = document.getElementById("language-select");
     const resetButton = document.getElementById("reset-button");
 
-    let userPosition = null; // Position GPS de l'utilisateur
+    let userPosition = null; 
+    let currentAudio = null; // Reference to the currently playing audio
+    let isSpeaking = false; // Flag for TTS state
 
     // Tentative de récupération de la position GPS
     function fetchUserPosition() {
@@ -103,23 +105,59 @@ document.addEventListener("DOMContentLoaded", () => {
         chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    // Fonction pour jouer un fichier audio MP3 encodé en base64
+    // Play Base64 MP3 and stop if speak button is clicked
     function playAudioFromBase64(base64Audio) {
-        const audio = new Audio("data:audio/mp3;base64," + base64Audio);
-        audio.play().catch(error => {
+        if (currentAudio) {
+            currentAudio.pause(); // Stop current audio if playing
+            currentAudio = null;
+        }
+
+        currentAudio = new Audio("data:audio/mp3;base64," + base64Audio);
+        currentAudio.play().catch(error => {
             console.error("Erreur de lecture audio :", error);
         });
+
+        currentAudio.onended = () => {
+            currentAudio = null; // Reset when the audio finishes
+        };
     }
 
-    // Fonction pour faire parler le texte via la synthèse vocale
+    // Use local TTS to speech
     function speakText(text, language) {
+        if (isSpeaking) {
+            window.speechSynthesis.cancel(); // Stop any ongoing TTS
+            isSpeaking = false;
+        }
+
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = language === "fr" ? "fr-FR" : "en-US"; // Choisir la langue
+        utterance.lang = language === "fr" ? "fr-FR" : "en-US";
+
+        utterance.onstart = () => {
+            isSpeaking = true;
+        };
+
+        utterance.onend = () => {
+            isSpeaking = false;
+        };
+
         window.speechSynthesis.speak(utterance);
     }
 
-    // Fonction Speech-to-Text pour le bouton Speak
+
     speakButton.addEventListener("click", () => {
+        // Stop audio playback if active
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio = null;
+        }
+
+        // Stop TTS if active
+        if (isSpeaking) {
+            window.speechSynthesis.cancel();
+            isSpeaking = false;
+        }
+
+        // Start speech recognition
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
         const selectedLanguage = languageSelect.value;
 
