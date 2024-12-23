@@ -8,6 +8,8 @@ global:
     api: XXXXXXXXXXXXXXXXXXXXXXXX
 
   sessions: /xxxx/ # Path for the session storage directory
+
+  user_datadir: ./data/users/
   
   tts:
    langs: 
@@ -27,7 +29,9 @@ global:
 users:
   - username: user1
     password: password1
+    memory: true
     services:
+
       calendar:
         user: botname
         password: botpassword

@@ -12,6 +12,7 @@ import base64
 import subprocess
 from TTS.api import TTS
 import functools
+import sqlite3
 
 
 # OpenAI
@@ -63,6 +64,335 @@ for filename in os.listdir(mod_dir):
         # Inspect the module and add all classes to the global namespace
         for name, obj in inspect.getmembers(module, inspect.isclass):
             globals()[name] = obj
+
+
+################################################################################################
+#                                                                                              #
+#                                 Memorization capability                                      #
+#                                                                                              #
+################################################################################################
+class TomMemory:
+
+  def __init__(self, global_config, username) -> None:
+
+    db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], username)
+    os.makedirs(db_path, exist_ok=True)
+
+    self.db = os.path.join(db_path, "memory.sqlite")
+
+    dbconn = sqlite3.connect(self.db)
+    cursor = dbconn.cursor()
+    cursor.execute('''
+    create table if not exists conversations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        datetime DATETIME default current_date,
+        summary TEXT,
+        conversation BLOB
+    )
+    ''')
+    dbconn.commit()
+    dbconn.close()
+
+    self.tools = [
+      {
+        "type": "function",
+        "function": {
+          "name": "tom_keep_current_conversation_in_memory",
+          "description": "Keep the conversation in Tom's memory. For example when a user aks 'Keep that conversation in memory'",
+          "parameters": {
+          },
+        },
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tom_list_old_conversations",
+          "description": "List all old conversation we previously had. For example when a user aks 'Do we have already talked about something?', 'We already talked about that, could you remember?'. Will return, the conversation ID, the datetime of the conversation and a summary of it.",
+          "parameters": {
+          },
+        },
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tom_retreive_old_conversation_content",
+          "description": "Retreive the content of an old conversation we previously had.",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "conversation_id": {
+                "type": "string",
+                "description": f"ID of the conversation",
+              },
+            },
+            "required": ["conversation_id"],
+            "additionalProperties": False,
+          },
+        },
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tom_delete_old_conversation_content",
+          "description": "Delete from your memory an old conversation we previously had.",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "conversation_id": {
+                "type": "string",
+                "description": f"ID of the conversation",
+              },
+            },
+            "required": ["conversation_id"],
+            "additionalProperties": False,
+          },
+        },
+      },
+    ]
+
+    self.systemContext = ""
+
+    self.answerContext = {
+      "tom_keep_current_conversation_in_memory": "",
+      "tom_list_old_conversations": "",
+      "tom_retreive_old_conversation_content": "",
+      "tom_delete_old_conversation_content": "",
+    }
+
+
+  def history_get(self, conversation_id):
+
+    dbconn = sqlite3.connect(self.db)
+    cursor = dbconn.cursor()
+    cursor.execute('SELECT id, datetime, conversation FROM conversations WHERE id = ?', (conversation_id,))
+    val = cursor.fetchone()
+    dbconn.close()
+
+
+    return True, {"id": val[0], "datetime": val[1], "conversation": val[2]}
+
+
+  def history_delete(self, conversation_id):
+
+    dbconn = sqlite3.connect(self.db)
+    cursor = dbconn.cursor()
+    cursor.execute('DELETE FROM conversations WHERE id = ?', (conversation_id,))
+    dbconn.commit()
+    dbconn.close()
+
+    return True, "Conversation deleted"
+
+
+  def history_list(self):
+
+    history = []
+
+    dbconn = sqlite3.connect(self.db)
+    cursor = dbconn.cursor()
+    cursor.execute('SELECT id, datetime, summary FROM conversations')
+    values = cursor.fetchall()
+    dbconn.close()
+
+    for val in values:
+      history.append({"id": val[0], "datetime": val[1], "conversation_summary": val[2]})
+
+    return True, history
+
+
+
+  def history_keep(self, history):
+
+    conversation = []
+
+    # Parse conversation
+    for message in history:
+      if isinstance(message, dict):     
+        if "role" in message.keys():
+          if message['role'] in ["assistant", "user"]:
+            conversation.append(message)
+
+    # Then make a summary and extract keywords
+    systemContext = """The user input will be a conversation between you and me. You will need to respond with a brief summary of this conversation."""
+
+    conversation = json.dumps(conversation)
+    messages = [{"role": "system", "content": systemContext},{"role": "user", "content": conversation}]
+
+    res, response = processLLM(messages, None)
+
+    if res:
+      db = self.db
+
+      if response.choices is not None:
+        if response.choices[0].message.content is not None:
+
+          summary = str(response.choices[0].message.content)
+
+          dbconn = sqlite3.connect(db)
+          cursor = dbconn.cursor()
+          cursor.execute('INSERT INTO conversations (summary, conversation) VALUES (?, ?)', (summary, conversation))
+          dbconn.commit()
+          dbconn.close()
+
+      return True, "Conversation kept in memory"
+
+    else:
+      return False, "Could not keep conversation in memory"
+
+
+################################################################################################
+#                                                                                              #
+#                                   Behavior capability                                        #
+#                                                                                              #
+################################################################################################
+class TomBehavior:
+
+  def __init__(self, global_config, username) -> None:
+
+    db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], username)
+    os.makedirs(db_path, exist_ok=True)
+
+    self.db = os.path.join(db_path, "memory.sqlite")
+
+    dbconn = sqlite3.connect(self.db)
+    cursor = dbconn.cursor()
+    cursor.execute('''
+    create table if not exists behaviors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        datetime DATETIME default current_date,
+        date_from DATETIME DEFAULT '2020-01-01',
+        date_to DATETIME DEFAULT '2030-01-01',
+        behavior TEXT
+    )
+    ''')
+    dbconn.commit()
+    dbconn.close()
+
+    self.tools = [
+      {
+        "type": "function",
+        "function": {
+          "name": "tom_list_behaviors",
+          "description": "List all prompts that modify you behavior. For example when a user aks 'What are your specific behavior?', 'Do I ask you to behave like that?', 'What are you specific consignes?'. Will return, the behaviour ID, the application datetime from and to and the behavior description.",
+          "parameters": {
+          },
+        },
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tom_delete_behavior",
+          "description": "Remove a previously prompt that ask you to behave in a certain way. For example when a user aks 'Stop behaving like that', 'Remove this consigne'",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "behavior_id": {
+                "type": "string",
+                "description": f"ID of the behavior",
+              },
+            },
+            "required": ["behavior_id"],
+            "additionalProperties": False,
+          },
+        },
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "tom_add_behavior",
+          "description": "Add an explicit prompt to change you behavior. For example when a user aks 'I want you to change you behavior', 'Add this consigne'",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "behavior_consigne": {
+                "type": "string",
+                "description": f"The new behavior consigne",
+              },
+            },
+            "required": ["behavior_consigne"],
+            "additionalProperties": False,
+          },
+        },
+      },
+    ]
+
+    self.systemContext = ""
+
+    self.answerContext = {
+      "tom_list_behaviors": "",
+      "tom_add_behavior": "",
+      "tom_delete_behavior": "",
+    }
+
+  def behavior_get(self):
+    try:
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute("SELECT behavior FROM behaviors WHERE datetime('now') > date_from AND datetime('now') < date_to")
+      values = cursor.fetchall()
+      dbconn.close()
+
+      behavior = ""
+      for val in values:
+        behavior = behavior + "\nTu as une nouvelle consigne: " + val[0]
+
+      return behavior
+
+    except:
+      return ""
+
+
+  def behavior_add(self, behavior_consigne, date_from='2020-01-01', date_to='2030-01-01'):
+    try:
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute("INSERT INTO behaviors (date_from, date_to, behavior) VALUES (?, ?, ?)", (date_from, date_to, behavior_consigne))
+      dbconn.commit()
+      dbconn.close()
+
+      return True, "Behavior added"
+
+    except:
+      return False, "Cannot add behavior"
+
+
+  def behavior_delete(self, behavior_id):
+    try:
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute("DELETE FROM behaviors WHERE id = ?", (behavior_id))
+      dbconn.commit()
+      dbconn.close()
+
+      return True, "Behavior removed"
+
+    except:
+      return False, "Cannot remove behavior"
+
+
+
+  def behavior_list(self):
+    try:
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute("SELECT id, date_from, date_to, behavior FROM behaviors")
+      values = cursor.fetchall()
+      dbconn.close()
+
+      behaviors = []
+      for val in values:
+        behaviors.append({"id": val[0], "date_from": val[1], "date_to": val[2], "behavior": val[3]})
+
+      return True, behaviors
+
+    except:
+      return False, "Could not list behaviors"
+
+
+
 
 
 ################################################################################################
@@ -138,7 +468,7 @@ class TomWebService:
   @cherrypy.tools.allow(methods=['POST'])
   @cherrypy.tools.json_out()
   def reset(self):
-    if resetAndSave(username=cherrypy.session['username']):
+    if reset(username=cherrypy.session['username']):
       return {"success": True}
     else:
       raise cherrypy.HTTPError(500, "Could not reset and save the session")
@@ -183,7 +513,7 @@ class TomWebService:
   @cherrypy.expose
   def login(self, username, password):
 
-    for user in config['users']:
+    for user in global_config['users']:
       if user['username'] == username and user['password'] == password:
         cherrypy.session['username'] = username
         print(f"History cleaning for user {username}")
@@ -227,23 +557,37 @@ def processLLM(messages, tools):
   print(messages, flush=True)
   print("--------------", flush=True)
 
-  
-  if config['global']['llm'] == "mistral":
-    response = mistralClient.chat.complete(
-      model = mistralmodel,
-      messages = messages,
-      tools = tools,
-      tool_choice = "auto",
-    )
-  elif config['global']['llm'] == "openai":
-    response = openaiClient.chat.completions.create(
-      model = openaimodel,
-      messages = messages,
-      tools = tools,
-    )
+  if tools: 
+    if global_config['global']['llm'] == "mistral":
+      response = mistralClient.chat.complete(
+        model = mistralmodel,
+        messages = messages,
+        tools = tools,
+        tool_choice = "auto",
+      )
+    elif global_config['global']['llm'] == "openai":
+      response = openaiClient.chat.completions.create(
+        model = openaimodel,
+        messages = messages,
+        tools = tools,
+      )
+    else:
+      print("LLM not defined")
+      return False, "LLM not defined"
   else:
-    print("LLM not defined")
-    return False, "LLM not defined"
+    if global_config['global']['llm'] == "mistral":
+      response = mistralClient.chat.complete(
+        model = mistralmodel,
+        messages = messages
+      )
+    elif global_config['global']['llm'] == "openai":
+      response = openaiClient.chat.completions.create(
+        model = openaimodel,
+        messages = messages
+      )
+    else:
+      print("LLM not defined")
+      return False, "LLM not defined"
 
   print("-------- RESPONSE ---------", flush=True)
   print(response, flush=True)
@@ -252,7 +596,7 @@ def processLLM(messages, tools):
   return True, response
 
 
-def resetAndSave(username):
+def reset(username):
 
   print("History cleaning")
   userList[username]['history'] = []
@@ -275,6 +619,10 @@ def generateContextPrompt(input, username, lang, position):
 
   if position is not None:
     userList[username]['history'].append({"role": "system", "content": f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}"})
+
+  behavior= userList[username]['services']['behavior'].behavior_get()
+  if len(behavior) > 1:
+    userList[username]['history'].append({"role": "system", "content": behavior})
 
   userList[username]['history'].append({"role": "user", "content": input})
 
@@ -321,11 +669,25 @@ def processRequest(input, username, lang, position):
           print("Call: " + str(function_name) + " with " + str(function_params))
 
           if function_name == "start_new_conversation":
-            if resetAndSave(username=cherrypy.session['username']):
+            if reset(username=cherrypy.session['username']):
               return f"Hi {username}"
             else:
               return "Error while saving your history"
 
+
+          # Memory
+          if function_name == "tom_keep_current_conversation_in_memory":
+            res, msg = userList[username]['services']['memory'].history_keep(userList[username]['history'], username)
+
+            if res:
+              reset(username)
+              return msg
+            else:
+              return "Error while keeping our conversation"
+            
+
+
+          # End of memory
 
           res, function_result = userList[username]['functions'][function_name]['function'](**function_params)
 
@@ -368,15 +730,15 @@ def processRequest(input, username, lang, position):
 #                                                                                              #
 ################################################################################################
 
-config = {}
+global_config = {}
 
-config = initConf()
+global_config = initConf()
 
-tts = TomTTS(config)
+tts = TomTTS(global_config)
 
 userList = {}
 
-for user in config['users']:
+for user in global_config['users']:
   username = user['username']
   userList[username] = {}
   userList[username]['history'] = []
@@ -463,6 +825,24 @@ for user in config['users']:
     userList[username]['functions']['weather_get_by_gps_position'] = {"function": functools.partial(userList[username]['services']['weather'].getGps), "responseContext": userList[username]['services']['weather'].answerContext['weather_get_by_gps_position']}
     userList[username]['functions']['get_gps_position_by_city_name'] = {"function": functools.partial(userList[username]['services']['weather'].getCity), "responseContext": userList[username]['services']['weather'].answerContext['get_gps_position_by_city_name']}
 
+
+    # Memory functions
+    if user['memory']:
+      userList[username]['services']['memory'] = TomMemory(global_config, username)
+      userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['memory'].tools
+      userList[username]['functions']['tom_list_old_conversations'] = {"function": functools.partial(userList[username]['services']['memory'].history_list), "responseContext": userList[username]['services']['memory'].answerContext['tom_list_old_conversations']}
+      userList[username]['functions']['tom_retreive_old_conversation_content'] = {"function": functools.partial(userList[username]['services']['memory'].history_get), "responseContext": userList[username]['services']['memory'].answerContext['tom_retreive_old_conversation_content']}
+      userList[username]['functions']['tom_delete_old_conversation_content'] = {"function": functools.partial(userList[username]['services']['memory'].history_delete), "responseContext": userList[username]['services']['memory'].answerContext['tom_delete_old_conversation_content']}
+
+    userList[username]['services']['behavior'] = TomBehavior(global_config, username)
+    userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['behavior'].tools
+    userList[username]['functions']['tom_list_behaviors'] = {"function": functools.partial(userList[username]['services']['behavior'].behavior_list), "responseContext": userList[username]['services']['behavior'].answerContext['tom_list_behaviors']}
+    userList[username]['functions']['tom_add_behavior'] = {"function": functools.partial(userList[username]['services']['behavior'].behavior_add), "responseContext": userList[username]['services']['behavior'].answerContext['tom_add_behavior']}
+    userList[username]['functions']['tom_delete_behavior'] = {"function": functools.partial(userList[username]['services']['behavior'].behavior_delete), "responseContext": userList[username]['services']['behavior'].answerContext['tom_delete_behavior']}
+
+
+
+
     #userList[username]['services']['idfm'] = Idfm(config['global']['idfm'])
     #userList[username]['tools'] = userList[username]['tools'] + userList[username]['services']['idfm'].tools
     #userList[username]['systemContext'] = userList[username]['systemContext'] + userList[username]['services']['idfm'].systemContext + "\n\n"
@@ -472,8 +852,8 @@ for user in config['users']:
     userList[username]['tts'] = tts
 
 
-mistralClient = Mistral(api_key=config['global']["mistral"]["api"])
-openaiClient = OpenAI(api_key=config['global']["openai"]["api"])
+mistralClient = Mistral(api_key=global_config['global']["mistral"]["api"])
+openaiClient = OpenAI(api_key=global_config['global']["openai"]["api"])
 
 
 if __name__ == "__main__":    
@@ -484,7 +864,7 @@ if __name__ == "__main__":
     'tools.sessions.on': True, 
     'tools.sessions.timeout': 3600 * 24 * 30,
     'tools.sessions.storage_type': 'file',
-    'tools.sessions.storage_path': config['global']['sessions'] 
+    'tools.sessions.storage_path': global_config['global']['sessions'] 
   })
   cherrypy.quickstart(TomWebService(), '/', config={
       '/static': {

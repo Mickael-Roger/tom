@@ -488,278 +488,319 @@ class TomPronote:
 
   def update(self):
 
-    for child in self.config:
-
-      if datetime.now() > (self.lastUpdate + timedelta(hours=1)):
+    if datetime.now() > (self.lastUpdate + timedelta(hours=1)):
+      
+      for child in self.config:
 
         childname = child['name']
 
         if self.connect(child_name=childname, token=child['token']):
 
           client = self.connexion[childname]
-          name = client.info.name
-          print(f'Logged in as {name} for {childname}')
-
 
           db = child['cache']
           dbconn = sqlite3.connect(db)
 
           self.current_period = client.current_period.name
 
-          # Update the Averages DB content
-          for period in client.periods:
-            period_name = period.name
-            for average in period.averages:
-              if period_name not in self.periods:
-                self.periods.append(period_name)
+          try:
+            # Update the Averages DB content
+            for period in client.periods:
+              period_name = period.name
+              for average in period.averages:
+                if period_name not in self.periods:
+                  self.periods.append(period_name)
 
-              dbconn.execute('DELETE FROM averages WHERE period = ? AND name = ?', (period_name, average.subject.name))
-              dbconn.execute('INSERT INTO averages (period, name, student, class_min, class_max, class_avg) VALUES (?, ?, ?, ?, ?, ?)', (period_name, average.subject.name, str(average.student), str(average.min), str(average.max), str(average.class_average)))
+                dbconn.execute('DELETE FROM averages WHERE period = ? AND name = ?', (period_name, average.subject.name))
+                dbconn.execute('INSERT INTO averages (period, name, student, class_min, class_max, class_avg) VALUES (?, ?, ?, ?, ?, ?)', (period_name, average.subject.name, str(average.student), str(average.min), str(average.max), str(average.class_average)))
+                dbconn.commit()
+          except:
+            print(f'Error: Could not update averages for {childname}')
 
 
 
           # Update the Grades DB content
-          res = dbconn.execute('SELECT date FROM grades ORDER BY date DESC LIMIT 1').fetchone()
-          if res:  
-            max_date = datetime.strptime(res[0], "%Y-%m-%d").date()
-          else:
-            max_date = datetime.strptime("2020-01-01", "%Y-%m-%d").date()
+          try:
+            res = dbconn.execute('SELECT date FROM grades ORDER BY date DESC LIMIT 1').fetchone()
+            if res:  
+              max_date = datetime.strptime(res[0], "%Y-%m-%d").date()
+            else:
+              max_date = datetime.strptime("2020-01-01", "%Y-%m-%d").date()
 
-          for period in client.periods:
-            for grade in period.grades:
-              if grade.date >= max_date:
-                if grade.date == max_date:
-                  # Check for pre-existance
-                  res = dbconn.execute('SELECT 1 FROM grades WHERE subject = ? AND date = ? AND comment = ?', (grade.subject.name, grade.date.strftime('%Y-%m-%d'), grade.comment)).fetchone()
-                  if res:
-                    break
-                
-                dbconn.execute('INSERT INTO grades (subject, date, grade, out_of, min, max, average, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (grade.subject.name, grade.date.strftime('%Y-%m-%d'), str(grade.grade), str(grade.out_of), str(grade.min), str(grade.max), str(grade.average), grade.comment))
+            for period in client.periods:
+              for grade in period.grades:
+                if grade.date >= max_date:
+                  if grade.date == max_date:
+                    # Check for pre-existance
+                    res = dbconn.execute('SELECT 1 FROM grades WHERE subject = ? AND date = ? AND comment = ?', (grade.subject.name, grade.date.strftime('%Y-%m-%d'), grade.comment)).fetchone()
+                    if res:
+                      break
+                  
+                  dbconn.execute('INSERT INTO grades (subject, date, grade, out_of, min, max, average, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (grade.subject.name, grade.date.strftime('%Y-%m-%d'), str(grade.grade), str(grade.out_of), str(grade.min), str(grade.max), str(grade.average), grade.comment))
+                  dbconn.commit()
+          except:
+            print(f'Error: Could not update grades for {childname}')
 
 
 
           # Update the Homeworks DB content
-          todayTxt = datetime.now().strftime('%Y-%m-%d')
+          try:
+            todayTxt = datetime.now().strftime('%Y-%m-%d')
 
-          dbconn.execute('DELETE FROM homeworks WHERE date >= ?', (todayTxt,))
+            dbconn.execute('DELETE FROM homeworks WHERE date >= ?', (todayTxt,))
 
-          for homework in client.homework(date_from=datetime.now().date()):
-              dbconn.execute('INSERT INTO homeworks (subject, date, description, done) VALUES (?, ?, ?, ?)', (homework.subject.name, homework.date.strftime('%Y-%m-%d'), homework.description, homework.done))
+            for homework in client.homework(date_from=datetime.now().date()):
+                dbconn.execute('INSERT INTO homeworks (subject, date, description, done) VALUES (?, ?, ?, ?)', (homework.subject.name, homework.date.strftime('%Y-%m-%d'), homework.description, homework.done))
 
 
 
-          # Update the Absences DB content
-          res = dbconn.execute('SELECT date_from FROM absences ORDER BY date_from DESC LIMIT 1').fetchone()
-          if res:  
-            max_date = datetime.strptime(res[0], "%Y-%m-%d %H:%M:%S")
-          else:
-            max_date = datetime.strptime("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+            # Update the Absences DB content
+            res = dbconn.execute('SELECT date_from FROM absences ORDER BY date_from DESC LIMIT 1').fetchone()
+            if res:  
+              max_date = datetime.strptime(res[0], "%Y-%m-%d %H:%M:%S")
+            else:
+              max_date = datetime.strptime("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
 
-          for absence in client.current_period.absences:
-            if absence.from_date > max_date:
-              reasonTxt = ""
-              for reason in absence.reasons:
-                reasonTxt = reasonTxt + str(reason) + "\n"
+            for absence in client.current_period.absences:
+              if absence.from_date > max_date:
+                reasonTxt = ""
+                for reason in absence.reasons:
+                  reasonTxt = reasonTxt + str(reason) + "\n"
 
-              dbconn.execute('INSERT INTO absences (date_from, date_to, duration, reasons, justified) VALUES (?, ?, ?, ?, ?)', (absence.from_date.strftime('%Y-%m-%d %H:%M:%S'), absence.to_date.strftime('%Y-%m-%d %H:%M:%S'), absence.hours, reasonTxt, absence.justified))
+                dbconn.execute('INSERT INTO absences (date_from, date_to, duration, reasons, justified) VALUES (?, ?, ?, ?, ?)', (absence.from_date.strftime('%Y-%m-%d %H:%M:%S'), absence.to_date.strftime('%Y-%m-%d %H:%M:%S'), absence.hours, reasonTxt, absence.justified))
+                dbconn.commit()
+          except:
+            print(f'Error: Could not update absences for {childname}')
 
 
           # Update the Delays DB content
-          res = dbconn.execute('SELECT datetime FROM delays ORDER BY datetime DESC LIMIT 1').fetchone()
-          if res:  
-            max_date = datetime.strptime(res[0], "%Y-%m-%d %H:%M:%S")
-          else:
-            max_date = datetime.strptime("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+          try:
+            res = dbconn.execute('SELECT datetime FROM delays ORDER BY datetime DESC LIMIT 1').fetchone()
+            if res:  
+              max_date = datetime.strptime(res[0], "%Y-%m-%d %H:%M:%S")
+            else:
+              max_date = datetime.strptime("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
 
 
-          for delay in client.current_period.delays:
-            if delay.date > max_date:
-              reasonTxt = ""
-              for reason in delay.reasons:
-                reasonTxt = reasonTxt + str(reason) + "\n"
+            for delay in client.current_period.delays:
+              if delay.date > max_date:
+                reasonTxt = ""
+                for reason in delay.reasons:
+                  reasonTxt = reasonTxt + str(reason) + "\n"
 
-              dbconn.execute('INSERT INTO delays (datetime, minutes, justification, reasons, justified) VALUES (?, ?, ?, ?, ?)', (delay.datetime.strftime('%Y-%m-%d %H:%M:%S'), str(delay.minutes), delay.justification, reasonTxt, delay.justified))
+                dbconn.execute('INSERT INTO delays (datetime, minutes, justification, reasons, justified) VALUES (?, ?, ?, ?, ?)', (delay.datetime.strftime('%Y-%m-%d %H:%M:%S'), str(delay.minutes), delay.justification, reasonTxt, delay.justified))
+                dbconn.commit()
+          except:
+            print(f'Error: Could not update delays for {childname}')
 
 
           # Update the Evaluations DB content
-          res = dbconn.execute('SELECT datetime FROM evaluations ORDER BY datetime DESC LIMIT 1').fetchone()
-          if res:  
-            max_date = datetime.strptime(res[0], "%Y-%m-%d").date()
-          else:
-            max_date = datetime.strptime("2020-01-01", "%Y-%m-%d").date()
+          try:
+            res = dbconn.execute('SELECT datetime FROM evaluations ORDER BY datetime DESC LIMIT 1').fetchone()
+            if res:  
+              max_date = datetime.strptime(res[0], "%Y-%m-%d").date()
+            else:
+              max_date = datetime.strptime("2020-01-01", "%Y-%m-%d").date()
 
 
-          for period in client.periods:
-            for evaluation in period.evaluations:
-              if evaluation.date >= max_date:
-                if evaluation.date == max_date:
-                  # Check for pre-existance
-                  res = dbconn.execute('SELECT 1 FROM evaluations WHERE name = ? AND datetime = ? AND subject = ?', (evaluation.name, evaluation.date.strftime('%Y-%m-%d'), evaluation.subject.name)).fetchone()
-                  if res:
-                    break
+            for period in client.periods:
+              for evaluation in period.evaluations:
+                if evaluation.date >= max_date:
+                  if evaluation.date == max_date:
+                    # Check for pre-existance
+                    res = dbconn.execute('SELECT 1 FROM evaluations WHERE name = ? AND datetime = ? AND subject = ?', (evaluation.name, evaluation.date.strftime('%Y-%m-%d'), evaluation.subject.name)).fetchone()
+                    if res:
+                      break
 
-                acquisitionTxt = ""
-                for acquisition in evaluation.acquisitions:
-                  if acquisition.level is not None and acquisition.name is not None:
-                    acquisitionTxt = acquisitionTxt + "\n" + acquisition.level + ": " + acquisition.name
+                  acquisitionTxt = ""
+                  for acquisition in evaluation.acquisitions:
+                    if acquisition.level is not None and acquisition.name is not None:
+                      acquisitionTxt = acquisitionTxt + "\n" + acquisition.level + ": " + acquisition.name
 
-                dbconn.execute('INSERT INTO evaluations (datetime, name, subject, description, acquisitions) VALUES (?, ?, ?, ?, ?)', (evaluation.date.strftime('%Y-%m-%d'), evaluation.name, evaluation.subject.name, evaluation.description, acquisitionTxt))
+                  dbconn.execute('INSERT INTO evaluations (datetime, name, subject, description, acquisitions) VALUES (?, ?, ?, ?, ?)', (evaluation.date.strftime('%Y-%m-%d'), evaluation.name, evaluation.subject.name, evaluation.description, acquisitionTxt))
+                  dbconn.commit()
+          except:
+            print(f'Error: Could not update evaluations for {childname}')
 
 
           # Update the Punishment DB content
-          res = dbconn.execute('SELECT datetime FROM punishments ORDER BY datetime DESC LIMIT 1').fetchone()
-          if res:  
-            max_date = datetime.strptime(res[0], "%Y-%m-%d %H:%M:%S")
-          else:
-            max_date = datetime.strptime("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+          try:
+            res = dbconn.execute('SELECT datetime FROM punishments ORDER BY datetime DESC LIMIT 1').fetchone()
+            if res:  
+              max_date = datetime.strptime(res[0], "%Y-%m-%d %H:%M:%S")
+            else:
+              max_date = datetime.strptime("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
 
-          for punishment in client.current_period.punishments:
-            if punishment.date > max_date:
-              reasonTxt = ""
-              for reason in punishment.reasons:
-                reasonTxt = reasonTxt + str(reason) + "\n"
+            for punishment in client.current_period.punishments:
+              if punishment.date > max_date:
+                reasonTxt = ""
+                for reason in punishment.reasons:
+                  reasonTxt = reasonTxt + str(reason) + "\n"
 
-              dbconn.execute('INSERT INTO punishments (datetime, circumstances, nature, reasons, giver) VALUES (?, ?, ?, ?, ?)', (punishment.date.strftime('%Y-%m-%d %H:%M:%S'), punishment.circumstances, punishment.nature, reasonTxt, punishment.giver))
+                dbconn.execute('INSERT INTO punishments (datetime, circumstances, nature, reasons, giver) VALUES (?, ?, ?, ?, ?)', (punishment.date.strftime('%Y-%m-%d %H:%M:%S'), punishment.circumstances, punishment.nature, reasonTxt, punishment.giver))
+                dbconn.commit()
+          except:
+            print(f'Error: Could not update punishment for {childname}')
 
 
 
           # Update the Teachers DB content
-          dbconn.execute('DELETE FROM teachers')
+          try:
+            dbconn.execute('DELETE FROM teachers')
 
 
-          for teacher in client.get_teaching_staff():
-            dbconn.execute('INSERT INTO teachers (subject, name) VALUES (?, ?)', (teacher.subjects[0].name, teacher.name))
+            for teacher in client.get_teaching_staff():
+              dbconn.execute('INSERT INTO teachers (subject, name) VALUES (?, ?)', (teacher.subjects[0].name, teacher.name))
+            dbconn.commit()
+
+          except:
+            print(f'Error: Could not update teachers for {childname}')
 
 
           # Update the Information DB content
-          res = dbconn.execute('SELECT creation_date FROM informations ORDER BY creation_date DESC LIMIT 1').fetchone()
-          if res:  
-            max_date = datetime.strptime(res[0], "%Y-%m-%d %H:%M:%S")
-          else:
-            max_date = datetime.strptime("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+          try:
+            res = dbconn.execute('SELECT creation_date FROM informations ORDER BY creation_date DESC LIMIT 1').fetchone()
+            if res:  
+              max_date = datetime.strptime(res[0], "%Y-%m-%d %H:%M:%S")
+            else:
+              max_date = datetime.strptime("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
 
-          informations = client.information_and_surveys()
-          for information in informations:
-            if information.creation_date > max_date:
+            informations = client.information_and_surveys()
+            for information in informations:
+              if information.creation_date > max_date:
 
-              dbconn.execute('INSERT INTO informations (creation_date, date, title, author, content, is_read) VALUES (?, ?, ?, ?, ?, ?)', (information.creation_date, information.start_date.strftime('%Y-%m-%d'), information.title, information.author, information.content, information.read))
+                dbconn.execute('INSERT INTO informations (creation_date, date, title, author, content, is_read) VALUES (?, ?, ?, ?, ?, ?)', (information.creation_date, information.start_date.strftime('%Y-%m-%d'), information.title, information.author, information.content, information.read))
+                dbconn.commit()
+          except:
+            print(f'Error: Could not update teachers for {childname}')
 
 
 
-
-          # UPdate observations
-          data = {
-            "DateDebut":{
-              "V": client.current_period.start.strftime("%-m/%-d/%Y %-H:%-M:%-S"),
-              "_T": 7
-            },
-            "DateFin":{
-              "V": client.current_period.end.strftime("%-m/%-d/%Y %-H:%-M:%-S"),
-              "_T": 7
-            },
-            "periode":{
-              "N": client.current_period.id,
-              "G": 2,
-              "L": client.current_period.name
+          # Update observations
+          try:
+            data = {
+              "DateDebut":{
+                "V": client.current_period.start.strftime("%-m/%-d/%Y %-H:%-M:%-S"),
+                "_T": 7
+              },
+              "DateFin":{
+                "V": client.current_period.end.strftime("%-m/%-d/%Y %-H:%-M:%-S"),
+                "_T": 7
+              },
+              "periode":{
+                "N": client.current_period.id,
+                "G": 2,
+                "L": client.current_period.name
+              }
             }
-          }
 
-          val = client.post("PagePresence", 19, data)
+            val = client.post("PagePresence", 19, data)
 
-          res = dbconn.execute('SELECT datetime FROM observations ORDER BY datetime DESC LIMIT 1').fetchone()
-          if res:  
-            max_date = datetime.strptime(res[0], "%Y-%m-%d %H:%M:%S")
-          else:
-            max_date = datetime.strptime("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
-
-
-          for observation in val['donneesSec']['donnees']['listeAbsences']['V']:
-            if "genreObservation" in observation.keys():
-
-              date = datetime.strptime(observation['date']['V'], "%d/%m/%Y %H:%M:%S")
-
-              if date > max_date:
-
-                if observation['estLue']:
-                  is_read = True
-                else:
-                  is_read = False
-
-                if observation['avecARObservation']:
-                  with_ar = True
-                else:
-                  with_ar = False
+            res = dbconn.execute('SELECT datetime FROM observations ORDER BY datetime DESC LIMIT 1').fetchone()
+            if res:  
+              max_date = datetime.strptime(res[0], "%Y-%m-%d %H:%M:%S")
+            else:
+              max_date = datetime.strptime("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
 
 
-                dbconn.execute('INSERT INTO observations (datetime, subject, teacher, title, comment, is_read, with_ar) VALUES (?, ?, ?, ?, ?, ?, ?)', (date.strftime('%Y-%m-%d %H:%M:%S'), observation['matiere']['V']['L'], observation['demandeur']['V']['L'], observation['L'], observation['commentaire'], is_read, with_ar ))
+            for observation in val['donneesSec']['donnees']['listeAbsences']['V']:
+              if "genreObservation" in observation.keys():
+
+                date = datetime.strptime(observation['date']['V'], "%d/%m/%Y %H:%M:%S")
+
+                if date > max_date:
+
+                  if observation['estLue']:
+                    is_read = True
+                  else:
+                    is_read = False
+
+                  if observation['avecARObservation']:
+                    with_ar = True
+                  else:
+                    with_ar = False
 
 
-          dbconn.commit()
-          dbconn.close()
+                  dbconn.execute('INSERT INTO observations (datetime, subject, teacher, title, comment, is_read, with_ar) VALUES (?, ?, ?, ?, ?, ?, ?)', (date.strftime('%Y-%m-%d %H:%M:%S'), observation['matiere']['V']['L'], observation['demandeur']['V']['L'], observation['L'], observation['commentaire'], is_read, with_ar ))
+
+                  dbconn.commit()
+          except:
+            print(f'Error: Could not update observations for {childname}')
+
+            dbconn.commit()
+            dbconn.close()
 
           # Update Calendar
-          self.cal[child['name']] = []
-          l = client.parametres_utilisateur['donneesSec']['donnees']['ressource']['L']
-          g = client.parametres_utilisateur['donneesSec']['donnees']['ressource']['G']
-          n = client.parametres_utilisateur['donneesSec']['donnees']['ressource']['N']
+          try:
+            self.cal[child['name']] = []
+            l = client.parametres_utilisateur['donneesSec']['donnees']['ressource']['L']
+            g = client.parametres_utilisateur['donneesSec']['donnees']['ressource']['G']
+            n = client.parametres_utilisateur['donneesSec']['donnees']['ressource']['N']
 
-          for i in range(0, 1):
-            week = client.week+i
-            data = {
-              "ressource":{
-                "N": n,
-                "G": g,
-                "L": l
-              },
-              "numeroSemaine": week,
-              "avecAbsencesEleve": False,
-              "avecConseilDeClasse": True,
-              "avecRetenuesEleve": True,
-              "estEDTPermanence": False,
-              "avecAbsencesRessource": True,
-              "avecCoursSortiePeda": True,
-              "avecDisponibilites": True,
-              "avecRessourcesLibrePiedHoraire": False,
-              "avecInfosPrefsGrille": True,
-              "Ressource":{
-                "N": n,
-                "G": g,
-                "L": l
-              },
-              "NumeroSemaine": week
-            }
+            for i in range(0, 4):
+              week = client.week+i
+              data = {
+                "ressource":{
+                  "N": n,
+                  "G": g,
+                  "L": l
+                },
+                "numeroSemaine": week,
+                "avecAbsencesEleve": False,
+                "avecConseilDeClasse": True,
+                "avecRetenuesEleve": True,
+                "estEDTPermanence": False,
+                "avecAbsencesRessource": True,
+                "avecCoursSortiePeda": True,
+                "avecDisponibilites": True,
+                "avecRessourcesLibrePiedHoraire": False,
+                "avecInfosPrefsGrille": True,
+                "Ressource":{
+                  "N": n,
+                  "G": g,
+                  "L": l
+                },
+                "NumeroSemaine": week
+              }
 
-            cal_week = client.post("PageEmploiDuTemps", 16, data)
+              cal_week = client.post("PageEmploiDuTemps", 16, data)
 
 
-            for lesson in cal_week['donneesSec']['donnees']['ListeCours']:
+              for lesson in cal_week['donneesSec']['donnees']['ListeCours']:
 
-              start_date = datetime.strptime(lesson['DateDuCours']['V'], "%d/%m/%Y %H:%M:%S")
-              duration = lesson['duree'] * 0.5
-              end_date = start_date + timedelta(hours=duration)
+                start_date = datetime.strptime(lesson['DateDuCours']['V'], "%d/%m/%Y %H:%M:%S")
+                duration = lesson['duree'] * 0.5
+                end_date = start_date + timedelta(hours=duration)
 
-              start = start_date.strftime("%Y-%m-%d %H:%M:%S") 
-              end = end_date.strftime("%Y-%m-%d %H:%M:%S") 
+                start = start_date.strftime("%Y-%m-%d %H:%M:%S") 
+                end = end_date.strftime("%Y-%m-%d %H:%M:%S") 
 
-              subject = ""
-              for contenu in lesson['ListeContenus']['V']:
-                if contenu['G'] == 16:
-                  subject = contenu['L']
+                subject = ""
+                for contenu in lesson['ListeContenus']['V']:
+                  if contenu['G'] == 16:
+                    subject = contenu['L']
 
-              if "estAnnule" in lesson:
-                is_canceled = lesson['estAnnule']
-              else:
-                is_canceled = False
+                if "estAnnule" in lesson:
+                  is_canceled = lesson['estAnnule']
+                else:
+                  is_canceled = False
 
-              if "Statut" in lesson:
-                status = lesson['Statut'] 
-              else:
-                status = ""
+                if "Statut" in lesson:
+                  status = lesson['Statut'] 
+                else:
+                  status = ""
 
-              self.cal[childname].append({"subject": subject, "start": start, "end": end, "status": status, "is_canceled": is_canceled})
-              
+                self.cal[childname].append({"subject": subject, "start": start, "end": end, "status": status, "is_canceled": is_canceled})
+                
 
-          self.lastUpdate = datetime.now() 
+            print("_____________")
+            print(childname)
+            print(self.cal[childname])
+            print("_____________")
+          except:
+            print(f'Error: Could not update calendar for {childname}')
+
+        self.lastUpdate = datetime.now() 
 
       else:
         print("Update too recent, use cache")

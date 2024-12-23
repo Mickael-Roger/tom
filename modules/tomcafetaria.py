@@ -185,13 +185,6 @@ class TomCafetaria:
 
     id=quote(id)
 
-    print("========")
-    print(action)
-    print("========")
-    print(id)
-    print("========")
-    
-
     session = requests.Session()
     
     data = {
@@ -237,10 +230,6 @@ class TomCafetaria:
 
       add_page = session.get(f"https://webparent.paiementdp.com/aliReservationDetail.php?date={id}", headers=headers)
 
-      print("========")
-      print(add_page.text)
-      print("========")
-
       if add_page.status_code != 200:
         return False, "Cannot update reservation"
 
@@ -258,10 +247,6 @@ class TomCafetaria:
 
       if add.status_code != 200:
         return False, "Cannot update reservation"
-
-      print("========")
-      print(add_page.text)
-      print("========")
 
       session.get('https://webparent.paiementdp.com/aliDeconnexion.php')
       
