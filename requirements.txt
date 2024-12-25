@@ -7,3 +7,4 @@ pronotepy
 beautifulsoup4
 TTS
 anki
+timezonefinder

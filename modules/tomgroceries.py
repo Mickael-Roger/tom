@@ -6,12 +6,21 @@ from caldav.elements import dav
 
 import json
 from datetime import datetime, timedelta
+import functools
+
 
 ################################################################################################
 #                                                                                              #
 #                                       CalDAV TODO                                            #
 #                                                                                              #
 ################################################################################################
+
+tom_config = {
+  "module_name": "groceries",
+  "class_name": "TomGroceries",
+  "description": "This module is used to manage groceries list."
+}
+
 class TomGroceries:
 
   def __init__(self, config, tz=None) -> None:
@@ -96,11 +105,20 @@ class TomGroceries:
     ]
 
     self.systemContext = ""
-    self.answerContext = {
-      "grocery_list_content": """You should always answered in a consise way. Your answer must be in the form of a sentence and not a list that contains '-' or element number. For example, when a user ask "What are in my grocery list?", your answer should be like "You have 4 products: pears, milk, water and sugar" or if the user asks "Do I have milk in my grocery list?", your answer should be like "Yes, you have" """,
-      "grocery_list_add": """You should always answered in a consise way: For example, when a user ask "Add milk to my grocery list?", your answer should be like "Milk added" """,
-      "grocery_list_remove": """You should always answered in a consise way: For example, when a user ask "Remove milk from my grocery list", your answer should be like "Milk removed"
-      """
+
+    self.functions = {
+      "grocery_list_content": {
+        "function": functools.partial(self.listProducts), 
+        "responseContext": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. For example, when a user ask "What are in my grocery list?", your answer should be like "You have 4 products: pears, milk, water and sugar" or if the user asks "Do I have milk in my grocery list?", your answer should be like "Yes, you have" """
+      },
+      "grocery_list_add": {
+        "function": functools.partial(self.add), 
+        "responseContext": """You should always answered in a consise way: For example, when a user ask "Add milk to my grocery list?", your answer should be like "Milk added" """ 
+      },
+      "grocery_list_remove": {
+        "function": functools.partial(self.remove), 
+        "responseContext": """You should always answered in a consise way: For example, when a user ask "Remove milk from my grocery list", your answer should be like "Milk removed" """ 
+      },
     }
 
 

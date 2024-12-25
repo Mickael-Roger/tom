@@ -1,5 +1,6 @@
 import requests
 from datetime import datetime
+import functools
 
 
 ################################################################################################
@@ -7,9 +8,16 @@ from datetime import datetime
 #                                         Weather                                              #
 #                                                                                              #
 ################################################################################################
+
+tom_config = {
+  "module_name": "weather",
+  "class_name": "TomWeather",
+  "description": "This module is used for for any question about the weather forecast."
+}
+
 class TomWeather:
 
-  def __init__(self) -> None:
+  def __init__(self, config) -> None:
     self.url = "https://api.open-meteo.com/v1/forecast?hourly=temperature_2m,apparent_temperature,weather_code&daily=temperature_2m_min,temperature_2m_max,apparent_temperature_min,apparent_temperature_max,weather_code&forecast_days=16"
 
     self.urlGeocoding = "https://geocoding-api.open-meteo.com/v1/search?"
@@ -99,11 +107,17 @@ class TomWeather:
     ]
 
     self.systemContext = ""
-    answerText = """When you are asked about the weather, you always must be consise. For example, when the user asked "What will the weather be like tommorrow?", your answer should be like "Tommorrow, saturday december the 1st, temperature will be from 2°C to 7°C and it will have moderate rain in the afternoon" or "Tommorrow, saturday december the 1st, temperature will be from 2°C to 7°C and it's not gonna rain" or if the user asks "Will it rain tommorrow?" your answer should be like "No, it's not gonna rain tommorrow". """
-    self.answerContext = {
-      "weather_get_by_gps_position": answerText,
-      "get_gps_position_by_city_name": ""
+    self.functions = {
+      "weather_get_by_gps_position": {
+        "function": functools.partial(self.getGps), 
+        "responseContext": """When you are asked about the weather, you always must be consise. For example, when the user asked "What will the weather be like tommorrow?", your answer should be like "Tommorrow, saturday december the 1st, temperature will be from 2°C to 7°C and it will have moderate rain in the afternoon" or "Tommorrow, saturday december the 1st, temperature will be from 2°C to 7°C and it's not gonna rain" or if the user asks "Will it rain tommorrow?" your answer should be like "No, it's not gonna rain tommorrow". """ 
+      },
+      "get_gps_position_by_city_name": {
+        "function": functools.partial(self.getCity), 
+        "responseContext": "" 
+      },
     }
+
 
 
   def convertWMO(self, code):

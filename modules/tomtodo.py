@@ -6,12 +6,20 @@ from caldav.elements import dav
 
 import json
 from datetime import datetime, timedelta
+import functools
 
 ################################################################################################
 #                                                                                              #
 #                                       CalDAV TODO                                            #
 #                                                                                              #
 ################################################################################################
+
+tom_config = {
+  "module_name": "todo",
+  "class_name": "TomTodo",
+  "description": "This module is used for managing TODO list."
+}
+
 class TomTodo:
 
   def __init__(self, config, tz=None) -> None:
@@ -108,13 +116,22 @@ class TomTodo:
     ]
 
     self.systemContext = ""
-    self.answerContext = {
-      "todo_list_all": """Unless the user explicitly asks for it, name of the tasks (no priority or due date). Tasks must be ordered by due date and if multiple tasks have no due date or same due date, they must be ordered by priority level (the lower the priority value is, the higher the priority level is). The due value correspond the the deadline for closing a task. If a task still exists and has a due date in the past, it means it is an overdue task. Tasks without any due value cannot be overdue. 
-       For example, your answer should be like "You have 4 tasks: create a new app, do the groceries, paint the wall and mow the lawn" or if the user asks for overdue tasks, your answer should be like "You have 2 overdue tasks: 'mow the lawn' that is 2 day late and 'paint the wall' that is 1 week late"
-      """,
-      "todo_create_task": """Your answer must be consise like 'Task "mow the lawn" added'""",
-      "todo_close_task": """Your answer must be consise like 'Task "mow the lawn" closed'""",
+    self.functions = {
+      "todo_list_all": {
+        "function": functools.partial(self.listTasks), 
+        "responseContext": """Unless the user explicitly asks for it, name of the tasks (no priority or due date). Tasks must be ordered by due date and if multiple tasks have no due date or same due date, they must be ordered by priority level (the lower the priority value is, the higher the priority level is). The due value correspond the the deadline for closing a task. If a task still exists and has a due date in the past, it means it is an overdue task. Tasks without any due value cannot be overdue. 
+       For example, your answer should be like "You have 4 tasks: create a new app, do the groceries, paint the wall and mow the lawn" or if the user asks for overdue tasks, your answer should be like "You have 2 overdue tasks: 'mow the lawn' that is 2 day late and 'paint the wall' that is 1 week late" """
+      },
+      "todo_create_task": {
+        "function": functools.partial(self.create), 
+        "responseContext": """Your answer must be consise like 'Task "mow the lawn" added'""" 
+      },
+      "todo_close_task": {
+        "function": functools.partial(self.close), 
+        "responseContext": """Your answer must be consise like 'Task "mow the lawn" closed'""" 
+      },
     }
+
 
 
   def update(self):

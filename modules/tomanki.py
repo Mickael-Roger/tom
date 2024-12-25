@@ -3,12 +3,20 @@ from anki.collection import Collection
 from anki.sync import Syncer
 #from anki.consts import SYNC_SERVER
 from datetime import datetime
+import functools
 
 ################################################################################################
 #                                                                                              #
 #                                           Anki                                               #
 #                                                                                              #
 ################################################################################################
+
+tom_config = {
+  "module_name": "anki",
+  "class_name": "TomAnki",
+  "description": "This module is used to manage Anki"
+}
+
 class TomAnki:
 
   def __init__(self, config) -> None:
@@ -125,13 +133,27 @@ class TomAnki:
 
     self.systemContext = "Anki is a flashcard program. It uses cards. It uses technics from cognitive science such as active recall testing and spaced repetition to help me in my memorization. I use Anki to train myself on memorizing and reinforcing my knowledge."
 
-    self.answerContext =     self.answerContext = {
-      "anki_list_decks": """You should always answered in a consise way. If a user ask for Anki deck status, unless you are explicitly asked to, do not indicate decks with 0 cards to review. For example, when a user ask "What is my anki decks status?", your answer should be like "You have 4 reviews in 'English', 3 reviews in 'Tech' and 2 reviews in 'Culture G'"
-      """,
-      "anki_list_due_cards": """You should always answered in a consise way: For example, your answer should be like "You have x cards to review in your 'deckname' deck." """,
-      "anki_list_all_cards": """You should always answered in a consise way.""",
-      "anki_review_card": "",
-      "anki_add_card": """You should always answered in a consise way: For example, your answer should be like "Card 'front label of my card' with the back 'back sentence of my card' added to deck 'Tech'" """
+    self.functions = {
+      "anki_list_decks": {
+        "function": functools.partial(self.list_decks), 
+        "responseContext": """You should always answered in a consise way. If a user ask for Anki deck status, unless you are explicitly asked to, do not indicate decks with 0 cards to review. For example, when a user ask "What is my anki decks status?", your answer should be like "You have 4 reviews in 'English', 3 reviews in 'Tech' and 2 reviews in 'Culture G'""" 
+      },
+      "anki_list_due_cards": {
+        "function": functools.partial(self.due_cards), 
+        "responseContext": """You should always answered in a consise way: For example, your answer should be like "You have x cards to review in your 'deckname' deck." """ 
+      },
+      "anki_list_all_cards": {
+        "function": functools.partial(self.list_cards), 
+        "responseContext": """You should always answered in a consise way.""" 
+      },
+      "anki_review_card": {
+        "function": functools.partial(self.card_review), 
+        "responseContext": "" 
+      },
+      "anki_add_card": {
+        "function": functools.partial(self.add_card), 
+        "responseContext": """You should always answered in a consise way: For example, your answer should be like "Card 'front label of my card' with the back 'back sentence of my card' added to deck 'Tech'" """ 
+      },
     }
 
 

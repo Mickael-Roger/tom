@@ -6,12 +6,21 @@ from pathlib import Path
 import json
 import sqlite3
 
+import functools
+
 
 ################################################################################################
 #                                                                                              #
 #                                         Pronote                                              #
 #                                                                                              #
 ################################################################################################
+
+tom_config = {
+  "module_name": "pronote",
+  "class_name": "TomPronote",
+  "description": "This module is used for Pronote application like getting the school schedule, school grades, chool information, ..."
+}
+
 class TomPronote:
 
   def __init__(self, config) -> None:
@@ -438,24 +447,62 @@ class TomPronote:
       },
     ]
 
-    self.systemContext = "Pronote is the application that manage children's school life. Pronote is the only way to have access to children's timetable, homework to do, grades, grade book, evaluations, parent/teachers communication and mainly information about school and college."
+    self.systemContext = "Pronote is the application that manage children's school life. Pronote is the only way to have access to children's timetable, homework to do, grades, grade book, evaluations, parent/teachers communication and mainly information about school and college. Do not try to guess which one the question refers to; ask me to clarify which child I am talking about. "
 
-    self.answerContext = {
-      "list_grade_averages": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. For example: '14 in maths, 12 in history and 11.5 in english'.""",
-      "list_grades": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. If the grade is out of 20, no need to precise, otherwise you must. For example: '12 in geography september the 13th, 4.5 out of 5 in history yesterday and 13 in English today'. When the question was about new notes and there are some, at the end you could propose me to mark them as viewed if it makes sens. Never mark something a viewed by yourself, it must always come from an explicite request from me. When you are asked about new grades, it means only grades with 'is_new' set to 'True' are concerned.""",
-      "list_homeworks": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. Unless your are asked for specific information like 'Give me more details about the tomorrow homework in math', you just need to short like 'For tomorrow, there are 2 homeworks in english and 1 in math'.""",
-      "list_school_absences": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
-      "list_school_delays": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
-      "list_school_evaluations": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
-      "list_school_punishments": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
-      "list_school_teachers": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
-      "get_school_calendar": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
-      "list_school_observations": """"You should always answered in the form of a sentence and not contains '-' or element numbers.""",
-      "list_school_information_communication": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. Unless your are asked for specific information like 'Give me more details about this information content', you just need to short like 'You have 3 new information messages. The first one is about gradebook, the scond one about school restaurant menu and the last one is about teacher strikes'. When the question was about new information and there are some, at the end you could propose me to mark them as viewed if it makes sens3. Never mark something a viewed by yourself, it must always come from an explicite request from me. When you are asked about new information or communication, it means only communication with 'is_new' set to 'True' are concerned.""",
-      "pronote_mark_as_seen": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
-      "get_school_information_communication_message": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
-
+    self.functions = {
+      "list_grade_averages": {
+        "function": functools.partial(self.averages), 
+        "responseContext": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. For example: '14 in maths, 12 in history and 11.5 in english'.""",
+      },
+      "list_grades": {
+        "function": functools.partial(self.grades), 
+        "responseContext": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. If the grade is out of 20, no need to precise, otherwise you must. For example: '12 in geography september the 13th, 4.5 out of 5 in history yesterday and 13 in English today'. When the question was about new notes and there are some, at the end you could propose me to mark them as viewed if it makes sens. Never mark something a viewed by yourself, it must always come from an explicite request from me. When you are asked about new grades, it means only grades with 'is_new' set to 'True' are concerned.""",
+      },
+      "list_homeworks": {
+        "function": functools.partial(self.homeworks), 
+        "responseContext": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. Unless your are asked for specific information like 'Give me more details about the tomorrow homework in math', you just need to short like 'For tomorrow, there are 2 homeworks in english and 1 in math'.""",
+      },
+      "list_school_absences": {
+        "function": functools.partial(self.absences), 
+        "responseContext": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
+      },
+      "list_school_delays": {
+        "function": functools.partial(self.delays), 
+        "responseContext": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
+      },
+      "list_school_evaluations": {
+        "function": functools.partial(self.evaluations), 
+        "responseContext": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
+      },
+      "list_school_punishments": {
+        "function": functools.partial(self.punishments), 
+        "responseContext": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",      },
+      "list_school_teachers": {
+        "function": functools.partial(self.teachers), 
+        "responseContext": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
+      },
+      "get_school_information_communication_message": {
+        "function": functools.partial(self.information_message), 
+        "responseContext": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
+      },
+      "list_school_information_communication": {
+        "function": functools.partial(self.informations), 
+        "responseContext": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. Unless your are asked for specific information like 'Give me more details about this information content', you just need to short like 'You have 3 new information messages. The first one is about gradebook, the scond one about school restaurant menu and the last one is about teacher strikes'. When the question was about new information and there are some, at the end you could propose me to mark them as viewed if it makes sens3. Never mark something a viewed by yourself, it must always come from an explicite request from me. When you are asked about new information or communication, it means only communication with 'is_new' set to 'True' are concerned.""",
+      },
+      "list_school_observations": {
+        "function": functools.partial(self.observations), 
+        "responseContext": """You should always answered in the form of a sentence and not contains '-' or element numbers.""",
+      },
+      "get_school_calendar": {
+        "function": functools.partial(self.getCal), 
+        "responseContext": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
+      },
+      "pronote_mark_as_seen": {
+        "function": functools.partial(self.mark_seen), 
+        "responseContext": """Your answer must be in the form of a sentence and not contains '-' or element numbers.""",
+      },
     }
+
 
 
   def connect(self, child_name, token):
@@ -792,11 +839,6 @@ class TomPronote:
 
                 self.cal[childname].append({"subject": subject, "start": start, "end": end, "status": status, "is_canceled": is_canceled})
                 
-
-            print("_____________")
-            print(childname)
-            print(self.cal[childname])
-            print("_____________")
           except:
             print(f'Error: Could not update calendar for {childname}')
 

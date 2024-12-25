@@ -8,12 +8,20 @@ import random
 import time
 
 from datetime import datetime, timedelta, date
+import functools
 
 ################################################################################################
 #                                                                                              #
 #                                           Kwyk                                               #
 #                                                                                              #
 ################################################################################################
+
+tom_config = {
+  "module_name": "kwyk",
+  "class_name": "TomKwyk",
+  "description": "This module is used to get information from Kwyk."
+}
+
 class TomKwyk:
 
   _update_thread_started = False
@@ -75,9 +83,13 @@ class TomKwyk:
     ]
 
     self.systemContext = "Kwyk is a math and french exercises plateform."
-    self.answerContext = {
-      "kwyk_get": """When the user asks for kwyk status, you always must answer in a consise way. For example 'This week john has done 23 kwywk exercices', 'Today, so far, Bryan hasn't done any kwyk exercice'"""
+    self.functions = {
+      "kwyk_get": {
+        "function": functools.partial(self.get), 
+        "responseContext": """When the user asks for kwyk status, you always must answer in a consise way. For example 'This week john has done 23 kwywk exercices', 'Today, so far, Bryan hasn't done any kwyk exercice'""" 
+      },
     }
+
 
 
     if not TomKwyk._update_thread_started:
@@ -96,8 +108,6 @@ class TomKwyk:
 
 
   def update(self):
-
-
 
       session = requests.Session()
 

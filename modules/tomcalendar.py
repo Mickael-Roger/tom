@@ -5,6 +5,7 @@ import pytz
 from caldav.elements import dav
 import json
 from datetime import datetime, timedelta
+import functools
 
 
 
@@ -13,6 +14,13 @@ from datetime import datetime, timedelta
 #                                    CalDAV Calendar                                           #
 #                                                                                              #
 ################################################################################################
+
+tom_config = {
+  "module_name": "calendar",
+  "class_name": "TomCalendar",
+  "description": "This module is used to manage my personal and familial calendar events, meetings and appointments."
+}
+
 class TomCalendar:
 
   def __init__(self, config, tz=None) -> None:
@@ -108,11 +116,18 @@ class TomCalendar:
     ]
 
     self.systemContext = ""
-    self.answerContext = {
-      "calendar_search": """When a user ask for a appointment, an event or any information from it's calendar, you must give him information about the weekday, the date and the hour of the event an the title of the event
+
+    self.functions = {
+      "calendar_search": {
+        "function": functools.partial(self.search), 
+        "responseContext": """When a user ask for a appointment, an event or any information from it's calendar, you must give him information about the weekday, the date and the hour of the event an the title of the event
        For example, if the user asks "What appointments do I have tommorrow?", your answer must be like "Tommorrow, saturday december the 2nd, you have 2 appointments: 'Doctor' at 9am and 'Meeting with John at 4pm'". If the user asks "What appointments do I have next week?" your answer should be like "Next week, you will have 3 appointments: 'Doctor' on monday morning, 'Meeting with John' on monday afternoon and 'Playing chess' on wednesday afternoon"
-      """,
-      "calendar_add": """Your answer must be consise like 'Appointment 'Doctor' on monday december the 15th added to your calendar""",
+      """ 
+      },
+      "calendar_add": {
+        "function": functools.partial(self.addEvent), 
+        "responseContext": """Your answer must be consise like 'Appointment 'Doctor' on monday december the 15th added to your calendar""" 
+      },
     }
 
     

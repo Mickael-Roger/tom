@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs, quote
 import re
 import sqlite3
+import functools
 
 from datetime import datetime, timedelta, date
 
@@ -12,6 +13,13 @@ from datetime import datetime, timedelta, date
 #                                         Cafetariat                                           #
 #                                                                                              #
 ################################################################################################
+
+tom_config = {
+  "module_name": "cafetaria",
+  "class_name": "TomCafetaria",
+  "description": "This module is used to manage the High school cafetaria usage like making a cafetria reservation, or getting the cafetaria credit."
+}
+
 class TomCafetaria:
 
   def __init__(self, config) -> None:
@@ -102,12 +110,29 @@ class TomCafetaria:
     ]
 
     self.systemContext = ""
-    self.answerContext = {
-      "get_cafetaria_credit": "",
-      "list_cafetaria_reservations": "",
-      "make_a_cafetaria_reservation": "",
-      "cancel_a_cafetaria_reservation": "",
+
+    self.functions = {
+      "get_cafetaria_credit": {
+        "function": functools.partial(self.credit), 
+        "responseContext": "" 
+      },
+      "list_cafetaria_reservations": {
+        "function": functools.partial(self.reservations), 
+        "responseContext": "" 
+      },
+      "make_a_cafetaria_reservation": {
+        "function": functools.partial(self.add), 
+        "responseContext": "" 
+      },
+      "cancel_a_cafetaria_reservation": {
+        "function": functools.partial(self.cancel), 
+        "responseContext": "" 
+      },
     }
+
+
+
+
 
   def update(self):
 
