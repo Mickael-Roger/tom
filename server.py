@@ -248,6 +248,26 @@ class TomWebService:
     }
     return config
 
+  @cherrypy.expose
+  def firebase_messaging_sw_js(self):
+      # Path to your JavaScript file
+      js_file_path = './static/firebase-messaging-sw.js'
+
+      try:
+        with open(js_file_path, 'rb') as js_file:
+            js_content = js_file.read()
+
+        # Set the Content-Type header to application/javascript
+        cherrypy.response.headers['Content-Type'] = 'application/javascript'
+
+        return js_content
+      except FileNotFoundError:
+        cherrypy.response.status = 404
+        return "File not found"
+      except Exception as e:
+        cherrypy.response.status = 500
+        return f"An error occurred: {str(e)}"
+
 
   ####
   #
@@ -265,6 +285,7 @@ class TomWebService:
     input_json = cherrypy.request.json
 
     token = input_json.get('token')
+    platform = input_json.get('platform')
     username = cherrypy.session['username']
 
     # Add or Update user token
@@ -274,15 +295,12 @@ class TomWebService:
 
     dbconn = sqlite3.connect(db_notifs)
     cursor = dbconn.cursor()
-    cursor.execute('DELETE FROM fcm_tokens WHERE username = ?', (username,))
-    cursor.execute('INSERT INTO fcm_tokens (username, token) VALUES (?, ?)', (username, token))
+    cursor.execute('DELETE FROM fcm_tokens WHERE token = ?', (token,))
+    cursor.execute('INSERT INTO fcm_tokens (token, username, platform) VALUES (?, ?, ?)', (token, username, platform))
     dbconn.commit()
     dbconn.close()
 
     return 
-
-   
-
 
 
 ################################################################################################
@@ -295,7 +313,7 @@ global_config = {}
 
 global_config = initConf()
 
-tts = TomTTS(global_config)
+tts = None #TomTTS(global_config)
 
 userList = {}
 

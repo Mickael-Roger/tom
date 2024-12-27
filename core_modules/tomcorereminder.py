@@ -14,9 +14,9 @@ class TomReminder:
     db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], "all")
     os.makedirs(db_path, exist_ok=True)
 
-    self.db_notifs = os.path.join(db_path, "reminders.sqlite")
+    self.db = os.path.join(db_path, "reminders.sqlite")
 
-    dbconn = sqlite3.connect(self.db_notifs)
+    dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
     cursor.execute('''
     create table if not exists notifications (
@@ -31,9 +31,10 @@ class TomReminder:
     ''')
     cursor.execute('''
     create table if not exists fcm_tokens (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        token TEXT PRIMARY KEY,
         username TEXT,
-        token TEXT
+        platform TEXT,
+        last_update DATETIME default current_date
     )
     ''')
     dbconn.commit()
