@@ -11,23 +11,37 @@ class TomReminder:
 
   def __init__(self, global_config, username) -> None:
 
-    db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], username)
+    db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], "all")
     os.makedirs(db_path, exist_ok=True)
 
-    self.db = os.path.join(db_path, "reminder.sqlite")
+    self.db_notifs = os.path.join(db_path, "reminders.sqlite")
 
-    dbconn = sqlite3.connect(self.db)
+    dbconn = sqlite3.connect(self.db_notifs)
     cursor = dbconn.cursor()
     cursor.execute('''
-    create table if not exists reminders (
+    create table if not exists notifications (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         datetime DATETIME default current_date,
         notification DATETIME,
+        sender TEXT,
+        recipient TEXT,
+        sent BOOLEAN DEFAULT 0,
         message TEXT
+    )
+    ''')
+    cursor.execute('''
+    create table if not exists fcm_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        token TEXT
     )
     ''')
     dbconn.commit()
     dbconn.close()
+
+    self.users = []
+    for user in global_config['users']:
+      self.users.append(user['username'])
 
     self.tools = [
       {
@@ -62,7 +76,7 @@ class TomReminder:
         "type": "function",
         "function": {
           "name": "tom_add_reminder",
-          "description": "Function to create a reminder. A reminder is a time-specific notification for the user. The purpose of this function is to prompt the user to perform a specific action at a given time. This is for tasks or events that need a one-time or time-sensitive follow-up. For example: 'Remind me to call my mom tomorrow.' or 'Remind me at 8 PM to go to sports.'",
+          "description": "Function to create a reminder. A reminder is a time-specific notification for the user. The purpose of this function is to prompt the user to perform a specific action at a given time. This is for tasks or events that need a one-time or time-sensitive follow-up. For example: 'Remind me to call my mom tomorrow.', 'Reminder Jennifer to go to school tommorow at 9am' or 'Remind me at 8 PM to go to sports.'",
           "strict": True,
           "parameters": {
             "type": "object",
@@ -71,12 +85,17 @@ class TomReminder:
                 "type": "string",
                 "description": f"The text of the reminder",
               },
+              "reminder_recipient": {
+                "type": "string",
+                "enum": self.users,
+                "description": f"Recipient of the reminder, could be the requester (me: {username}) or someone else.",
+              },
               "reminder_datetime": {
                 "type": "string",
                 "description": f"The datetime you need to remind me this reminder",
               },
             },
-            "required": ["reminder_text", "reminder_datetime"],
+            "required": ["reminder_text", "reminder_datetime", "reminder_recipient"],
             "additionalProperties": False,
           },
         },
@@ -91,11 +110,11 @@ class TomReminder:
         "responseContext": "Your response must be concise and in the form of a single sentence. You must not reply in list form. For example: 'You have 3 reminders: One for tommorrow about the grocery, another one for next  monday about going to school and a last about calling your mom next month'" 
       },
       "tom_delete_reminder": {
-        "function": functools.partial(self.reminder_add), 
+        "function": functools.partial(self.reminder_delete), 
         "responseContext": "" 
       },
       "tom_add_reminder": {
-        "function": functools.partial(self.reminder_delete), 
+        "function": functools.partial(self.reminder_add), 
         "responseContext": "" 
       },
     }

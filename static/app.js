@@ -43,6 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return 'speechSynthesis' in window;
     }
 
+
     // Activer/désactiver le bouton Send
     promptInput.addEventListener("input", () => {
         sendButton.disabled = !promptInput.value.trim();

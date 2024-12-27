@@ -8,6 +8,7 @@ import importlib.util
 import inspect
 import functools
 import sqlite3
+import pyfcm
 
 # Import core modules
 core_module_dir = './core_modules'
@@ -90,7 +91,6 @@ for filename in os.listdir(mod_dir):
 #                                                                                              #
 ################################################################################################
 class TomWebService:
-
 
   ####
   #
@@ -216,7 +216,72 @@ class TomWebService:
       return True
       
     raise cherrypy.HTTPRedirect("/auth")
+
+  ####
+  #
+  # /notifications.js
+  #
+  ####
+  @cherrypy.expose
+  @cherrypy.tools.allow(methods=['GET'])
+  @cherrypy.tools.json_out()
+  def notificationconfig(self):
+
+    apiKey = global_config['global']['firebase']['apiKey']
+    authDomain = global_config['global']['firebase']['authDomain']
+    projectId = global_config['global']['firebase']['projectId']
+    storageBucket = global_config['global']['firebase']['storageBucket']
+    messagingSenderId = global_config['global']['firebase']['messagingSenderId']
+    appId = global_config['global']['firebase']['appId']
+    vapidkey = global_config['global']['firebase']['vapidkey']
+
+    config = {
+      "firebaseConfig": {
+        "apiKey": apiKey,
+        "authDomain": authDomain,
+        "projectId": projectId,
+        "storageBucket": storageBucket,
+        "messagingSenderId": messagingSenderId,
+        "appId": appId,
+      },
+      "vapidKey": vapidkey
+    }
+    return config
+
+
+  ####
+  #
+  # /fcmtoken
+  #
+  ####
+  @cherrypy.expose
+  @cherrypy.tools.allow(methods=['POST'])
+  @cherrypy.tools.json_in()
+  def fcmtoken(self):
     
+    if not self.check_auth():
+       raise cherrypy.HTTPRedirect("/auth")
+
+    input_json = cherrypy.request.json
+
+    token = input_json.get('token')
+    username = cherrypy.session['username']
+
+    # Add or Update user token
+
+    db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], "all")
+    db_notifs = os.path.join(db_path, "reminders.sqlite")
+
+    dbconn = sqlite3.connect(db_notifs)
+    cursor = dbconn.cursor()
+    cursor.execute('DELETE FROM fcm_tokens WHERE username = ?', (username,))
+    cursor.execute('INSERT INTO fcm_tokens (username, token) VALUES (?, ?)', (username, token))
+    dbconn.commit()
+    dbconn.close()
+
+    return 
+
+   
 
 
 

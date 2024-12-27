@@ -227,6 +227,9 @@ class TomIdfm:
 #      },
     ]
 
+
+#    self.journey(departure='stop_area:IDFM:73731', arrival='2.3051858276889905;48.846734773306885', journey_datetime='20241226T110000')
+
     self.systemContext = ""
 
     self.functions = {
@@ -266,8 +269,6 @@ class TomIdfm:
 
 
   def list_stations(self):
-
-    print("OKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK")
 
     list_stations = []
 
@@ -394,8 +395,33 @@ class TomIdfm:
       if good_direction == 1:
         schedules.append({"departure_station_id": departure_station_id, "departure_station_name": departure_station_name, "final_destination_station_name": final_destination_station_name, "line_id": line_id, "line_name": line_name, "departure_datetime": departure_datetime,"stops": stops})
 
-
     return True, schedules
+
+
+  def journey(self, departure, arrival, journey_datetime):
+
+    params = {
+      "from": departure,
+      "to": arrival,
+      "date_time": journey_datetime,
+      "max_nb_journeys": 3,
+      "results": 5
+    }
+
+    # Requête API
+    ret, journeys = self.apiCall(f"/journeys", params=params)
+
+    if ret == False:
+      return False, f"Could not get routes: {journeys.status_code}"
+
+    print("Journey options:")
+    for journey in journeys.get("journeys", []):
+      print(f"Journey {journey['duration']} seconds")
+      for section in journey.get("sections", []):
+        print(section.keys())
+        print(f"  - {section['from']['name']} to {section['to']['name']}")
+
+
 
 
 

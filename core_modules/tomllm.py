@@ -10,6 +10,8 @@ import copy
 from openai import OpenAI
 # Mistral AI
 from mistralai import Mistral
+# Gemini
+import google.generativeai as Gemini
 
 
 
@@ -27,6 +29,11 @@ class TomLLM():
       self.llm_client = OpenAI(api_key=global_config['global']["openai"]["api"])
       self.llm = self.callOpenai
       self.llm_model = "gpt-4o-mini"
+
+    elif global_config['global']['llm'] == "gemini":
+      Gemini.configure(api_key=global_config['global']["gemini"]["api"])
+      self.llm = self.callGemini
+      self.llm_model = "gemini-1.5-flash"
 
     else:
       print(f"LLM {global_config['global']['llm']} not supported")
@@ -75,13 +82,6 @@ class TomLLM():
 
   def callOpenai(self, messages, tools=None):
 
-    print("--------------------------------")
-    print(messages)
-    print("++++++++++++++++++++++++++++++++")
-    print(tools)
-    print("--------------------------------")
-
-
     if tools: 
       response = self.llm_client.chat.completions.create(
         model = self.llm_model,
@@ -95,6 +95,22 @@ class TomLLM():
       )
 
     return True, response
+
+
+  def callGemini(self, messages, tools=None):
+
+    if tools: 
+      model = Gemini.GenerativeModel(model_name=self.llm_model, tools=tools)
+    else:
+      model = Gemini.GenerativeModel(model_name=self.llm_model)
+
+    response = model.start_chat().send_message(
+      messages = messages,
+    )
+
+    return True, response
+
+
 
 
 
@@ -255,10 +271,6 @@ class TomLLM():
   
           self.history.append(response.choices[0].message)
   
-          print("\n\n\n*******************************************************")
-          print(self.history)
-          print("********************************************************\n\n\n")
-  
           responseContext = {"functions": [], "rules": []}
   
           for tool_call in response.choices[0].message.tool_calls:
@@ -281,17 +293,12 @@ class TomLLM():
             #    return "Error while keeping our conversation"
               
   
-            print(self.functions.keys())
-  
             # End of memory
             res, function_result = self.functions[function_name]['function'](**function_params)
   
             if res is False:
               return "Error execution the function"
   
-  
-            print(res)
-            print(function_result)
 
             self.history.append({"role": 'tool', "content": json.dumps(function_result), "tool_call_id": tool_call.id})
             
@@ -302,183 +309,12 @@ class TomLLM():
   
           self.history = self.history + responseContext['rules']
   
-          print("\n\n\n********************** 2 *********************************")
-          print(self.history)
-          print("********************************************************\n\n\n")
-  
   
         else:
-  
-          print("\n\n\n********************** 3 *********************************")
-          print(response.choices[0].message.content)
-          print("********************************************************\n\n\n")
   
           return response.choices[0].message.content
   
       else:
         return "Error: Response choices is None"
-
-
-
-
-
-
-#startNewConversationTools = [
-#  {
-#    "type": "function",
-#    "function": {
-#        "description": "This function must be called to start a new conversation with the user. Must be called when the user say: 'Hey', 'Hi', 'Hi Tom', 'Hey Tom' or 'Change of topic' or 'Let\'s change the subject'",
-#        "name": "start_new_conversation",
-#        "parameters": {
-#        },
-#    },
-#  },
-#]
-
-
-
-
-#def processLLM(messages, tools, global_config):
-#
-#
-#
-#  llm_tools = startNewConversationTools
-#
-#  # Wee ned some tricks to handle the limitation of the maximum number of tools we can declare
-#  # This idea is to provide the history context + make a call that's not gonna be part of the history. This call will contains a json list of all functions (grouped by modules) and ask the LLM which modules does it needs to answer, then add all functions of these modules in the next (and real user requests. It's only ine function that is called (module_selection)). If the answer does not contains a call to this function. It means the LLM jus tprovide an answer without needs of function calling. In that case, we just return the answer, no need to perform the same query twice
-#
-#  available_tools = []
-#  modules_name_list = []
-#
-#  if tools is not None:
-#    for module, functions in tools.items():
-#      functions_list = []
-#      for function in functions:
-#        functions_list.append({"function_name": function['function']['name'], "function_description": function['function']['description']})
-#
-#      available_tools.append({"module_name": module, "functions": functions_list})
-#      modules_name_list.append(module)
-#
-#
-#    selection_tools = [
-#      {
-#        "type": "function",
-#        "function": {
-#          "name": "modules_needed_to_answer_user_prompt",
-#          "description": "Get information about a train station. For a train, subway or tram station, this function returns its ID, name, city and all the lines of the station",
-#          "strict": True,
-#          "parameters": {
-#            "type": "object",
-#            "properties": {
-#              "modules_name": {
-#                "type": "array",
-#                "items": {
-#                  "type": "string",
-#                  "enum": modules_name_list,
-#                },
-#                "description": f"List of module names",
-#              },
-#            },
-#            "required": ["modules_name"],
-#            "additionalProperties": False,
-#          },
-#        },
-#      },
-#    ]
-#
-#    tooling = json.dumps(available_tools)
-#    conversation = []
-#    # Here is a list of modules. For each module, you have the list of its functions.
-#    conversation.append({"role": "system", "content": f"Here is a list of modules. For each module, you have the list of its functions. Your role is to call the function 'modules_needed_to_answer_user_prompt' with the list of modules needed to provide me with the answer to my request.\n{tooling}"})
-#
-#
-#    # Create a message history with only 'user' and 'assistant' role messages
-#    for message in messages:
-#      if isinstance(message, dict):     
-#        if "role" in message.keys():
-#          if message['role'] in ["assistant", "user"]:
-#            conversation.append(message)
-#
-#
-#    print("-------- EXECUTE ---------", flush=True)
-#    print(conversation, flush=True)
-#    print("--------------", flush=True)
-#    print(llm_tools + selection_tools, flush=True)
-#    print("--------------", flush=True)
-#
-#
-#    if global_config['global']['llm'] == "mistral":
-#      response = mistralClient.chat.complete(
-#        model = mistralmodel,
-#        messages = conversation,
-#        tools = llm_tools + selection_tools,
-#        tool_choice = "auto",
-#      )
-#    elif global_config['global']['llm'] == "openai":
-#      response = openaiClient.chat.completions.create(
-#        model = openaimodel,
-#        messages = conversation,
-#        tools = llm_tools + selection_tools,
-#      )
-#    else:
-#      print("LLM not defined")
-#      return False, "LLM not defined"
-#
-#
-#    print(response)
-#
-#    exit(0)
-#
-#  
-#
-#
-#
-#
-#
-#
-#
-#
-#  print("-------- EXECUTE ---------", flush=True)
-#  print(messages, flush=True)
-#  print("--------------", flush=True)
-#
-#
-#  if tools: 
-#    if global_config['global']['llm'] == "mistral":
-#      response = mistralClient.chat.complete(
-#        model = mistralmodel,
-#        messages = messages,
-#        tools = llm_tools + tools,
-#        tool_choice = "auto",
-#      )
-#    elif global_config['global']['llm'] == "openai":
-#      response = openaiClient.chat.completions.create(
-#        model = openaimodel,
-#        messages = messages,
-#        tools = llm_tools + tools,
-#      )
-#    else:
-#      print("LLM not defined")
-#      return False, "LLM not defined"
-#  else:
-#    if global_config['global']['llm'] == "mistral":
-#      response = mistralClient.chat.complete(
-#        model = mistralmodel,
-#        messages = messages
-#      )
-#    elif global_config['global']['llm'] == "openai":
-#      response = openaiClient.chat.completions.create(
-#        model = openaimodel,
-#        messages = messages
-#      )
-#    else:
-#      print("LLM not defined")
-#      return False, "LLM not defined"
-#
-#  print("-------- RESPONSE ---------", flush=True)
-#  print(response, flush=True)
-#  print("--------------", flush=True)
-#
-#  return True, response
 
 

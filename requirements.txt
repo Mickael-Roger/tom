@@ -8,3 +8,5 @@ beautifulsoup4
 TTS
 anki
 timezonefinder
+google-generativeai
+pyfcm
