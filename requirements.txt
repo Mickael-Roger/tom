@@ -9,4 +9,4 @@ TTS
 anki
 timezonefinder
 google-generativeai
-pyfcm
+firebase_admin

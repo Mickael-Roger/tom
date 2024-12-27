@@ -1,6 +1,10 @@
 import sqlite3
 import os
 import functools
+import firebase_admin
+from firebase_admin import credentials, messaging
+import threading
+import time
 
 ################################################################################################
 #                                                                                              #
@@ -9,12 +13,17 @@ import functools
 ################################################################################################
 class TomReminder:
 
+  _update_thread_started = False
+
   def __init__(self, global_config, username) -> None:
 
     db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], "all")
     os.makedirs(db_path, exist_ok=True)
 
     self.db = os.path.join(db_path, "reminders.sqlite")
+    self.creds = global_config['global']['firebase']['sa_token_file']
+
+    self.username = username
 
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
@@ -93,7 +102,7 @@ class TomReminder:
               },
               "reminder_datetime": {
                 "type": "string",
-                "description": f"The datetime you need to remind me this reminder",
+                "description": f"The datetime you need to remind me this reminder. Must be in the form of 'YYYY-MM-DD hh:mm:ss'",
               },
             },
             "required": ["reminder_text", "reminder_datetime", "reminder_recipient"],
@@ -120,13 +129,78 @@ class TomReminder:
       },
     }
 
+    if not TomReminder._update_thread_started:
+      TomReminder._update_thread_started = True
+      self.thread = threading.Thread(target=self.notify)
+      self.thread.daemon = True  # Allow the thread to exit when the main program exits
+      self.thread.start()
+    
+
+  def notify(self):
+
+    while True:
+      print("Check for notifications")
+      try:
+        dbconn = sqlite3.connect(self.db)
+        cursor = dbconn.cursor()
+        cursor.execute("SELECT id, message, sender, recipient FROM notifications WHERE sent = 0 and notification < datetime('now')")
+        notifications = cursor.fetchall()
+        cursor.execute("SELECT username, token FROM fcm_tokens")
+        tokens = cursor.fetchall()
+        dbconn.close()
+  
+        token_list = {}
+        for token in tokens:
+          username = token[0]
+          if username not in token_list.keys():
+            token_list[username] = []
+          token_list[username].append(token[1])
+  
+        if notifications:
+          cred = credentials.Certificate(self.creds)
+          firebase_admin.initialize_app(cred)
+  
+          for notification in notifications:
+            id = notification[0]
+            message = notification[0]
+            sender = notification[0]
+            recipient = notification[0]
+  
+            if sender != recipient:
+              title = f"Tom Reminder from {sender}"
+            else:
+              title = f"Tom Reminder"
+  
+            for device in token_list[recipient]:
+              notif = messaging.Message(
+                data={
+                  "title": title,
+                  "body": message,
+                },
+                token=device,
+              )
+              response = messaging.send(message)
+  
+              dbconn = sqlite3.connect(self.db)
+              cursor = dbconn.cursor()
+              cursor.execute("UPDATE notifications SET sent = 1 WHERE id = ?", (id,))
+              dbconn.commit()
+              dbconn.close()
+  
+              print(f"Successfully sent message: {response}")
+  
+      except Exception as e:
+        print(f"Error in notify: {e}")
+
+      time.sleep(60)
 
 
-  def reminder_add(self, reminder_text, reminder_datetime):
+
+  def reminder_add(self, reminder_text, reminder_datetime, reminder_recipient):
     try:
       dbconn = sqlite3.connect(self.db)
       cursor = dbconn.cursor()
-      cursor.execute("INSERT INTO reminders (notification, message) VALUES (?, ?)", (reminder_datetime, reminder_text))
+      cursor.execute("INSERT INTO notifications (notification, message, recipient, sender) VALUES (?, ?, ?, ?)", (reminder_datetime, reminder_text, reminder_recipient, self.username))
       dbconn.commit()
       dbconn.close()
 
@@ -140,7 +214,7 @@ class TomReminder:
     try:
       dbconn = sqlite3.connect(self.db)
       cursor = dbconn.cursor()
-      cursor.execute("DELETE FROM reminders WHERE id = ?", (reminder_id))
+      cursor.execute("DELETE FROM notifications WHERE id = ?", (reminder_id))
       dbconn.commit()
       dbconn.close()
 
@@ -155,7 +229,7 @@ class TomReminder:
     try:
       dbconn = sqlite3.connect(self.db)
       cursor = dbconn.cursor()
-      cursor.execute("SELECT id, notification, message FROM reminders")
+      cursor.execute("SELECT id, notification, message FROM notifications WHERE recipient = ?", (self.username,))
       values = cursor.fetchall()
       dbconn.close()
 

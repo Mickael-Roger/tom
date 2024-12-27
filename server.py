@@ -8,7 +8,6 @@ import importlib.util
 import inspect
 import functools
 import sqlite3
-import pyfcm
 
 # Import core modules
 core_module_dir = './core_modules'
@@ -203,7 +202,7 @@ class TomWebService:
       if user['username'] == username and user['password'] == password:
         cherrypy.session['username'] = username
         print(f"History cleaning for user {username}")
-        userList[username]['history'] = []
+        userList[cherrypy.session['username']].reset()
 
         raise cherrypy.HTTPRedirect("/index")
 
@@ -313,7 +312,7 @@ global_config = {}
 
 global_config = initConf()
 
-tts = None #TomTTS(global_config)
+tts = TomTTS(global_config)
 
 userList = {}
 
