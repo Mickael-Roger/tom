@@ -139,7 +139,7 @@ class TomIdfm:
             "properties": {
               "station_id": {
                 "type": "string",
-                "description": f"ID of the station.",
+                "description": f"ID of the train station. It's a station_id value that could be retreive using list_train_stations function.",
               },
             },
             "required": ["station_id"],
@@ -166,11 +166,11 @@ class TomIdfm:
               },
               "departure_station_id": {
                 "type": "string",
-                "description": f"Departure train station ID.",
+                "description": f"Departure train station_id. It's a station_id value that could be retreive using list_train_stations function.",
               },
               "arrival_station_id": {
                 "type": "string",
-                "description": f"Arrival train station ID.",
+                "description": f"Arrival train station_id. It's a station_id value that could be retreive using list_train_stations function.",
               },
             },
             "required": ["date", "line_id", "departure_station_id", "arrival_station_id"],
@@ -286,6 +286,7 @@ class TomIdfm:
       station_city = station[2]
       list_stations.append({"station_id": station_id, "station_name": station_name, "station_city": station_city})
 
+    print(list_stations)
     return True, list_stations
 
 
@@ -297,21 +298,24 @@ class TomIdfm:
     cursor.execute('SELECT id, name, city from stations WHERE id = ?', (station_id,))
     
     station = cursor.fetchone()
-    station_id = station[0]
-    station_name = station[1]
-    station_city = station[2]
+    if station:
+      station_id = station[0]
+      station_name = station[1]
+      station_city = station[2]
 
-    cursor.execute('SELECT lines.id, lines.name, lines.commercial_name, lines.type FROM lines, station_line WHERE lines.id=station_line.line_id AND station_line.station_id = ?', (station_id, ))
-    lines = cursor.fetchall()
+      cursor.execute('SELECT lines.id, lines.name, lines.commercial_name, lines.type FROM lines, station_line WHERE lines.id=station_line.line_id AND station_line.station_id = ?', (station_id, ))
+      lines = cursor.fetchall()
 
-    dbconn.close()
+      dbconn.close()
 
 
-    stations_lines = []
-    for line in lines:
-      stations_lines.append({"line_id": line[0], "line_name": line[1], "line_commercial_name": line[2], "line_type": line[3]})
+      stations_lines = []
+      for line in lines:
+        stations_lines.append({"line_id": line[0], "line_name": line[1], "line_commercial_name": line[2], "line_type": line[3]})
 
-    return True, {"station_id": station_id, "station_name": station_name, "station_city": station_city, "lines": stations_lines}
+      return True, {"station_id": station_id, "station_name": station_name, "station_city": station_city, "lines": stations_lines}
+    else:
+      return False, f"Station with id {station_id} not found"
 
 
   def apiCall(self, url, params=None):

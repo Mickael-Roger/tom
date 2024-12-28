@@ -54,31 +54,36 @@ document.addEventListener("DOMContentLoaded", () => {
         sendMessage();
     });
 
-    // Fonction pour envoyer le message
+
     function sendMessage() {
         const message = promptInput.value.trim();
         if (!message) return;
-
+    
         const selectedLanguage = languageSelect.value; // 'fr' ou 'en'
         addMessageToChat("user", message);
-
+    
         const payload = {
             request: message,
             lang: selectedLanguage,
             position: userPosition, // Ajout de la position GPS
             tts: isTTSAvailable() // Ajout du champ tts
         };
-
+    
         fetch("/process", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.response) {
                 addMessageToChat("bot", data.response);
-
+    
                 // Lecture de l'audio si le champ 'voice' est présent et tts est false
                 if (data.voice && !payload.tts) {
                     playAudioFromBase64(data.voice);
@@ -90,9 +95,23 @@ document.addEventListener("DOMContentLoaded", () => {
         })
         .catch(error => {
             console.error("Erreur :", error);
-            addMessageToChat("bot", "Une erreur est survenue.");
+            // Call /reset on failure
+            fetch("/reset", { method: "POST" })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Add failure message to chat based on selected language
+                        const failureMessage = selectedLanguage === "en" ? "Failure" : "Echec";
+                        addMessageToChat("bot", failureMessage);
+                    } else {
+                        console.error("Failed to reset:", data.message);
+                    }
+                })
+                .catch(resetError => {
+                    console.error("Error during reset:", resetError);
+                });
         });
-
+    
         promptInput.value = "";
         sendButton.disabled = true;
     }

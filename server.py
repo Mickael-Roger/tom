@@ -170,13 +170,19 @@ class TomWebService:
     position = input_json.get('position')
     localTTS = input_json.get('tts')
 
-    response = userList[cherrypy.session['username']].processRequest(input=user_input, lang=lang, position=position)
+    ret, response = userList[cherrypy.session['username']].processRequest(input=user_input, lang=lang, position=position)
 
-    voice= None
-    if not localTTS:
-      voice = userList[username]['tts'].infere(response, lang)
+    if ret:
 
-    return {"response": response, "voice": voice} 
+      voice= None
+      if not localTTS:
+        voice = userList[username]['tts'].infere(response, lang)
+
+      return {"response": response, "voice": voice} 
+
+    else:
+      raise cherrypy.HTTPError(500, response)
+
 
 
   ####

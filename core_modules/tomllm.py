@@ -35,6 +35,11 @@ class TomLLM():
       self.llm = self.callGemini
       self.llm_model = "gemini-1.5-flash"
 
+    elif global_config['global']['llm'] == "deepseek":
+      self.llm_client = OpenAI(api_key=global_config['global']["deepseek"]["api"], base_url="https://api.deepseek.com")
+      self.llm = self.callOpenai
+      self.llm_model = "deepseek-chat"
+
     else:
       print(f"LLM {global_config['global']['llm']} not supported")
       exit(-1)
@@ -82,6 +87,8 @@ class TomLLM():
 
   def callOpenai(self, messages, tools=None):
 
+    print(messages)
+
     if tools: 
       response = self.llm_client.chat.completions.create(
         model = self.llm_model,
@@ -94,6 +101,8 @@ class TomLLM():
         messages = messages,
       )
 
+    print(response)
+
     return True, response
 
 
@@ -105,7 +114,7 @@ class TomLLM():
       model = Gemini.GenerativeModel(model_name=self.llm_model)
 
     response = model.start_chat().send_message(
-      messages = messages,
+      messages,
     )
 
     return True, response
@@ -203,7 +212,7 @@ class TomLLM():
     conversation.append({"role": "system", "content": f"{svc_context}"})
 
     tooling = json.dumps(available_tools)
-    conversation.append({"role": "system", "content": f"Here is a list of modules. For each module, you have the its description. Your role is to call the function 'modules_needed_to_answer_user_prompt' with the list of modules needed to provide me the answer to my request.\n{tooling}"})
+    conversation.append({"role": "system", "content": f"Here is a list of modules. For each module, you have the its description. Your role is to call the function 'modules_needed_to_answer_user_prompt' with the list of modules needed to provide me the answer to my request. 'module_name' is not a name of a function, it's a value of the parameter of the 'modules_needed_to_answer_prompt'. You must never use 'module_name' as a function name.\n{tooling}"})
 #
 #
     # Create a message history with only 'user' and 'assistant' role messages
@@ -223,7 +232,7 @@ class TomLLM():
     if triage.choices is not None:
       if triage.choices[0].message.content is not None:
         self.history.append({"role": triage.choices[0].message.role, "content": triage.choices[0].message.content})
-        return triage.choices[0].message.content
+        return True, triage.choices[0].message.content
 
       
       if triage.choices[0].message.tool_calls is not None:
@@ -234,10 +243,9 @@ class TomLLM():
               load_modules.append(mod)
 
         print("Load: " + str(load_modules))
-        print(type(load_modules))
 
     else: 
-      return "Error, no response from LLM"
+      return False, "Error, no response from LLM"
 
   
 
@@ -257,9 +265,9 @@ class TomLLM():
       ret, response = self.llm(messages=self.history, tools=tools)
   
       if not ret:
-        return f"Error: {response}"
+        return False, f"Error: {response}"
       elif response is None:
-        return f"Error: No response from LLM"
+        return False, f"Error: No response from LLM"
   
   
       if response.choices is not None:
@@ -297,7 +305,7 @@ class TomLLM():
             res, function_result = self.functions[function_name]['function'](**function_params)
   
             if res is False:
-              return "Error execution the function"
+              return False, "Error execution the function"
   
 
             self.history.append({"role": 'tool', "content": json.dumps(function_result), "tool_call_id": tool_call.id})
@@ -312,9 +320,9 @@ class TomLLM():
   
         else:
   
-          return response.choices[0].message.content
+          return True, response.choices[0].message.content
   
       else:
-        return "Error: Response choices is None"
+        return False, "Error: Response choices is None"
 
 
