@@ -101,9 +101,9 @@ class TomKwyk:
 
   def run_update(self):
     while True:
+      time.sleep(random.randint(3, 10) * 3600)
       print("Kwyk: Run auto update")
       self.update()
-      time.sleep(random.randint(3, 10) * 3600)
 
 
 

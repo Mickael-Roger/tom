@@ -131,6 +131,8 @@ class TomReminder:
 
     if not TomReminder._update_thread_started:
       TomReminder._update_thread_started = True
+      self.cred = credentials.Certificate(self.creds)
+      firebase_admin.initialize_app(self.cred)
       self.thread = threading.Thread(target=self.notify)
       self.thread.daemon = True  # Allow the thread to exit when the main program exits
       self.thread.start()
@@ -145,26 +147,24 @@ class TomReminder:
         cursor = dbconn.cursor()
         cursor.execute("SELECT id, message, sender, recipient FROM notifications WHERE sent = 0 and notification < datetime('now')")
         notifications = cursor.fetchall()
-        cursor.execute("SELECT username, token FROM fcm_tokens")
+        cursor.execute("SELECT username, token FROM fcm_tokens WHERE platform = 'android'")
         tokens = cursor.fetchall()
         dbconn.close()
   
+
         token_list = {}
         for token in tokens:
           username = token[0]
           if username not in token_list.keys():
             token_list[username] = []
           token_list[username].append(token[1])
-  
+
         if notifications:
-          cred = credentials.Certificate(self.creds)
-          firebase_admin.initialize_app(cred)
-  
           for notification in notifications:
             id = notification[0]
-            message = notification[0]
-            sender = notification[0]
-            recipient = notification[0]
+            message = notification[1]
+            sender = notification[2]
+            recipient = notification[3]
   
             if sender != recipient:
               title = f"Tom Reminder from {sender}"
@@ -179,15 +179,15 @@ class TomReminder:
                 },
                 token=device,
               )
-              response = messaging.send(message)
+              response = messaging.send(notif)
   
-              dbconn = sqlite3.connect(self.db)
-              cursor = dbconn.cursor()
-              cursor.execute("UPDATE notifications SET sent = 1 WHERE id = ?", (id,))
-              dbconn.commit()
-              dbconn.close()
+            dbconn = sqlite3.connect(self.db)
+            cursor = dbconn.cursor()
+            cursor.execute("UPDATE notifications SET sent = 1 WHERE id = ?", (id,))
+            dbconn.commit()
+            dbconn.close()
   
-              print(f"Successfully sent message: {response}")
+            print(f"Successfully sent message: {message}")
   
       except Exception as e:
         print(f"Error in notify: {e}")
@@ -229,7 +229,7 @@ class TomReminder:
     try:
       dbconn = sqlite3.connect(self.db)
       cursor = dbconn.cursor()
-      cursor.execute("SELECT id, notification, message FROM notifications WHERE recipient = ?", (self.username,))
+      cursor.execute("SELECT id, notification, message FROM notifications WHERE sent = 0 AND recipient = ?", (self.username,))
       values = cursor.fetchall()
       dbconn.close()
 

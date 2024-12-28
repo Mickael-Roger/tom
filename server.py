@@ -247,14 +247,24 @@ class TomWebService:
     }
     return config
 
+
   @cherrypy.expose
   def firebase_messaging_sw_js(self):
       # Path to your JavaScript file
       js_file_path = './static/firebase-messaging-sw.js'
 
+      apiKey = global_config['global']['firebase']['apiKey']
+      authDomain = global_config['global']['firebase']['authDomain']
+      projectId = global_config['global']['firebase']['projectId']
+      storageBucket = global_config['global']['firebase']['storageBucket']
+      messagingSenderId = global_config['global']['firebase']['messagingSenderId']
+      appId = global_config['global']['firebase']['appId']
+
+      config = f"""firebaseConfig={{"apiKey": "{apiKey}", "authDomain": "{authDomain}", "projectId": "{projectId}", "storageBucket": "{storageBucket}", "messagingSenderId": "{messagingSenderId}", "appId": "{appId}"}};"""
+
       try:
         with open(js_file_path, 'rb') as js_file:
-            js_content = js_file.read()
+          js_content = js_file.read().replace('firebaseConfig = {};'.encode(), config.encode())
 
         # Set the Content-Type header to application/javascript
         cherrypy.response.headers['Content-Type'] = 'application/javascript'

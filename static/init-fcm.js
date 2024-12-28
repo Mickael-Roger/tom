@@ -95,13 +95,14 @@ fetch('/notificationconfig')
     registerServiceWorkerAndGetToken();
 
     messaging.onMessage((payload) => {
-        console.log('Message received. ', payload);
-        const notificationTitle = payload.data.title;
-        const notificationOptions = {
-            body: payload.data.body,
-            icon: '/static/tom-192x192.png'
-        };
-        new Notification(notificationTitle, notificationOptions);
+      alert(payload.data.body);
+    //    console.log('Message received. ', payload);
+    //    const notificationTitle = payload.data.title;
+    //    const notificationOptions = {
+    //        body: payload.data.body,
+    //        icon: '/static/tom-192x192.png'
+    //    };
+    //    new Notification(notificationTitle, notificationOptions);
     });
 })
 .catch(error => {
