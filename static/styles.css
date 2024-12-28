@@ -110,36 +110,53 @@ body {
 .send-button:hover:not(:disabled) {
     background-color: #218838;
 }
-
-/* Speak and Reset Buttons */
-#speak-button,
-#reset-button {
-    width: 100%;
-    padding: 12px;
-    font-size: 1rem;
-    color: #fff;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    margin-bottom: 10px;
-    box-sizing: border-box;
-}
-
-#speak-button {
+/* Speak Button */
+.speak-button {
+    width: 120px; /* Twice the original size */
+    height: 120px; /* Twice the original size */
+    border-radius: 50%; /* Make it round */
     background-color: #007bff;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 10px; /* Center the button */
 }
 
-#speak-button:hover {
+.speak-button:hover {
     background-color: #0069d9;
 }
 
-#reset-button {
-    background-color: #dc3545;
+/* Microphone Icon */
+.microphone-icon {
+    width: 48px; /* Twice the original size */
+    height: 48px; /* Twice the original size */
 }
 
-#reset-button:hover {
+/* Reset Button */
+.reset-button {
+    position: fixed; /* Fixed position */
+    bottom: 20px; /* Position at the bottom */
+    left: 20px; /* Position on the left */
+    width: 80px; /* Width of the button */
+    height: 40px; /* Height of the button */
+    border-radius: 5px; /* Reduced border radius */
+    background-color: #dc3545;
+    border: none;
+    color: #fff;
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000; /* Ensure it's above other elements */
+}
+
+.reset-button:hover {
     background-color: #c82333;
 }
+
 
 /* Gear Icon */
 .gear-icon {
