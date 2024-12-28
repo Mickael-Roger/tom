@@ -30,15 +30,15 @@ class TomLLM():
       self.llm = self.callOpenai
       self.llm_model = "gpt-4o-mini"
 
-    elif global_config['global']['llm'] == "gemini":
-      Gemini.configure(api_key=global_config['global']["gemini"]["api"])
-      self.llm = self.callGemini
-      self.llm_model = "gemini-1.5-flash"
-
-    elif global_config['global']['llm'] == "deepseek":
-      self.llm_client = OpenAI(api_key=global_config['global']["deepseek"]["api"], base_url="https://api.deepseek.com")
-      self.llm = self.callOpenai
-      self.llm_model = "deepseek-chat"
+#    elif global_config['global']['llm'] == "gemini":
+#      Gemini.configure(api_key=global_config['global']["gemini"]["api"])
+#      self.llm = self.callGemini
+#      self.llm_model = "gemini-1.5-flash"
+#
+#    elif global_config['global']['llm'] == "deepseek":
+#      self.llm_client = OpenAI(api_key=global_config['global']["deepseek"]["api"], base_url="https://api.deepseek.com")
+#      self.llm = self.callOpenai
+#      self.llm_model = "deepseek-chat"
 
     else:
       print(f"LLM {global_config['global']['llm']} not supported")
@@ -81,13 +81,33 @@ class TomLLM():
         model = self.llm_model,
         messages = messages
       )
+        
+    values = {}
 
-    return True, response
+    if response:
+      if response.choices:
+        values["finish_reason"] = response.choices[0].finish_reason
+        if response.choices[0].message:
+          values["role"] = response.choices[0].message.role
+          values["content"] = response.choices[0].message.content
+          values["tool_calls"] = response.choices[0].message.tool_calls
+
+    if not values:
+      return False, f"No response from LLM"
+
+    if values["finish_reason"] not in ["tool_calls", "stop"]:
+      return False, f"finish reason: {values['finish_reason']}"
+
+    return True, values
 
 
   def callOpenai(self, messages, tools=None):
 
+    print("---------1----------")
     print(messages)
+    print("---------1----------")
+    print(tools)
+    print("---------1----------")
 
     if tools: 
       response = self.llm_client.chat.completions.create(
@@ -101,9 +121,27 @@ class TomLLM():
         messages = messages,
       )
 
-    print(response)
+    values = {}
 
-    return True, response
+    if response:
+      if response.choices:
+        values["finish_reason"] = response.choices[0].finish_reason
+        if response.choices[0].message:
+          values["role"] = response.choices[0].message.role
+          values["content"] = response.choices[0].message.content
+          values["tool_calls"] = response.choices[0].message.tool_calls
+
+    if not values:
+      return False, f"No response from LLM"
+
+    if values["finish_reason"] not in ["tool_calls", "stop"]:
+      return False, f"finish reason: {values['finish_reason']}"
+
+    print("---------2----------")
+    print(values)
+    print("---------2----------")
+
+    return True, values
 
 
   def callGemini(self, messages, tools=None):
@@ -225,18 +263,14 @@ class TomLLM():
 
     ret, triage = self.llm(messages=conversation, tools=triage_tools)
 
+    if ret:
+      if triage["finish_reason"] == "stop":
+        self.history.append({"role": triage["role"], "content": triage["content"]})
+        return True, triage["content"]
 
-    load_modules= []
-
-    # No more thing to process, just return the answer
-    if triage.choices is not None:
-      if triage.choices[0].message.content is not None:
-        self.history.append({"role": triage.choices[0].message.role, "content": triage.choices[0].message.content})
-        return True, triage.choices[0].message.content
-
-      
-      if triage.choices[0].message.tool_calls is not None:
-        for tool_call in triage.choices[0].message.tool_calls:
+      elif triage["finish_reason"] == "tool_calls":
+        load_modules= []
+        for tool_call in triage['tool_calls']:
           if tool_call.function.name.find("modules_needed_to_answer_user_prompt") != -1:    # Probably bad prompt, but sometimes it calls 'module_name.modules_needed_to_answer_user_prompt'
             mods = json.loads(tool_call.function.arguments)
             for mod in mods['modules_name']:
@@ -244,85 +278,76 @@ class TomLLM():
 
         print("Load: " + str(load_modules))
 
+
+        tools = []
+        for mod in list(set(load_modules)):
+          tools = tools + self.services[mod]['tools']
+
+        print("Tools: " + str(tools))
+  
+        while True:
+          
+          ret, response = self.llm(messages=self.history, tools=tools)
+  
+          if not ret:
+            return False, f"Error: {response}"
+  
+          if response["finish_reason"] == "stop":
+            self.history.append({"role": response["role"], "content": response["content"]})
+            return True, response["content"]
+
+  
+          elif response["finish_reason"] == "tool_calls":
+ 
+            self.history.append({"role": response["role"], "tool_calls": response["tool_calls"]})
+  
+            responseContext = {"functions": [], "rules": []}
+  
+            for tool_call in response["tool_calls"]:
+  
+              function_name = tool_call.function.name
+              function_params = json.loads(tool_call.function.arguments)
+  
+              print("Call: " + str(function_name) + " with " + str(function_params))
+  
+                # Memory
+                #if function_name == "tom_keep_current_conversation_in_memory":
+                #  res, msg = userList[username]['services']['memory'].history_keep(userList[username]['history'], username)
+  
+                #  if res:
+                #    userList[username].reset()
+                #    return msg
+                #  else:
+                #    return "Error while keeping our conversation"
+                  
+  
+                # End of memory
+              res, function_result = self.functions[function_name]['function'](**function_params)
+  
+              if res is False:
+                self.history.append({"role": 'tool', "content": "Error", "tool_call_id": tool_call.id})
+                return False, f"Error while executing the function {function_name}"
+  
+
+              self.history.append({"role": 'tool', "content": json.dumps(function_result), "tool_call_id": tool_call.id})
+                
+              # TODODODODODDODODO
+              if function_name not in responseContext['functions']:
+                responseContext['functions'].append(function_name)
+                responseContext['rules'].append({"role": "system", "content": self.functions[function_name]['responseContext']})
+              
+  
+            self.history = self.history + responseContext['rules']
+
+          else:
+            return False, "Bad finish reason"
+
+      else:
+        return False, f"Bad triage"
+  
+  
     else: 
       return False, "Error, no response from LLM"
 
-  
-
-    # Triage:
-    #  Add the triage prompt
-    #   -> Response without any fonction calls: Return response
-    #   -> Add the function calling for modules: Continue with the list of modules until no response
-
-    tools = []
-    for mod in list(set(load_modules)):
-      tools = tools + self.services[mod]['tools']
-
-    print("Tools: " + str(tools))
-  
-    while True:
-      
-      ret, response = self.llm(messages=self.history, tools=tools)
-  
-      if not ret:
-        return False, f"Error: {response}"
-      elif response is None:
-        return False, f"Error: No response from LLM"
-  
-  
-      if response.choices is not None:
-  
-        if response.choices[0].message.content is not None:
-          self.history.append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
-  
-        if response.choices[0].message.tool_calls is not None:
-  
-          self.history.append(response.choices[0].message)
-  
-          responseContext = {"functions": [], "rules": []}
-  
-          for tool_call in response.choices[0].message.tool_calls:
-  
-            #tool_call = response.choices[0].message.tool_calls[0]
-  
-            function_name = tool_call.function.name
-            function_params = json.loads(tool_call.function.arguments)
-  
-            print("Call: " + str(function_name) + " with " + str(function_params))
-  
-            # Memory
-            #if function_name == "tom_keep_current_conversation_in_memory":
-            #  res, msg = userList[username]['services']['memory'].history_keep(userList[username]['history'], username)
-  
-            #  if res:
-            #    userList[username].reset()
-            #    return msg
-            #  else:
-            #    return "Error while keeping our conversation"
-              
-  
-            # End of memory
-            res, function_result = self.functions[function_name]['function'](**function_params)
-  
-            if res is False:
-              return False, "Error execution the function"
-  
-
-            self.history.append({"role": 'tool', "content": json.dumps(function_result), "tool_call_id": tool_call.id})
-            
-            # TODODODODODDODODO
-            if function_name not in responseContext['functions']:
-              responseContext['functions'].append(function_name)
-              responseContext['rules'].append({"role": "system", "content": self.functions[function_name]['responseContext']})
-  
-          self.history = self.history + responseContext['rules']
-  
-  
-        else:
-  
-          return True, response.choices[0].message.content
-  
-      else:
-        return False, "Error: Response choices is None"
 
 
