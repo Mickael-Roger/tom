@@ -220,9 +220,6 @@ body {
     color: #fff;
 }
 
-.config-item:hover {
-    background-color: #ddd;
-}
 
 /* Auto-submit Box */
 #auto-submit-config {
