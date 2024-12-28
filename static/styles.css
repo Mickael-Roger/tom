@@ -1,44 +1,51 @@
-/* Style général */
+/* General Styles */
 body {
     font-family: Arial, sans-serif;
     margin: 0;
-    margin-top: 10px;
     padding: 0;
     box-sizing: border-box;
     background-color: #f4f4f9;
+    height: 100vh; /* Full viewport height */
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
-.container {
-    width: 90%;
-    max-width: 600px;
-    margin: 80px auto 20px; /* Marge de 80px en haut */
+/* Chat Container */
+.chat-container {
+    width: 100%;
+    max-width: 100%;
+    height: 100vh; /* Full viewport height */
     background: #fff;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    box-sizing: border-box;
 }
 
-h1 {
-    margin-bottom: 10px;
-    font-size: 1.8rem;
-    text-align: center;
-    color: #333;
+/* Fixed width for non-smartphone browsers */
+@media (min-width: 768px) {
+    .chat-container {
+        width: 600px; /* Fixed width */
+        height: 90vh; /* 90% of viewport height */
+        max-height: 800px; /* Maximum height */
+        border-radius: 8px; /* Rounded corners */
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); /* Add shadow */
+    }
 }
 
+/* Chat Box */
 #chat-box {
-    width: 80%;
-    min-width: 300px;
-    height: 300px;
-    margin: 0 auto 15px;
+    flex: 1;
     overflow-y: auto;
     border: 1px solid #ddd;
     background-color: #fafafa;
     padding: 10px;
     border-radius: 8px;
-    display: flex;
-    flex-direction: column;
+    margin-bottom: 10px;
 }
 
+/* Messages */
 .message {
     margin: 5px 0;
     padding: 8px 12px;
@@ -61,61 +68,61 @@ h1 {
     margin-right: auto;
 }
 
-input[type="text"] {
-    width: 80%;
-    min-width: 250px;
-    padding: 10px;
-    margin: 0 auto 10px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    font-size: 1rem;
-    display: block;
-}
-
-.options {
-    display: flex;
-    justify-content: space-between;
-    width: 80%;
-    min-width: 250px;
-    margin: 0 auto 15px;
-}
-
-select {
-    width: 48%;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    font-size: 1rem;
-}
-
-label {
+/* Input Container */
+.input-container {
     display: flex;
     align-items: center;
-    font-size: 0.9rem;
-    color: #555;
+    gap: 10px; /* Space between input and button */
+    margin-bottom: 10px;
 }
 
-button {
-    width: 80%;
-    min-width: 250px;
+/* Prompt Input */
+.prompt-input {
+    flex: 1; /* Take up remaining space */
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 1rem;
+    resize: none; /* Prevent resizing */
+    height: 60px; /* Two lines height */
+    box-sizing: border-box;
+}
+
+/* Send Button */
+.send-button {
+    padding: 10px 15px;
+    font-size: 1.5rem;
+    color: #fff;
+    background-color: #28a745;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.send-button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+.send-button:hover:not(:disabled) {
+    background-color: #218838;
+}
+
+/* Speak and Reset Buttons */
+#speak-button,
+#reset-button {
+    width: 100%;
     padding: 12px;
     font-size: 1rem;
     color: #fff;
     border: none;
     border-radius: 5px;
     cursor: pointer;
-    margin: 0 auto 10px;
-    display: block;
-    transition: background-color 0.3s;
-    text-align: center;
-}
-
-#send-button {
-    background-color: #28a745;
-}
-
-#send-button:hover {
-    background-color: #218838;
+    margin-bottom: 10px;
+    box-sizing: border-box;
 }
 
 #speak-button {
@@ -126,57 +133,64 @@ button {
     background-color: #0069d9;
 }
 
-button:disabled {
-    background-color: #ccc;
-    cursor: not-allowed;
-}
-
-/* Requête Media pour les petits écrans (Mobile uniquement) */
-@media (max-width: 768px) {
-    .container {
-        width: 95%;
-        margin: 60px auto 20px; /* Réduction de la marge pour petits écrans */
-        padding: 15px;
-    }
-
-    h1 {
-        font-size: 1.5rem;
-    }
-
-    input[type="text"], select {
-        font-size: 0.9rem;
-        padding: 8px;
-    }
-
-    button {
-        font-size: 1.4rem; /* Agrandir la taille du texte sur mobile */
-        padding: 22px; /* Augmenter la hauteur des boutons */
-    }
-
-    #send-button, #speak-button {
-        min-height: 60px; /* Augmenter la hauteur spécifique des boutons */
-        margin-bottom: 15px; /* Ajouter plus d'espace vertical entre les deux boutons */
-    }
-}
-
-/* Style pour le bouton Reset */
 #reset-button {
-    background-color: #dc3545; /* Couleur rouge */
-    min-height: 60px; /* Même hauteur que les autres boutons */
-    margin-bottom: 20px; /* Ajouter un espace plus grand entre les boutons */
-    font-size: 1.4rem; /* Agrandir la taille du texte */
-    padding: 22px; /* Augmenter la hauteur */
-    width: 50%; /* Largeur égale à la moitié du bouton Speak */
-    margin: 0 auto; /* Centrer horizontalement */
-    display: block; /* Faire du bouton un élément de bloc pour l'aligner correctement */
+    background-color: #dc3545;
 }
 
 #reset-button:hover {
-    background-color: #c82333; /* Couleur rouge plus foncée au survol */
+    background-color: #c82333;
 }
 
-button:disabled {
-    background-color: #ccc;
-    cursor: not-allowed;
+/* Gear Icon */
+.gear-icon {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    font-size: 24px;
+    cursor: pointer;
+    z-index: 1000;
 }
 
+/* Configuration Box */
+.config-box {
+    position: fixed;
+    bottom: 60px;
+    right: 20px;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    z-index: 999;
+}
+
+.config-box.hidden {
+    display: none;
+}
+
+.config-layer {
+    margin-bottom: 10px;
+}
+
+.config-item {
+    padding: 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    text-align: center;
+    background-color: #f4f4f9;
+    display: inline-block;
+    margin-right: 5px;
+}
+
+.config-item:last-child {
+    margin-right: 0;
+}
+
+.config-item.active {
+    background-color: #007bff;
+    color: #fff;
+}
+
+.config-item:hover {
+    background-color: #ddd;
+}

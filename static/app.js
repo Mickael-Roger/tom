@@ -3,72 +3,89 @@ document.addEventListener("DOMContentLoaded", () => {
     const sendButton = document.getElementById("send-button");
     const speakButton = document.getElementById("speak-button");
     const chatBox = document.getElementById("chat-box");
-    const autoSubmitCheckbox = document.getElementById("auto-submit");
-    const languageSelect = document.getElementById("language-select");
     const resetButton = document.getElementById("reset-button");
+    const gearIcon = document.getElementById("gear-icon");
+    const configBox = document.getElementById("config-box");
+    const autoSubmitConfig = document.getElementById("auto-submit-config");
+    const autoSubmitStatus = document.getElementById("auto-submit-status");
+    const languageConfigEn = document.getElementById("language-config-en");
+    const languageConfigFr = document.getElementById("language-config-fr");
 
-    let userPosition = null; 
+    let userPosition = null;
     let currentAudio = null; // Reference to the currently playing audio
     let isSpeaking = false; // Flag for TTS state
+    let autoSubmitEnabled = false; // Auto-submit state
+    let selectedLanguage = "fr"; // Default language
 
-    // Tentative de récupération de la position GPS
-    function fetchUserPosition() {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    userPosition = {
-                        latitude: position.coords.latitude,
-                        longitude: position.coords.longitude
-                    };
-                },
-                (error) => {
-                    console.warn("Impossible de récupérer la position :", error.message);
-                    userPosition = null; // Position non disponible
-                }
-            );
-        } else {
-            console.warn("La géolocalisation n'est pas supportée par ce navigateur.");
-            userPosition = null;
-        }
+    // Toggle configuration box visibility
+    gearIcon.addEventListener("click", () => {
+        configBox.classList.toggle("hidden");
+    });
+
+    // Handle auto-submit configuration
+    autoSubmitConfig.addEventListener("click", () => {
+        autoSubmitEnabled = !autoSubmitEnabled;
+        updateAutoSubmitStatus();
+    });
+
+    // Update auto-submit status text
+    function updateAutoSubmitStatus() {
+        autoSubmitStatus.textContent = autoSubmitEnabled ? "On" : "Off";
+        autoSubmitConfig.classList.toggle("active", autoSubmitEnabled);
     }
 
-    // Appel initial pour récupérer la position dès que la page est chargée
-    fetchUserPosition();
+    // Handle language configuration
+    languageConfigEn.addEventListener("click", () => {
+        selectedLanguage = "en";
+        updateLanguageConfig();
+    });
 
-    // Fonction pour vérifier si le client est un mobile Android avec Chrome et supporte TTS
-    function isTTSAvailable() {
-        //const isAndroid = /android/i.test(navigator.userAgent);
-        //const isChrome = /chrome/i.test(navigator.userAgent) && !/edge/i.test(navigator.userAgent);
-        //return isAndroid && isChrome && 'speechSynthesis' in window;
-        return 'speechSynthesis' in window;
+    languageConfigFr.addEventListener("click", () => {
+        selectedLanguage = "fr";
+        updateLanguageConfig();
+    });
+
+    // Update language configuration appearance
+    function updateLanguageConfig() {
+        languageConfigEn.classList.toggle("active", selectedLanguage === "en");
+        languageConfigFr.classList.toggle("active", selectedLanguage === "fr");
     }
 
+    // Initial updates
+    updateAutoSubmitStatus();
+    updateLanguageConfig();
 
-    // Activer/désactiver le bouton Send
+    // Activate/deactivate send button based on input
     promptInput.addEventListener("input", () => {
         sendButton.disabled = !promptInput.value.trim();
     });
 
-    // Envoi du message lorsque Send est cliqué
+    // Send message when Send button is clicked
     sendButton.addEventListener("click", () => {
         sendMessage();
     });
 
+    // Send message when Enter is pressed (if auto-submit is enabled)
+    promptInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && autoSubmitEnabled) {
+            sendMessage();
+        }
+    });
 
+    // Function to send the message
     function sendMessage() {
         const message = promptInput.value.trim();
         if (!message) return;
-    
-        const selectedLanguage = languageSelect.value; // 'fr' ou 'en'
+
         addMessageToChat("user", message);
-    
+
         const payload = {
             request: message,
             lang: selectedLanguage,
-            position: userPosition, // Ajout de la position GPS
-            tts: isTTSAvailable() // Ajout du champ tts
+            position: userPosition, // GPS position
+            tts: isTTSAvailable() // TTS availability
         };
-    
+
         fetch("/process", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -83,12 +100,12 @@ document.addEventListener("DOMContentLoaded", () => {
         .then(data => {
             if (data.response) {
                 addMessageToChat("bot", data.response);
-    
-                // Lecture de l'audio si le champ 'voice' est présent et tts est false
+
+                // Play audio if voice is provided and TTS is not available
                 if (data.voice && !payload.tts) {
                     playAudioFromBase64(data.voice);
                 } else if (payload.tts) {
-                    // Si tts est true, lire le texte localement
+                    // Use TTS if available
                     speakText(data.response, selectedLanguage);
                 }
             }
@@ -111,12 +128,12 @@ document.addEventListener("DOMContentLoaded", () => {
                     console.error("Error during reset:", resetError);
                 });
         });
-    
+
         promptInput.value = "";
         sendButton.disabled = true;
     }
 
-    // Fonction pour ajouter un message au chat
+    // Function to add a message to the chat
     function addMessageToChat(sender, text) {
         const messageDiv = document.createElement("div");
         messageDiv.classList.add("message", sender);
@@ -163,7 +180,7 @@ document.addEventListener("DOMContentLoaded", () => {
         window.speechSynthesis.speak(utterance);
     }
 
-
+    // Handle Speak button click
     speakButton.addEventListener("click", () => {
         // Stop audio playback if active
         if (currentAudio) {
@@ -179,8 +196,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Start speech recognition
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        const selectedLanguage = languageSelect.value;
-
         recognition.lang = selectedLanguage === "fr" ? "fr-FR" : "en-US";
         recognition.start();
 
@@ -189,8 +204,8 @@ document.addEventListener("DOMContentLoaded", () => {
             promptInput.value = transcript;
             sendButton.disabled = !transcript.trim();
 
-            // Envoi automatique si auto-submit est coché
-            if (autoSubmitCheckbox.checked) {
+            // Auto-submit if enabled
+            if (autoSubmitEnabled) {
                 sendMessage();
             }
         };
@@ -200,7 +215,6 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     });
 
-
     // Handle Reset button click
     resetButton.addEventListener("click", () => {
         fetch("/reset", { method: "POST" })
@@ -208,7 +222,6 @@ document.addEventListener("DOMContentLoaded", () => {
             .then(data => {
                 if (data.success) {
                     // Clear the chat box content
-                    const chatBox = document.getElementById("chat-box");
                     chatBox.innerHTML = "";
                 } else {
                     console.error("Failed to reset:", data.message);
@@ -219,14 +232,32 @@ document.addEventListener("DOMContentLoaded", () => {
             });
     });
 
-    // Auto-submit lorsque Enter est pressé
-    promptInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && autoSubmitCheckbox.checked) {
-            sendMessage();
-        }
-    });
-
-    // Mettre à jour la position toutes les 5 minutes
+    // Fetch user position periodically
     setInterval(fetchUserPosition, 5 * 60 * 1000);
-});
 
+    // Function to fetch user position
+    function fetchUserPosition() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    userPosition = {
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude
+                    };
+                },
+                (error) => {
+                    console.warn("Impossible de récupérer la position :", error.message);
+                    userPosition = null; // Position non disponible
+                }
+            );
+        } else {
+            console.warn("La géolocalisation n'est pas supportée par ce navigateur.");
+            userPosition = null;
+        }
+    }
+
+    // Function to check if TTS is available
+    function isTTSAvailable() {
+        return 'speechSynthesis' in window;
+    }
+});

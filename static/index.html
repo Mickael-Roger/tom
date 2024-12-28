@@ -1,16 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
-<link rel="icon" type="image/x-icon" href="/static/favicon.ico?%version%">
-<link rel="shortcut icon" type="image/x-icon" href="/static/tom-64.ico" />
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Tom</title>
     <link rel="stylesheet" href="/static/styles.css?%version%">
     <link rel="manifest" href="/static/manifest.json?%version%">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#ffffff">
-
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-messaging-compat.js"></script>
     <script src="/static/init-fcm.js" defer></script>
@@ -20,25 +17,31 @@
         <div class="chat-box" id="chat-box">
             <!-- Messages will be displayed here -->
         </div>
-        <input type="text" id="prompt" placeholder="Prompt" class="prompt-input">
-        <div class="options">
-            <select id="language-select">
-                <option value="fr" selected>Français</option>
-                <option value="en">English</option>
-                <!-- Add more languages as needed -->
-            </select>
-            <label>
-                <input type="checkbox" id="auto-submit"> Auto-submit
-            </label>
+        <div class="input-container">
+            <textarea id="prompt" placeholder="Prompt" class="prompt-input"></textarea>
+            <button id="send-button" class="send-button" disabled>➤</button>
         </div>
-        <button id="send-button" class="send-button" disabled>Send</button>
         <button id="speak-button" class="speak-button">Speak</button>
         <button id="reset-button" class="reset-button">Reset</button>
     </div>
 
-    <script src="/static/app.js?%version%"></script>
+    <!-- Gear Icon -->
+    <div id="gear-icon" class="gear-icon">⚙️</div>
 
+    <!-- Configuration Box -->
+    <div id="config-box" class="config-box hidden">
+        <div class="config-layer">
+            <div id="auto-submit-config" class="config-item">
+                Auto-submit: <span id="auto-submit-status">Off</span>
+            </div>
+        </div>
+        <div class="config-layer">
+            <div id="language-config-en" class="config-item">English</div>
+            <div id="language-config-fr" class="config-item">Français</div>
+        </div>
+    </div>
+
+    <script src="/static/app.js?%version%"></script>
     <script src="/static/wakelock.js?%version%"></script>
 </body>
 </html>
-
