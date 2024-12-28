@@ -7,7 +7,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const gearIcon = document.getElementById("gear-icon");
     const configBox = document.getElementById("config-box");
     const autoSubmitConfig = document.getElementById("auto-submit-config");
-    const autoSubmitStatus = document.getElementById("auto-submit-status");
     const languageConfigEn = document.getElementById("language-config-en");
     const languageConfigFr = document.getElementById("language-config-fr");
 
@@ -25,14 +24,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // Handle auto-submit configuration
     autoSubmitConfig.addEventListener("click", () => {
         autoSubmitEnabled = !autoSubmitEnabled;
-        updateAutoSubmitStatus();
-    });
-
-    // Update auto-submit status text
-    function updateAutoSubmitStatus() {
-        autoSubmitStatus.textContent = autoSubmitEnabled ? "On" : "Off";
         autoSubmitConfig.classList.toggle("active", autoSubmitEnabled);
-    }
+    });
 
     // Handle language configuration
     languageConfigEn.addEventListener("click", () => {
@@ -52,7 +45,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Initial updates
-    updateAutoSubmitStatus();
     updateLanguageConfig();
 
     // Activate/deactivate send button based on input
