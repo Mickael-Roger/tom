@@ -121,27 +121,21 @@ class TomLLM():
         messages = messages,
       )
 
-    values = {}
 
-    if response:
-      if response.choices:
-        values["finish_reason"] = response.choices[0].finish_reason
-        if response.choices[0].message:
-          values["role"] = response.choices[0].message.role
-          values["content"] = response.choices[0].message.content
-          values["tool_calls"] = response.choices[0].message.tool_calls
-
-    if not values:
+    if not response:
       return False, f"No response from LLM"
 
-    if values["finish_reason"] not in ["tool_calls", "stop"]:
-      return False, f"finish reason: {values['finish_reason']}"
+    if not response.choices:
+      return False, f"No response from LLM"
+
+    if response.choices[0].finish_reason not in ["tool_calls", "stop"]:
+      return False, f"finish reason: {response.choices[0].finish_reason}"
 
     print("---------2----------")
-    print(values)
+    print(response)
     print("---------2----------")
 
-    return True, values
+    return True, response
 
 
   def callGemini(self, messages, tools=None):
@@ -264,13 +258,13 @@ class TomLLM():
     ret, triage = self.llm(messages=conversation, tools=triage_tools)
 
     if ret:
-      if triage["finish_reason"] == "stop":
-        self.history.append({"role": triage["role"], "content": triage["content"]})
-        return True, triage["content"]
+      if triage.choices[0].finish_reason == "stop":
+        self.history.append({"role": triage.choices[0].message.role, "content": triage.choices[0].message.content})
+        return True, triage.choices[0].message.content
 
-      elif triage["finish_reason"] == "tool_calls":
+      elif triage.choices[0].finish_reason == "tool_calls":
         load_modules= []
-        for tool_call in triage['tool_calls']:
+        for tool_call in triage.choices[0].message.tool_calls:
           if tool_call.function.name.find("modules_needed_to_answer_user_prompt") != -1:    # Probably bad prompt, but sometimes it calls 'module_name.modules_needed_to_answer_user_prompt'
             mods = json.loads(tool_call.function.arguments)
             for mod in mods['modules_name']:
@@ -286,24 +280,26 @@ class TomLLM():
         print("Tools: " + str(tools))
   
         while True:
+
           
           ret, response = self.llm(messages=self.history, tools=tools)
   
           if not ret:
             return False, f"Error: {response}"
   
-          if response["finish_reason"] == "stop":
-            self.history.append({"role": response["role"], "content": response["content"]})
-            return True, response["content"]
+          if response.choices[0].finish_reason == "stop":
+            self.history.append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
+            return True, response.choices[0].message.content
 
   
-          elif response["finish_reason"] == "tool_calls":
+          elif response.choices[0].finish_reason == "tool_calls":
+
  
-            self.history.append({"role": response["role"], "tool_calls": response["tool_calls"]})
+            self.history.append(response)
   
             responseContext = {"functions": [], "rules": []}
   
-            for tool_call in response["tool_calls"]:
+            for tool_call in response.choices[0].message.tool_calls:
   
               function_name = tool_call.function.name
               function_params = json.loads(tool_call.function.arguments)
