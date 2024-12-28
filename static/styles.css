@@ -110,23 +110,27 @@ body {
 .send-button:hover:not(:disabled) {
     background-color: #218838;
 }
+
+
 /* Speak Button */
 .speak-button {
     width: 120px; /* Twice the original size */
     height: 120px; /* Twice the original size */
     border-radius: 50%; /* Make it round */
-    background-color: #007bff;
+    background-color: #007bff; /* Original blue color */
     border: none;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     margin: 0 auto 10px; /* Center the button */
+    transition: background-color 0.3s; /* Smooth transition for color change */
 }
 
 .speak-button:hover {
-    background-color: #0069d9;
+    background-color: #0069d9; /* Darker blue on hover */
 }
+
 
 /* Microphone Icon */
 .microphone-icon {
@@ -140,7 +144,7 @@ body {
     bottom: 20px; /* Position at the bottom */
     left: 20px; /* Position on the left */
     width: 60px; /* Smaller width */
-    height: 25px; /* Smaller height */
+    height: 20px; /* Smaller height */
     border-radius: 5px; /* Rounded borders */
     background-color: #dc3545;
     border: none;
@@ -161,8 +165,8 @@ body {
     position: fixed; /* Fixed position */
     bottom: 20px; /* Position at the bottom */
     right: 20px; /* Position on the right */
-    width: 24px; /* Size of the gear image */
-    height: 24px; /* Size of the gear image */
+    width: 48px; /* Size of the gear image */
+    height: 48px; /* Size of the gear image */
     cursor: pointer;
     z-index: 1000; /* Ensure it's above other elements */
 }
@@ -226,5 +230,15 @@ body {
     text-align: center; /* Center the text */
 }
 
+/* Sound Button */
+#sound-config {
+    width: 100%; /* Full width of the config box */
+    text-align: center; /* Center the text */
+    cursor: pointer; /* Show pointer on hover */
+}
 
+#sound-config.active {
+    background-color: #007bff; /* Highlight when active */
+    color: #fff; /* White text when active */
+}
 

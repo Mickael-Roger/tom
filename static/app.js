@@ -7,6 +7,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const gearIcon = document.getElementById("gear-icon");
     const configBox = document.getElementById("config-box");
     const autoSubmitConfig = document.getElementById("auto-submit-config");
+    const soundConfig = document.getElementById("sound-config");
     const languageConfigEn = document.getElementById("language-config-en");
     const languageConfigFr = document.getElementById("language-config-fr");
 
@@ -15,6 +16,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let isSpeaking = false; // Flag for TTS state
     let autoSubmitEnabled = false; // Auto-submit state
     let selectedLanguage = "fr"; // Default language
+    let soundEnabled = true; // Sound state (default: enabled)
 
     // Toggle configuration box visibility
     gearIcon.addEventListener("click", () => {
@@ -25,6 +27,13 @@ document.addEventListener("DOMContentLoaded", () => {
     autoSubmitConfig.addEventListener("click", () => {
         autoSubmitEnabled = !autoSubmitEnabled;
         autoSubmitConfig.classList.toggle("active", autoSubmitEnabled);
+    });
+
+    // Handle sound configuration
+    soundConfig.addEventListener("click", () => {
+        soundEnabled = !soundEnabled;
+        soundConfig.classList.toggle("active", soundEnabled);
+        soundConfig.textContent = soundEnabled ? "🔊 Sound" : "🔇 Mute";
     });
 
     // Handle language configuration
@@ -94,9 +103,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 addMessageToChat("bot", data.response);
 
                 // Play audio if voice is provided and TTS is not available
-                if (data.voice && !payload.tts) {
+                if (soundEnabled && data.voice && !payload.tts) {
                     playAudioFromBase64(data.voice);
-                } else if (payload.tts) {
+                } else if (soundEnabled && payload.tts) {
                     // Use TTS if available
                     speakText(data.response, selectedLanguage);
                 }
@@ -204,6 +213,54 @@ document.addEventListener("DOMContentLoaded", () => {
 
         recognition.onerror = (event) => {
             console.error("Erreur de reconnaissance vocale :", event.error);
+        };
+    });
+
+    // Handle Speak button click
+    speakButton.addEventListener("click", () => {
+        // Stop audio playback if active
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio = null;
+        }
+    
+        // Stop TTS if active
+        if (isSpeaking) {
+            window.speechSynthesis.cancel();
+            isSpeaking = false;
+        }
+    
+        // Start speech recognition
+        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.lang = selectedLanguage === "fr" ? "fr-FR" : "en-US";
+        recognition.start();
+    
+        // Change button color to orange when recording starts
+        speakButton.style.backgroundColor = "#ffa500"; // Orange color
+    
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            promptInput.value = transcript;
+            sendButton.disabled = !transcript.trim();
+    
+            // Auto-submit if enabled
+            if (autoSubmitEnabled) {
+                sendMessage();
+            }
+    
+            // Reset button color after recording ends
+            speakButton.style.backgroundColor = "#007bff"; // Original blue color
+        };
+    
+        recognition.onerror = (event) => {
+            console.error("Erreur de reconnaissance vocale :", event.error);
+            // Reset button color if there's an error
+            speakButton.style.backgroundColor = "#007bff"; // Original blue color
+        };
+    
+        recognition.onend = () => {
+            // Reset button color when recording ends
+            speakButton.style.backgroundColor = "#007bff"; // Original blue color
         };
     });
 
