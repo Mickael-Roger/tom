@@ -858,7 +858,7 @@ class TomPronote:
         db = child['cache']
 
     if db is None:
-      return False, f"Could not find child {child_name}"
+      return False
 
     dbconn = sqlite3.connect(db)
     cursor = dbconn.cursor()
@@ -868,7 +868,7 @@ class TomPronote:
 
     dbconn.close()
 
-    return True, entries 
+    return entries 
 
   def execUpdate(self, child_name, req):
 
@@ -878,7 +878,7 @@ class TomPronote:
         db = child['cache']
 
     if db is None:
-      return False, f"Could not find child {child_name}"
+      return False
 
     dbconn = sqlite3.connect(db)
     dbconn.execute(req)
@@ -895,17 +895,17 @@ class TomPronote:
     else:
       filter = ""
 
-    res, avgs = self.execSelect(child_name=child_name, req='SELECT period, name, student, class_min, class_max, class_avg FROM averages ' + filter + ' ORDER BY period, name ASC')
+    avgs = self.execSelect(child_name=child_name, req='SELECT period, name, student, class_min, class_max, class_avg FROM averages ' + filter + ' ORDER BY period, name ASC')
 
-    if res is False:
-      return False, avgs
+    if avgs == False:
+      return avgs
 
     averages = {"current_period": self.current_period, "grades_averages": []}
 
     for avg in avgs:
       averages['grades_averages'].append({"period": avg[0], "subject": avg[1], "student_avg": avg[2], "class_min_avg": avg[3], "class_max_avg": avg[4], "class_avg": avg[5]})
 
-    return True, averages
+    return averages
 
 
   def grades(self, child_name, is_new):
@@ -914,10 +914,10 @@ class TomPronote:
       new = " WHERE is_new = 1 "
     else:
       new = ""
-    res, val = self.execSelect(child_name=child_name, req='SELECT date, subject, grade, out_of, min, max, average, comment, is_new, id FROM grades ' + new + ' ORDER BY date, subject ASC')
+    val = self.execSelect(child_name=child_name, req='SELECT date, subject, grade, out_of, min, max, average, comment, is_new, id FROM grades ' + new + ' ORDER BY date, subject ASC')
 
-    if res is False:
-      return False, val
+    if val == False:
+      return False
 
     grades = []
 
@@ -929,17 +929,17 @@ class TomPronote:
 
       grades.append({"id": grade[9], "date": grade[0].replace(" 00:00:00", ""), "subject": grade[1], "grade": grade[2], "grade_out_of": grade[3], "class_min_grade": grade[4], "class_max_grade": grade[5], "class_avg_grade": grade[6], "grade_comment": grade[7], "is_new": new})
 
-    return True, grades
+    return grades
 
 
 
 
   def homeworks(self, child_name):
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT date, subject, description, done FROM homeworks WHERE date > DATE('now') ORDER BY date ASC")
+    val = self.execSelect(child_name=child_name, req="SELECT date, subject, description, done FROM homeworks WHERE date > DATE('now') ORDER BY date ASC")
 
-    if res is False:
-      return False, val
+    if val == False:
+      return False
 
     homeworks = []
 
@@ -951,16 +951,16 @@ class TomPronote:
 
       homeworks.append({"due_date": homework[0].replace(" 00:00:00", ""), "subject": homework[1], "description": homework[2], "is_done": done})
 
-    return True, homeworks
+    return homeworks
 
 
 
   def absences(self, child_name):
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT date_from, date_to, duration, reasons, justified, id FROM absences ORDER BY date_from DESC")
+    val = self.execSelect(child_name=child_name, req="SELECT date_from, date_to, duration, reasons, justified, id FROM absences ORDER BY date_from DESC")
 
-    if res is False:
-      return False, val
+    if val == False:
+      return False
 
     absences = []
 
@@ -972,15 +972,15 @@ class TomPronote:
 
       absences.append({"id": absence[5], "date_from": absence[0], "date_to": absence[1], "duration": absence[2], "reasons": absence[3], "is_justified": justified})
 
-    return True, absences
+    return absences
 
 
   def delays(self, child_name):
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT datetime, minutes, justificaton, reasons, justified, id FROM delays ORDER BY datetime DESC")
+    val = self.execSelect(child_name=child_name, req="SELECT datetime, minutes, justificaton, reasons, justified, id FROM delays ORDER BY datetime DESC")
 
-    if res is False:
-      return False, val
+    if val == False:
+      return False
 
     delays = []
 
@@ -992,15 +992,15 @@ class TomPronote:
 
       delays.append({"id": delay[5], "date": delay[0], "minutes": delay[1], "justification": delay[2], "reasons": delay[3], "is_justified": justified})
 
-    return True, delays
+    return delays
 
 
   def evaluations(self, child_name):
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT datetime, name, subject, description, acquisitions, is_new, id FROM evaluations ORDER BY datetime DESC")
+    val = self.execSelect(child_name=child_name, req="SELECT datetime, name, subject, description, acquisitions, is_new, id FROM evaluations ORDER BY datetime DESC")
 
-    if res is False:
-      return False, val
+    if val == False:
+      return False
 
     evaluations = []
 
@@ -1012,15 +1012,15 @@ class TomPronote:
 
       evaluations.append({"id": evaluation[6], "date": evaluation[0].replace(" 00:00:00", ""), "name": evaluation[1], "subject": evaluation[2], "description": evaluation[3], "acquisitions": evaluation[4], "is_new": new})
 
-    return True, evaluations
+    return evaluations
 
 
   def punishments(self, child_name):
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT datetime, circumstances, nature, reasons, giver, is_new, id FROM punishments ORDER BY datetime DESC")
+    val = self.execSelect(child_name=child_name, req="SELECT datetime, circumstances, nature, reasons, giver, is_new, id FROM punishments ORDER BY datetime DESC")
 
-    if res is False:
-      return False, val
+    if val == False:
+      return False
 
     punishments = []
 
@@ -1032,28 +1032,28 @@ class TomPronote:
 
       punishments.append({"id": punishment[6], "date": punishment[0].replace(" 00:00:00", ""), "circumstances": punishment[1], "nature": punishment[2], "reasons": punishment[3], "giver": punishment[4], "is_new": new})
 
-    return True, punishments
+    return punishments
 
 
   def teachers(self, child_name):
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT name, subject FROM teachers")
+    val = self.execSelect(child_name=child_name, req="SELECT name, subject FROM teachers")
 
-    if res is False:
-      return False, val
+    if val == False:
+      return False
 
     teachers = []
 
     for teacher in val:
       teachers.append({"name": teacher[0], "subject": teacher[1]})
 
-    return True, teachers
+    return teachers
 
 
   def getCal(self, child_name, date):
 
     if child_name not in self.cal:
-      return False, f"Could not find {child_name} child"
+      return False
 
     lessons = []
 
@@ -1063,22 +1063,22 @@ class TomPronote:
       if day == date:
         lessons.append(lesson)
 
-    return True, lessons
+    return lessons
 
 
   def observations(self, child_name):
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT id, datetime, subject, teacher, title, comment, is_read, with_ar, is_new FROM observations")
+    val = self.execSelect(child_name=child_name, req="SELECT id, datetime, subject, teacher, title, comment, is_read, with_ar, is_new FROM observations")
 
-    if res is False:
-      return False, val
+    if val == False:
+      return False
 
     observations = []
 
     for observation in val:
       observations.append({"id": observation[0], "date": observation[1], "subject": observation[2], "teacher": observation[3], "observation_title": observation[4], "comment": observation[5],"is_new": observation[6], "need_ar": observation[7], "is_new": observation[8]})
 
-    return True, observations
+    return observations
 
 
   def informations(self, child_name, is_new):
@@ -1088,32 +1088,32 @@ class TomPronote:
     else:
       new = ""
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT id, date, title, author, is_read, is_new FROM informations " + new + " ORDER BY date DESC")
+    val = self.execSelect(child_name=child_name, req="SELECT id, date, title, author, is_read, is_new FROM informations " + new + " ORDER BY date DESC")
 
-    if res is False:
-      return False, val
+    if val == False:
+      return False
 
     informations = []
 
     for information in val:
       informations.append({"id": information[0], "date": information[1], "title": information[2], "author": information[3], "is_read": information[4], "is_new": information[5]})
 
-    return True, informations
+    return informations
 
 
   def information_message(self, child_name, id):
 
-    res, val = self.execSelect(child_name=child_name, req="SELECT id, date, title, author, content, is_read, is_new FROM informations WHERE id = " + str(id))
+    val = self.execSelect(child_name=child_name, req="SELECT id, date, title, author, content, is_read, is_new FROM informations WHERE id = " + str(id))
 
-    if res is False:
-      return False, val
+    if val == False:
+      return False
 
     informations = []
 
     for information in val:
       informations.append({"id": information[0], "date": information[1], "title": information[2], "author": information[3], "message_content": information[4], "is_read": information[5], "is_new": information[6]})
 
-    return True, informations
+    return informations
 
 
   def mark_seen(self, child_name, object_type, object_id):
@@ -1124,31 +1124,25 @@ class TomPronote:
         token = child['token']
 
     if  token == None:
-      return False, f"Could not find {child_name} child"
+      return False
 
     if object_type not in ["grade", "evaluation", "information", "observation"]:
-      return False, f"Update of {object_type} not supported"
+      return False
 
 
     if object_type == "grade":
       self.execUpdate(child_name=child_name, req="UPDATE grades SET is_new=0 WHERE id = '" + object_id + "'")
-      return True, f"Grade marked as viewed"
 
     if object_type == "evaluation":
       self.execUpdate(child_name=child_name, req="UPDATE evaluations SET is_new=0 WHERE id = '" + object_id + "'")
-      return True, f"Evaluation marked as viewed"
-
-
-
 
     if object_type == "observation":
       self.execUpdate(child_name=child_name, req="UPDATE observations SET is_new=0 WHERE id = '" + object_id + "'")
-      return True, "Observation marked as viewed."
-
 
     if object_type == "information":
       self.execUpdate(child_name=child_name, req="UPDATE informations SET is_new=0 WHERE id = '" + object_id + "'")
-      return True, "Information marked as viewd."
+
+    return True
 
 
 

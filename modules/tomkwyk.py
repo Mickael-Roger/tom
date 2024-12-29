@@ -188,7 +188,7 @@ class TomKwyk:
 
     dbconn.close()
 
-    return True, data
+    return data
 
 
 

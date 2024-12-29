@@ -139,9 +139,9 @@ class TomWeather:
 
       for city in responseDict['results']:
         cities.append({"name": city['name'], "country": city['country'], "gps_latitude": city['latitude'], "gps_longitude": city['longitude']})
-      return True, cities
+      return cities
 
-    return False, {}
+    return False
 
 
 
@@ -170,6 +170,6 @@ class TomWeather:
         if datetime.strptime(responseDict['daily']['time'][i], "%Y-%m-%d") >= search_from and datetime.strptime(responseDict['daily']['time'][i], "%Y-%m-%d") <= search_to: 
           data['daily'].append({"timestamp": responseDict['daily']['time'][i], "temperature_min": responseDict['daily']['temperature_2m_min'][i], "temperature_max": responseDict['daily']['temperature_2m_max'][i], "apparent_temperature_min": responseDict['daily']['apparent_temperature_min'][i], "apparent_temperature_max": responseDict['daily']['apparent_temperature_max'][i], "weather_condition": self.convertWMO(str(responseDict['daily']['weather_code'][i]))})
 
-    return True, data
+    return data
 
 

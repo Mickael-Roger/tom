@@ -5,6 +5,7 @@ import firebase_admin
 from firebase_admin import credentials, messaging
 import threading
 import time
+import json
 
 ################################################################################################
 #                                                                                              #
@@ -204,10 +205,11 @@ class TomReminder:
       dbconn.commit()
       dbconn.close()
 
-      return True, f"Reminder {reminder_text} added"
+
+      return True
 
     except:
-      return False, "Cannot add reminder"
+      return False
 
 
   def reminder_delete(self, reminder_id):
@@ -218,10 +220,11 @@ class TomReminder:
       dbconn.commit()
       dbconn.close()
 
-      return True, "Reminder removed"
+
+      return True
 
     except:
-      return False, "Cannot remove reminder"
+      return False
 
 
 
@@ -237,10 +240,10 @@ class TomReminder:
       for val in values:
         reminders.append({"id": val[0], "reminder_datetime": val[1], "reminder_message": val[2]})
 
-      return True, reminders
+      return reminders
 
     except:
-      return False, "Could not list reminders"
+      return False
 
 
 

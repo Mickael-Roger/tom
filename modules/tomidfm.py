@@ -90,9 +90,9 @@ class TomIdfm:
           # Verify if station ID is already in the DB, if not, find its city and add it. Do that to minimize the geocoding number of calls
           if station_id not in station_ids:
 
-            res, city = self.get_city(latitude=line['geo_point_2d']['lat'], longitude=line['geo_point_2d']['lon'])
+            city = self.get_city(latitude=line['geo_point_2d']['lat'], longitude=line['geo_point_2d']['lon'])
 
-            if res:
+            if city != False:
               cursor.execute('INSERT INTO stations (id, name, latitude, longitude, city) VALUES (?, ?, ?, ?, ?)', (station_id, line['nom_zdc'], line['geo_point_2d']['lat'], line['geo_point_2d']['lon'], city))
               dbconn.commit()
               station_ids.append(station_id) # Avoid issue with duplicated IDs
@@ -131,8 +131,17 @@ class TomIdfm:
       {
         "type": "function",
         "function": {
-          "name": "get_train_station_information",
-          "description": "Get information about a train station. For a train, subway or tram station, this function returns its ID, name, city and all the lines of the station",
+          "name": "list_train_lines",
+          "description": "List all train, metro and tram lines. For each line, this function returns the line_id, the line name and a the line type (metro, train or tram).",
+          "parameters": {
+          },
+        },
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "list_train_station_lines",
+          "description": "List all available lines in a station",
           "strict": True,
           "parameters": {
             "type": "object",
@@ -151,7 +160,7 @@ class TomIdfm:
         "type": "function",
         "function": {
           "name": "get_train_schedule",
-          "description": "Get the train, tramway or subway schedule. Use this function when the user prompt ask for train, tramway or subway scheduling information. For example when a user ask 'What are the next train from x to y', 'When are the train from x to y on monday'",
+          "description": "Get the train, tramway or subway schedule. For a departure station, this function will return a list of all scheduling trains, metro and trams per line with all stops. Use this function when the user prompt ask for train, tramway or subway scheduling information. For example when a user ask 'What are the next train from x to y', 'When are the train from x to y on monday'",
           "strict": True,
           "parameters": {
             "type": "object",
@@ -160,20 +169,12 @@ class TomIdfm:
                 "type": "string",
                 "description": f"Scheduling starting date in the form 'YYYY-MM-DD hh:mm:ss'",
               },
-              "line_id": {
-                "type": "string",
-                "description": f"ID of the train, subway or tram line.",
-              },
               "departure_station_id": {
                 "type": "string",
                 "description": f"Departure train station_id. It's a station_id value that could be retreive using list_train_stations function.",
               },
-              "arrival_station_id": {
-                "type": "string",
-                "description": f"Arrival train station_id. It's a station_id value that could be retreive using list_train_stations function.",
-              },
             },
-            "required": ["date", "line_id", "departure_station_id", "arrival_station_id"],
+            "required": ["date", "departure_station_id"],
             "additionalProperties": False,
           },
         }
@@ -237,8 +238,12 @@ class TomIdfm:
         "function": functools.partial(self.list_stations), 
         "responseContext": "" 
       },
-      "get_train_station_information": {
-        "function": functools.partial(self.get_station), 
+      "list_train_lines": {
+        "function": functools.partial(self.list_lines), 
+        "responseContext": "" 
+      },
+      "list_train_station_lines": {
+        "function": functools.partial(self.get_station_lines), 
         "responseContext": "" 
       },
       "get_train_schedule": {
@@ -262,60 +267,87 @@ class TomIdfm:
       else:
         city = ""
 
-      return True, city
+      return city
     else:
-      return False, resp.status_code
+      return False
 
 
 
   def list_stations(self):
 
-    list_stations = []
+    try:
 
-    dbconn = sqlite3.connect(self.db)
-    cursor = dbconn.cursor()
-    cursor.execute('SELECT id, name, city from stations')
-    
-    stations = cursor.fetchall()
+      list_stations = []
 
-    dbconn.close()
-
-    for station in stations:
-      station_id = station[0]
-      station_name = station[1]
-      station_city = station[2]
-      list_stations.append({"station_id": station_id, "station_name": station_name, "station_city": station_city})
-
-    print(list_stations)
-    return True, list_stations
-
-
-
-  def get_station(self, station_id):
-
-    dbconn = sqlite3.connect(self.db)
-    cursor = dbconn.cursor()
-    cursor.execute('SELECT id, name, city from stations WHERE id = ?', (station_id,))
-    
-    station = cursor.fetchone()
-    if station:
-      station_id = station[0]
-      station_name = station[1]
-      station_city = station[2]
-
-      cursor.execute('SELECT lines.id, lines.name, lines.commercial_name, lines.type FROM lines, station_line WHERE lines.id=station_line.line_id AND station_line.station_id = ?', (station_id, ))
-      lines = cursor.fetchall()
-
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute('SELECT id, name, city from stations')
+      
+      stations = cursor.fetchall()
       dbconn.close()
 
 
-      stations_lines = []
-      for line in lines:
-        stations_lines.append({"line_id": line[0], "line_name": line[1], "line_commercial_name": line[2], "line_type": line[3]})
+      for station in stations:
+        station_id = station[0]
+        station_name = station[1]
+        station_city = station[2]
 
-      return True, {"station_id": station_id, "station_name": station_name, "station_city": station_city, "lines": stations_lines}
+        list_stations.append({"station_id": station_id, "station_name": station_name, "station_city": station_city})
+
+      return list_stations
+    except:
+      return False
+
+
+  def list_lines(self):
+
+    try:
+
+      list_lines = []
+
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute('SELECT id, commercial_name, type FROM lines')
+      lines = cursor.fetchall()
+      dbconn.close()
+
+
+      for line in lines:
+        line_id = line[0]
+        line_name = line[1]
+        line_type = line[2]
+
+        list_lines.append({"line_id": line_id, "line_name": line_name, "line_type": line_type})
+
+      return lines
+    except:
+      return False
+
+
+
+
+  def get_station_lines(self, station_id):
+
+    dbconn = sqlite3.connect(self.db)
+    cursor = dbconn.cursor()
+    cursor.execute('SELECT lines.id, lines.commercial_name, station_id FROM lines, station_line, stations WHERE line_id=lines.id AND station_id=stations.id AND (station_id=? OR stations.name=?)', (station_id, station_id,))
+    
+    lines = cursor.fetchall()
+    dbconn.close()
+
+
+    if lines:
+      station_lines = []
+      for line in lines:
+        station_lines.append({"line_id": line[0], "line_name": line[1]})
+
+      print(station_lines)
+      print("************")
+      return station_lines
     else:
-      return False, f"Station with id {station_id} not found"
+      return False
+
+
 
 
   def apiCall(self, url, params=None):
@@ -325,9 +357,11 @@ class TomIdfm:
     resp = requests.get(uri, headers=headers, params=params)
     
     if resp.status_code == 200:
-      return True, resp.json()
+      return resp.json()
     else:
-      return False, resp.status_code
+      return False
+
+
 
   def date_to_idfm(self, date):
     return datetime.strptime(date, "%Y-%m-%d %H:%M:%S").strftime("%Y%m%dT%H%M%S")
@@ -338,68 +372,77 @@ class TomIdfm:
 
 
 
-  def schedule(self, date, line_id, departure_station_id, arrival_station_id):
-
-    params = {
-      "from_datetime": self.date_to_idfm(date), 
-      "count": 50,
-      "filter": f"line.id=line:IDFM:{line_id}",
-      "duration": 3600 * 3
-    }
-
-    ret, departures = self.apiCall(f"/stop_areas/stop_area:IDFM:{departure_station_id}/departures", params=params)
-
-    if ret == False:
-      return False, "Could not get departures"
-
+  def schedule(self, date, departure_station_id):
 
     schedules = []
 
-    for departure in departures.get("departures", []):
-      route_id = departure["route"]["id"] if "route" in departure else "Unknown"
-      departure_station_name = departure["stop_point"].get("name", "Unknown")
-      departure_station_id = departure["stop_point"]["stop_area"].get("id", "Unknown")
-      final_destination_station_name = departure["route"]["direction"]["stop_area"].get("name", "Unknown")
-      departure_datetime = self.date_from_idfm(departure['stop_date_time']['departure_date_time'])
-      line_name = departure['display_informations']['label']
+    # Get all lines of a station
+
+    dbconn = sqlite3.connect(self.db)
+    cursor = dbconn.cursor()
+    cursor.execute('SELECT lines.id, lines.commercial_name, station_id FROM lines, station_line, stations WHERE line_id=lines.id AND station_id=stations.id AND (station_id=? OR stations.name=?)', (departure_station_id, departure_station_id,))
+    
+    lines = cursor.fetchall()
+    dbconn.close()
 
 
-      # Endpoint et paramètres
+    for line in lines:
+      line_id = line[0]
+      line_name = line[1]
+      departure_station_id = line[2]
+
+
       params = {
         "from_datetime": self.date_to_idfm(date), 
+        "count": 50,
+        "filter": f"line.id=line:IDFM:{line_id}",
+        "duration": 3600 * 2
       }
 
-      
-      # Requête API
-      ret, route_schedules = self.apiCall(f"/routes/{route_id}/route_schedules", params=params)
+      departures = self.apiCall(f"/stop_areas/stop_area:IDFM:{departure_station_id}/departures", params=params)
 
-      if ret == False:
-        return False, "Could not get routes"
+      if departures == False:
+        return False
 
-      stops = []
+      for departure in departures.get("departures", []):
+        route_id = departure["route"]["id"] if "route" in departure else "Unknown"
+        departure_station_name = departure["stop_point"].get("name", "Unknown")
+        departure_station_id = departure["stop_point"]["stop_area"].get("id", "Unknown")
+        departure_datetime = self.date_from_idfm(departure['stop_date_time']['departure_date_time'])
 
-      good_direction=0
 
-      store=0
-      for schedule in route_schedules.get("route_schedules", []):
-        for stop in schedule.get("table", {}).get("rows", []):
-          if store == 1:
-            if stop['date_times'][0]['date_time']:
-              stop_datetime = self.date_from_idfm(stop['date_times'][0]['date_time'])
-            else:
-              stop_datetime = None
-            stops.append({"station_name": stop['stop_point']['name'], "stop_datetime": stop_datetime})
-            if stop['stop_point']['stop_area']['id'] == f"stop_area:IDFM:{arrival_station_id}":
-              store=0
-              good_direction=1
-                                    
-          if departure_station_name == stop['stop_point']['name']:
-            store = 1
-            
-      if good_direction == 1:
-        schedules.append({"departure_station_id": departure_station_id, "departure_station_name": departure_station_name, "final_destination_station_name": final_destination_station_name, "line_id": line_id, "line_name": line_name, "departure_datetime": departure_datetime,"stops": stops})
+        # Endpoint et paramètres
+        params = {
+          "from_datetime": self.date_to_idfm(date), 
+        }
 
-    return True, schedules
+        
+        # Requête API
+        route_schedules = self.apiCall(f"/routes/{route_id}/route_schedules", params=params)
+
+        if route_schedules == False:
+          return False
+
+        stops = []
+
+        store=0
+        for schedule in route_schedules.get("route_schedules", []):
+          for stop in schedule.get("table", {}).get("rows", []):
+            if store == 1:
+              if stop['date_times'][0]['date_time']:
+                stop_datetime = self.date_from_idfm(stop['date_times'][0]['date_time'])
+              else:
+                stop_datetime = None
+              stops.append({"station_name": stop['stop_point']['name'], "stop_datetime": stop_datetime})
+                                      
+            if departure_station_name == stop['stop_point']['name']:
+              store = 1
+              
+        schedules.append({"line_id": line_id, "line_name": line_name, "departure_datetime": departure_datetime, "stops": stops})
+
+    print(schedules)
+
+    return schedules
 
 
   def journey(self, departure, arrival, journey_datetime):
@@ -413,10 +456,10 @@ class TomIdfm:
     }
 
     # Requête API
-    ret, journeys = self.apiCall(f"/journeys", params=params)
+    journeys = self.apiCall(f"/journeys", params=params)
 
-    if ret == False:
-      return False, f"Could not get routes: {journeys.status_code}"
+    if journeys == False:
+      return False
 
     print("Journey options:")
     for journey in journeys.get("journeys", []):
@@ -452,14 +495,14 @@ class TomIdfm:
 
   def disruption(self, line):
     trainid = self.lines[line]['id']
-    ret, val = self.apiCall(f"/lines/line:IDFM:{trainid}")
+    val = self.apiCall(f"/lines/line:IDFM:{trainid}")
 
-    if ret:
+    if val:
       print(val['disruptions'])
-      return True, val['disruptions']
+      return val['disruptions']
     else:
       print("Error while calling line info: " + str(val))
-      return False, "Error while calling line info: " + str(val)
+      return False
 
 
 

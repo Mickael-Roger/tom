@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import functools
+import json
 
 
 ################################################################################################
@@ -36,7 +37,7 @@ class TomBehavior:
         "type": "function",
         "function": {
           "name": "tom_list_behaviors",
-          "description": "List all prompts that modify you behavior. For example when a user aks 'What are your specific behavior?', 'Do I ask you to behave like that?', 'What are you specific consignes?'. Will return, the behaviour ID, the application datetime from and to and the behavior description.",
+          "description": "List all the behaviors and instructions that have been given to you. For example when a user aks 'What are your specific behavior?', 'Do I ask you to behave like that?', 'What are you specific consignes?'. Will return, the behaviour ID, the application datetime from and to and the behavior description.",
           "parameters": {
           },
         },
@@ -45,7 +46,7 @@ class TomBehavior:
         "type": "function",
         "function": {
           "name": "tom_delete_behavior",
-          "description": "Remove a previously prompt that ask you to behave in a certain way. For example when a user aks 'Stop behaving like that', 'Remove this consigne'",
+          "description": "Remove a behavior or instruction that have been given to you. For example when a user aks 'Stop behaving like that', 'Remove this consigne'",
           "strict": True,
           "parameters": {
             "type": "object",
@@ -64,7 +65,7 @@ class TomBehavior:
         "type": "function",
         "function": {
           "name": "tom_add_behavior",
-          "description": "Add an explicit prompt to change you behavior. For example when a user aks 'I want you to change you behavior', 'Add this consigne'",
+          "description": "Add a new behavior or instruction. For example when a user aks 'I want you to change you behavior', 'Add this consigne' or 'Behave like that'",
           "strict": True,
           "parameters": {
             "type": "object",
@@ -109,12 +110,12 @@ class TomBehavior:
 
       behavior = ""
       for val in values:
-        behavior = behavior + "\nFrom now on, you have a new instruction: '" + val[0] + "'\nIf you previously had a conflicting instruction, this new instruction overrides it."
+        behavior = behavior + "From now on, you have a new instruction: '" + val[0] + "'. If this instruction conflicts with a previous one, this one takes priority.\n"
 
-      return behavior
+      return "\n" + behavior
 
     except:
-      return ""
+      return False
 
 
   def behavior_add(self, behavior_consigne, date_from='2020-01-01', date_to='2030-01-01'):
@@ -125,10 +126,10 @@ class TomBehavior:
       dbconn.commit()
       dbconn.close()
 
-      return True, "Behavior added"
+      return True
 
     except:
-      return False, "Cannot add behavior"
+      return False
 
 
   def behavior_delete(self, behavior_id):
@@ -139,10 +140,10 @@ class TomBehavior:
       dbconn.commit()
       dbconn.close()
 
-      return True, "Behavior removed"
+      return True
 
     except:
-      return False, "Cannot remove behavior"
+      return False
 
 
 
@@ -161,7 +162,7 @@ class TomBehavior:
       return True, behaviors
 
     except:
-      return False, "Could not list behaviors"
+      return False
 
 
 

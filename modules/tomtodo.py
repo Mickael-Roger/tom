@@ -149,14 +149,14 @@ class TomTodo:
 
   def listTasks(self):
     self.update()
-    return True, self.tasks
+    return self.tasks
 
 
   def close(self, id):
 
     task = self.todoCal.todo_by_uid(id)
     if not task:
-        return False, (f"Task with ID '{id}' not found.")
+        return False
 
     vtodo = task.instance.vtodo
     taskName = vtodo.contents.get('summary', ['No summary'])[0].value
@@ -167,7 +167,8 @@ class TomTodo:
     self.update()
 
     print(f"Task '{taskName}' has been closed.")
-    return True, f"Task '{taskName}' has been closed."
+
+    return True
 
 
 
@@ -188,7 +189,7 @@ class TomTodo:
 
     self.update()
 
-    return True, f"Task '{task_name}' has been created."
+    return True
 
 
 

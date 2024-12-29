@@ -4,6 +4,7 @@ from urllib.parse import urlparse, parse_qs, quote
 import re
 import sqlite3
 import functools
+import json
 
 from datetime import datetime, timedelta, date
 
@@ -230,7 +231,7 @@ class TomCafetaria:
       cancel_page = session.get(f"https://webparent.paiementdp.com/aliReservationCancel.php?date={id}", headers=headers)
 
       if cancel_page.status_code != 200:
-        return False, "Cannot update reservation"
+        return False
 
       headers['Referer'] = f"https://webparent.paiementdp.com/aliReservationCancel.php?date={id}"
 
@@ -244,11 +245,11 @@ class TomCafetaria:
       cancel = session.post('https://webparent.paiementdp.com/aliReservationCancel.php', headers=headers, data=values)
 
       if cancel.status_code != 200:
-        return False, "Cannot update reservation"
+        return False
 
       self.update()
 
-      return True, "Reservation canceled"
+      return True
 
 
     if action == "add":
@@ -256,7 +257,7 @@ class TomCafetaria:
       add_page = session.get(f"https://webparent.paiementdp.com/aliReservationDetail.php?date={id}", headers=headers)
 
       if add_page.status_code != 200:
-        return False, "Cannot update reservation"
+        return False
 
       headers['Referer'] = f"https://webparent.paiementdp.com/aliReservationDetail.php?date={id}"
 
@@ -271,13 +272,13 @@ class TomCafetaria:
       add = session.post('https://webparent.paiementdp.com/aliReservationDetail.php', headers=headers, data=values)
 
       if add.status_code != 200:
-        return False, "Cannot update reservation"
+        return False
 
       session.get('https://webparent.paiementdp.com/aliDeconnexion.php')
       
       self.update()
 
-      return True, "Reservation created"
+      return True
 
 
 
@@ -304,12 +305,12 @@ class TomCafetaria:
       is_reserved = res[1]
 
       if is_reserved:
-        return True, f"{date} already reserved"
+        return True
       else:
         return self.change_reservation(action="add", id=id)
 
     else:
-      return False, "Could not find ID"
+      return False
 
 
 
@@ -327,10 +328,10 @@ class TomCafetaria:
       if is_reserved:
         return self.change_reservation(action="cancel", id=id)
       else:
-        return True, f"{date} was not reserved"
+        return True
 
     else:
-      return False, "Could not find ID"
+      return False
 
 
 
@@ -355,7 +356,7 @@ class TomCafetaria:
     for entry in entries:
       resas.append({"date": entry[0], "id": entry[1], "is_reserved": entry[2]})
 
-    return True, resas
+    return resas
 
 
 
@@ -370,9 +371,9 @@ class TomCafetaria:
     dbconn.close()
 
     if res:
-      return True, res[0]
+      return res[0]
     
-    return False, "Could not get the credit left"
+    return False
     
 
 

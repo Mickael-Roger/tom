@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import functools
+import json
 
 ################################################################################################
 #                                                                                              #
@@ -105,10 +106,10 @@ class TomRemember:
       dbconn.commit()
       dbconn.close()
 
-      return True, f"Remember {information} added"
+      return True
 
     except:
-      return False, "Cannot add remember"
+      return False
 
 
   def remember_delete(self, stored_information_id):
@@ -119,10 +120,12 @@ class TomRemember:
       dbconn.commit()
       dbconn.close()
 
-      return True, "Remember removed"
+      response = json.dumps({"stored_information_removed": [{"stored_information_id": stored_information_id}]})
+
+      return True
 
     except:
-      return False, "Cannot remove remember"
+      return False
 
 
 
@@ -138,10 +141,10 @@ class TomRemember:
       for val in values:
         remembers.append({"id": val[0], "datetime": val[1], "information": val[2]})
 
-      return True, remembers
+      return remembers
 
     except:
-      return False, "Could not list remembers"
+      return False
 
 
 

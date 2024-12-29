@@ -140,7 +140,7 @@ class TomCalendar:
 
     self.calendarsContent = []
     for cal in self.calendars:
-      ret, vals = self.listEvent(start=start, end=end, calendar=cal)
+      vals = self.listEvent(start=start, end=end, calendar=cal)
       for val in vals:
         self.calendarsContent.append(val)
 
@@ -160,7 +160,7 @@ class TomCalendar:
 
     calendarsContentJson = json.dumps(events)
     
-    return True, calendarsContentJson
+    return calendarsContentJson
     
 
 
@@ -206,7 +206,8 @@ class TomCalendar:
 
         evts.append(calevent) 
   
-    return True, evts
+    return evts
+
 
   def deleteEvents(self, ids=[], calendar=None):
     
@@ -221,7 +222,7 @@ class TomCalendar:
 
 
     if len(ids) > 2:
-      return False, "For protection reason, I cannot delete more than 2 event"
+      return False
 
     if len(ids) == 0:
       return "No event is corresponding to your request" 
@@ -239,16 +240,18 @@ class TomCalendar:
             break
 
       if event is None:
-          return False, f"Event with ID '{elem}' not found."
+          return False
 
       # Delete the event
       event.delete()
       
-      print("Delete event: " + str(deleteTitles))
 
       self.update()
 
-    return True, str(deleteTitles) 
+      print("Delete event: " + str(deleteTitles))
+
+    return True
+
 
                  
   def addEvent(self, title, start, end, description=None, calendar=None):
@@ -268,7 +271,7 @@ class TomCalendar:
 
     self.update()
 
-    return True, f"Event '{title}' from {start} to {end} added" 
+    return True
 
 
 

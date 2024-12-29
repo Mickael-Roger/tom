@@ -30,11 +30,11 @@ class TomLLM():
       self.llm = self.callOpenai
       self.llm_model = "gpt-4o-mini"
 
-#    elif global_config['global']['llm'] == "gemini":
-#      Gemini.configure(api_key=global_config['global']["gemini"]["api"])
-#      self.llm = self.callGemini
-#      self.llm_model = "gemini-1.5-flash"
-#
+    elif global_config['global']['llm'] == "gemini":
+      Gemini.configure(api_key=global_config['global']["gemini"]["api"])
+      self.llm = self.callGemini
+      self.llm_model = "gemini-1.5-flash"
+
     elif global_config['global']['llm'] == "deepseek":
       self.llm_client = OpenAI(api_key=global_config['global']["deepseek"]["api"], base_url="https://api.deepseek.com")
       self.llm = self.callDeepseek
@@ -93,36 +93,25 @@ class TomLLM():
           values["tool_calls"] = response.choices[0].message.tool_calls
 
     if not values:
-      return False, f"No response from LLM"
+      return False
 
     if values["finish_reason"] not in ["tool_calls", "stop"]:
-      return False, f"finish reason: {values['finish_reason']}"
+      return False
 
-    return True, values
+    return response
 
 
   def callDeepseek(self, messages, tools=None):
 
 
-    print("\n\nTools1********************")
-    print(tools)
-    print("*****************\n\n")
-
     if tools: 
       newtools = copy.deepcopy(tools)
       for tool in newtools:
-        print("\n\nTool********************")
-        print(tool)
-        print("*****************\n\n")
         if not tool["function"]["parameters"]:
           del tool["function"]["parameters"]
 
     else:
       newtools = None
-
-    print("\n\nTools2********************")
-    print(newtools)
-    print("*****************\n\n")
 
     return self.callOpenai(messages, newtools)
 
@@ -133,14 +122,13 @@ class TomLLM():
     print("---------1----------")
     print(messages)
     print("---------1----------")
-    print(tools)
-    print("---------1----------")
 
     if tools: 
       response = self.llm_client.chat.completions.create(
         model = self.llm_model,
         messages = messages,
         tools = tools,
+        tool_choice = "auto",
       )
     else:
       response = self.llm_client.chat.completions.create(
@@ -148,21 +136,24 @@ class TomLLM():
         messages = messages,
       )
 
-
-    if not response:
-      return False, f"No response from LLM"
-
-    if not response.choices:
-      return False, f"No response from LLM"
-
-    if response.choices[0].finish_reason not in ["tool_calls", "stop"]:
-      return False, f"finish reason: {response.choices[0].finish_reason}"
-
     print("---------2----------")
     print(response)
-    print("---------2----------")
+    print("---------2----------\n\n\n")
 
-    return True, response
+
+    if not response:
+      print("prout")
+      return False
+
+    if not response.choices:
+      print("prout2")
+      return False
+
+    if response.choices[0].finish_reason not in ["tool_calls", "stop"]:
+      print("prout3")
+      return False
+
+    return response
 
 
   def callGemini(self, messages, tools=None):
@@ -176,7 +167,7 @@ class TomLLM():
       messages,
     )
 
-    return True, response
+    return response
 
 
 
@@ -201,6 +192,9 @@ class TomLLM():
     for service in self.services:
       if self.services[service]['service_context'] != "":
         svc_context = f"{svc_context}\n{self.services[service]['service_context']}\n"
+
+    behaviors = self.services['behavior']['obj'].behavior_get()
+    
     
 
 
@@ -211,6 +205,8 @@ class TomLLM():
       self.history.append(todayMsg)
       self.history.append({"role": "system", "content": self.tom_context})
       self.history.append({"role": "system", "content": f"{svc_context}"})
+      if behaviors:
+        self.history.append({"role": "system", "content": f"{behaviors}"})
 
 
     #behaviors = self.services['behavior']['obj'].behavior_get()
@@ -274,14 +270,14 @@ class TomLLM():
 #
     while True:
 
-      ret, response = self.llm(messages=conversation, tools=tools)
+      response = self.llm(messages=conversation, tools=tools)
 
       conversation = copy.deepcopy(self.history)
   
-      if ret:
+      if response != False:
         if response.choices[0].finish_reason == "stop":
           self.history.append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
-          return True, response.choices[0].message.content
+          return response.choices[0].message.content
   
         elif response.choices[0].finish_reason == "tool_calls":
 
@@ -306,12 +302,10 @@ class TomLLM():
             for mod in load_modules:
               tools = tools + self.services[mod]['tools']
   
-            print("Tools: " + str(tools))
-
           # We are not
           else:
             
-            conversation.append(response.choices[0].message)
+            conversation.append(response.choices[0].message.to_dict())
 
             responseContext = {"functions": [], "rules": []}
     
@@ -334,29 +328,29 @@ class TomLLM():
                   
     
                 # End of memory
-              res, function_result = self.functions[function_name]['function'](**function_params)
+              function_result = self.functions[function_name]['function'](**function_params)
     
-              if res is False:
+              if function_result is False:
                 self.history.append({"role": 'assistant', "content": "Error while executing the function call"})
-                return False, f"Error while executing the function {function_name}"
+                return False
     
-
   
               conversation.append({"role": 'tool', "content": json.dumps(function_result), "tool_call_id": tool_call.id})
                 
               # TODODODODODDODODO
               if function_name not in responseContext['functions']:
                 responseContext['functions'].append(function_name)
-                responseContext['rules'].append({"role": "system", "content": self.functions[function_name]['responseContext']})
+                if self.functions[function_name]['responseContext'] != "":
+                  responseContext['rules'].append({"role": "system", "content": self.functions[function_name]['responseContext']})
               
     
             conversation = conversation + responseContext['rules']
   
         else:
-          return False, f"Bad finish reason"
+          return False
     
       else: 
-        return False, "Error, no response from LLM"
+        return False
 
 
 

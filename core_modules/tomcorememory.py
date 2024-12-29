@@ -18,6 +18,8 @@ class TomMemory:
 
     self.db = os.path.join(db_path, "memory.sqlite")
 
+    self.llm = None
+
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
     cursor.execute('''
@@ -122,7 +124,7 @@ class TomMemory:
     dbconn.close()
 
 
-    return True, {"id": val[0], "datetime": val[1], "conversation": val[2]}
+    return {"id": val[0], "datetime": val[1], "conversation": val[2]}
 
 
   def history_delete(self, conversation_id):
@@ -133,7 +135,8 @@ class TomMemory:
     dbconn.commit()
     dbconn.close()
 
-    return True, "Conversation deleted"
+
+    return True
 
 
   def history_list(self):
@@ -149,7 +152,7 @@ class TomMemory:
     for val in values:
       history.append({"id": val[0], "datetime": val[1], "conversation_summary": val[2]})
 
-    return True, history
+    return history
 
 
 
@@ -170,9 +173,9 @@ class TomMemory:
     conversation = json.dumps(conversation)
     messages = [{"role": "system", "content": systemContext},{"role": "user", "content": conversation}]
 
-    res, response = processLLM(messages, None)
+    response = self.llm(messages, None)
 
-    if res:
+    if response != False:
       db = self.db
 
       if response.choices is not None:
@@ -186,9 +189,10 @@ class TomMemory:
           dbconn.commit()
           dbconn.close()
 
-      return True, "Conversation kept in memory"
+          response = json.dumps({"history_added": [{"summary": summary}]})
 
-    else:
-      return False, "Could not keep conversation in memory"
+          return True
+
+    return False
 
 

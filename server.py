@@ -170,9 +170,9 @@ class TomWebService:
     position = input_json.get('position')
     localTTS = input_json.get('tts')
 
-    ret, response = userList[cherrypy.session['username']].processRequest(input=user_input, lang=lang, position=position)
+    response = userList[cherrypy.session['username']].processRequest(input=user_input, lang=lang, position=position)
 
-    if ret:
+    if response:
 
       voice= None
       if not localTTS:
@@ -353,19 +353,20 @@ for user in global_config['users']:
     userList[username].services[service_name]['service_context'] = userList[username].services[service_name]['obj'].systemContext
     userList[username].functions = userList[username].functions | userList[username].services[service_name]['obj'].functions
     
-  #userList[username].services['behavior'] = {
-  #  "obj": TomBehavior(global_config, username),
-  #  "tools": [],
-  #  "service_context": "",
-  #  "functions": {}, 
-  #}
-  #userList[username].services['behavior']['tools'] = userList[username].services['behavior']['obj'].tools
-  #userList[username].services['behavior']['service_context'] = userList[username].services['behavior']['obj'].systemContext
-  #userList[username].functions = userList[username].functions | userList[username].services['behavior']['obj'].functions
+  userList[username].services['behavior'] = {
+    "obj": TomBehavior(global_config, username),
+    "description": "This module is used to manage your instructions and behaviors. It can be used to add or remove an instruction, modify your behaviors, or list your current instructions and behaviors. Use this module only if the user explicitly requests it, such as with phrases like: 'What instructions have I given you?', 'Remove this instruction' or 'From now on, I want you to'",
+    "tools": [],
+    "service_context": "",
+    "functions": {}, 
+  }
+  userList[username].services['behavior']['tools'] = userList[username].services['behavior']['obj'].tools
+  userList[username].services['behavior']['service_context'] = userList[username].services['behavior']['obj'].systemContext
+  userList[username].functions = userList[username].functions | userList[username].services['behavior']['obj'].functions
 
   userList[username].services['memory'] = {
     "obj": TomMemory(global_config, username),
-    "description": "This module is used to save the current conversation between the user and the system for future reference. The archived conversation can be retrieved or reviewed later to preserve context, decisions, or information exchanged during the interaction.", 
+    "description": "This module is used to manage the archives of our conversations. Use this module only if the user explicitly requests it, with phrases such as: 'We talked about this', 'We had a conversation about', 'Delete this archive from your memory', 'Do you have an archive about?' or 'Some time ago, you explained this to me'", 
     "tools": [],
     "service_context": "",
     "functions": {}, 
@@ -373,6 +374,7 @@ for user in global_config['users']:
   userList[username].services['memory']['tools'] = userList[username].services['memory']['obj'].tools
   userList[username].services['memory']['service_context'] = userList[username].services['memory']['obj'].systemContext
   userList[username].functions = userList[username].functions | userList[username].services['memory']['obj'].functions
+  userList[username].services['memory']['obj'].llm = userList[username].llm
 
   userList[username].services['reminder'] = {
     "obj": TomReminder(global_config, username),

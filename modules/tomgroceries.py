@@ -135,7 +135,7 @@ class TomGroceries:
 
   def listProducts(self):
     self.update()
-    return True, self.groceryList
+    return self.groceryList
 
 
   def add(self, product):
@@ -151,7 +151,8 @@ class TomGroceries:
 
     self.update()
 
-    return True, f"Product '{product}' has been added to the grocery list."
+    return True
+
 
   def remove(self, id):
 
@@ -163,10 +164,9 @@ class TomGroceries:
         productName = task.icalendar_component.get('SUMMARY')
 
         task.delete()
-        print(f"Task with UID '{task_uid}' has been deleted.")
-        return True, f"Task '{productName}' has been removed."
+        print(f"Task with UID '{task_uid}: {productName}' has been deleted.")
 
-    return False, f"Product with ID '{id}' not found."
+    return True
 
 
 
