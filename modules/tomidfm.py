@@ -59,6 +59,8 @@ class TomIdfm:
       dbconn.commit()
       dbconn.close()
 
+      self.journeys = []
+
       # Update data in DB
       res = requests.get('https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/emplacement-des-gares-idf/exports/json')
       if res.status_code == 200:
@@ -161,7 +163,7 @@ class TomIdfm:
         "type": "function",
         "function": {
           "name": "plan_a_journey",
-          "description": "Calculate a route using public transportation in Île-de-France (whether by train, metro, bus, or tram)",
+          "description": "Calculate a route using public transportation in Île-de-France (whether by train, metro, bus, or tram). GPS coordinates should only be used when the departure or arrival location is not a station.",
           "strict": True,
           "parameters": {
             "type": "object",
@@ -172,11 +174,11 @@ class TomIdfm:
               },
               "departure": {
                 "type": "string",
-                "description": f"Departure place of the journey to plan. Could be a station_id (That can be retreive using search_station) or a gps position (must be in the form of 'longitude;latitude').",
+                "description": f"Departure place of the journey to plan. Could be a station_id (That can be retreive using search_station) or a gps position (in the form of 'longitude;latitude'). By default, when a user says 'station x', you must use a 'station_id' value that can be retrieved via the 'search_station' function.",
               },
               "arrival": {
                 "type": "string",
-                "description": f"Arrival place of the journey to plan. Could be a station_id (That can be retreive using search_station) or a gps position (must be in the form of 'longitude;latitude').",
+                "description": f"Arrival place of the journey to plan. Could be a station_id (That can be retreive using search_station) or a gps position (in the form of 'longitude;latitude'). By default, when a user says 'station x', you must use a 'station_id' value that can be retrieved via the 'search_station' function.",
               },
             },
             "required": ["date", "departure", "arrival"],
@@ -402,6 +404,9 @@ class TomIdfm:
         if place['embedded_type'] == 'poi':
           ref = place['poi']
           place_type = place['poi']['poi_type']['name']
+        elif place['embedded_type'] == 'stop_area': 
+          ref = place['stop_area']
+          place_type = "Station"
         else:
           ref = place['address']
           place_type = 'address'
@@ -495,9 +500,11 @@ class TomIdfm:
       "datetime_represents": "departure"
     }
 
-    journeys = []
 
     result = self.apiCall("/journeys", params=params)
+
+    self.journeys = []
+    i = 0
 
     if result == False:
       return False
@@ -528,11 +535,12 @@ class TomIdfm:
           if section_duration > 0:
             sections.append({"section_type": section_type, "section_duration_in_seconds": section_duration, "section_from": section_from, "section_to": section_to, "section_departure_datetime": section_departure_date_time, "section_arrival_datetime": section_arrival_date_time})
 
-      journeys.append({"departure_datetime": departure_date_time, "arrival_datetime": arrival_date_time, "duration_in_seconds": duration, "nb_transfers": nb_transfers, "sections": sections})
+      self.journeys.append({"id": i, "departure_datetime": departure_date_time, "arrival_datetime": arrival_date_time, "duration_in_seconds": duration, "nb_transfers": nb_transfers, "sections": sections})
+      i = i+1
 
-    print(journeys)
+    print(self.journeys)
 
-    return journeys
+    return self.journeys
 
 
 

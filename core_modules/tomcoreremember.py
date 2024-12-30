@@ -79,13 +79,16 @@ class TomRemember:
       },
     ]
 
-    self.systemContext = "Remember functions are meant to manage user-provided information permanently or indefinitely. The purpose of remember functions is to retain facts, data, or context provided by the user for future reference. This is not tied to any specific time but serves as a knowledge repository."
+    self.systemContext = """Remember functions are meant to manage user-provided information permanently, indefinitely or temporary. The purpose of remember functions is to retain facts, data, or context provided by the user for future reference. This is not tied to any specific time but serves as a knowledge repository. You may use these functions to store both permanent information, such as a credit card code, and temporary information that will be useful to the user later, such as remembering where the car was parked or where the keys were placed.
+     If the user's request is to remember where the car is parked, you must save the GPS location along with additional information such as the parking spot number, street name, a point of interest (POI), etc. If the user does not provide any additional information, ask if they have any.
+     If the request involves retrieving information about where something is located (their car, keys, an object, etc.), at the end, remember to ask the user to confirm that they have retrieved their item, car, etc., so you can delete this entry from your memory.
+    """
     self.complexity = 0
 
     self.functions = {
       "tom_list_stored_information": {
         "function": functools.partial(self.remember_list), 
-        "responseContext": "Your response must be concise and in the form of a single sentence. You must not reply in list form." 
+        "responseContext": "Your response must be concise and in the form of a single sentence." 
       },
       "tom_delete_stored_information": {
         "function": functools.partial(self.remember_delete), 
