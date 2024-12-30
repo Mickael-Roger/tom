@@ -107,6 +107,7 @@ class TomWeather:
     ]
 
     self.systemContext = ""
+    self.complexity = 0
     self.functions = {
       "weather_get_by_gps_position": {
         "function": functools.partial(self.getGps), 

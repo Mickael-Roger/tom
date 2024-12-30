@@ -83,6 +83,7 @@ class TomBehavior:
     ]
 
     self.systemContext = ""
+    self.complexity = 0
 
     self.functions = {
       "tom_list_behaviors": {

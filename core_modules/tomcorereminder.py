@@ -114,6 +114,7 @@ class TomReminder:
     ]
 
     self.systemContext = "Reminder functions are tied to a specific time, designed to prompt an action"
+    self.complexity = 0
 
     self.functions = {
       "tom_list_reminders": {

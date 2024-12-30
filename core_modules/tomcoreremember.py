@@ -80,6 +80,7 @@ class TomRemember:
     ]
 
     self.systemContext = "Remember functions are meant to manage user-provided information permanently or indefinitely. The purpose of remember functions is to retain facts, data, or context provided by the user for future reference. This is not tied to any specific time but serves as a knowledge repository."
+    self.complexity = 0
 
     self.functions = {
       "tom_list_stored_information": {

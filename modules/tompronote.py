@@ -448,6 +448,7 @@ class TomPronote:
     ]
 
     self.systemContext = "Pronote is the application that manage children's school life. Pronote is the only way to have access to children's timetable, homework to do, grades, grade book, evaluations, parent/teachers communication and mainly information about school and college. Do not try to guess which one the question refers to; ask me to clarify which child I am talking about. "
+    self.complexity = 0
 
     self.functions = {
       "list_grade_averages": {

@@ -132,6 +132,7 @@ class TomAnki:
     ]
 
     self.systemContext = "Anki is a flashcard program. It uses cards. It uses technics from cognitive science such as active recall testing and spaced repetition to help me in my memorization. I use Anki to train myself on memorizing and reinforcing my knowledge."
+    self.complexity = 0
 
     self.functions = {
       "anki_list_decks": {

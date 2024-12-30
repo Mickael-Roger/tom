@@ -93,6 +93,7 @@ class TomMemory:
     ]
 
     self.systemContext = ""
+    self.complexity = 0
 
     self.functions = {
       "tom_archive_conversation": {

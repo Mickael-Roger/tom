@@ -83,6 +83,7 @@ class TomKwyk:
     ]
 
     self.systemContext = "Kwyk is a math and french exercises plateform."
+    self.complexity = 0
     self.functions = {
       "kwyk_get": {
         "function": functools.partial(self.get), 

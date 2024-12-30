@@ -116,6 +116,7 @@ class TomCalendar:
     ]
 
     self.systemContext = ""
+    self.complexity = 0
 
     self.functions = {
       "calendar_search": {

@@ -105,6 +105,7 @@ class TomGroceries:
     ]
 
     self.systemContext = ""
+    self.complexity = 0
 
     self.functions = {
       "grocery_list_content": {

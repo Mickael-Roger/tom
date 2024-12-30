@@ -111,6 +111,7 @@ class TomCafetaria:
     ]
 
     self.systemContext = ""
+    self.complexity = 0
 
     self.functions = {
       "get_cafetaria_credit": {

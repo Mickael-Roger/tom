@@ -172,6 +172,9 @@ class TomWebService:
 
     response = userList[cherrypy.session['username']].processRequest(input=user_input, lang=lang, position=position)
 
+
+    print(response)
+
     if response:
 
       voice= None
@@ -346,10 +349,12 @@ for user in global_config['users']:
       "obj": globals()[module_list[service_name]['class']](user['services'][service_name]),
       "description": module_list[service_name]['description'],
       "tools": [],
+      "complexity": 0,
       "service_context": "",
       "functions": {}, 
     }
     userList[username].services[service_name]['tools'] = userList[username].services[service_name]['obj'].tools
+    userList[username].services[service_name]['complexity'] = userList[username].services[service_name]['obj'].complexity
     userList[username].services[service_name]['service_context'] = userList[username].services[service_name]['obj'].systemContext
     userList[username].functions = userList[username].functions | userList[username].services[service_name]['obj'].functions
     
@@ -357,10 +362,12 @@ for user in global_config['users']:
     "obj": TomBehavior(global_config, username),
     "description": "This module is used to manage your instructions and behaviors. It can be used to add or remove an instruction, modify your behaviors, or list your current instructions and behaviors. Use this module only if the user explicitly requests it, such as with phrases like: 'What instructions have I given you?', 'Remove this instruction' or 'From now on, I want you to'",
     "tools": [],
+    "complexity": 0,
     "service_context": "",
     "functions": {}, 
   }
   userList[username].services['behavior']['tools'] = userList[username].services['behavior']['obj'].tools
+  userList[username].services['behavior']['complexity'] = userList[username].services['behavior']['obj'].complexity
   userList[username].services['behavior']['service_context'] = userList[username].services['behavior']['obj'].systemContext
   userList[username].functions = userList[username].functions | userList[username].services['behavior']['obj'].functions
 
@@ -368,10 +375,12 @@ for user in global_config['users']:
     "obj": TomMemory(global_config, username),
     "description": "This module is used to manage the archives of our conversations. Use this module only if the user explicitly requests it, with phrases such as: 'We talked about this', 'We had a conversation about', 'Delete this archive from your memory', 'Do you have an archive about?' or 'Some time ago, you explained this to me'", 
     "tools": [],
+    "complexity": 0,
     "service_context": "",
     "functions": {}, 
   }
   userList[username].services['memory']['tools'] = userList[username].services['memory']['obj'].tools
+  userList[username].services['memory']['complexity'] = userList[username].services['memory']['obj'].complexity
   userList[username].services['memory']['service_context'] = userList[username].services['memory']['obj'].systemContext
   userList[username].functions = userList[username].functions | userList[username].services['memory']['obj'].functions
   userList[username].services['memory']['obj'].llm = userList[username].llm
@@ -380,10 +389,12 @@ for user in global_config['users']:
     "obj": TomReminder(global_config, username),
     "description": "This module is used to manage reminders. Reminders are time-specific notification for the user. The purpose is to prompt the user to perform a specific action at a given time. This is for tasks or events that need a one-time or time-sensitive follow-up.", 
     "tools": [],
+    "complexity": 0,
     "service_context": "",
     "functions": {}, 
   }
   userList[username].services['reminder']['tools'] = userList[username].services['reminder']['obj'].tools
+  userList[username].services['reminder']['complexity'] = userList[username].services['reminder']['obj'].complexity
   userList[username].services['reminder']['service_context'] = userList[username].services['reminder']['obj'].systemContext
   userList[username].functions = userList[username].functions | userList[username].services['reminder']['obj'].functions
 
@@ -391,10 +402,12 @@ for user in global_config['users']:
     "obj": TomRemember(global_config, username),
     "description": "This module is used to manage store user-provided information permanently or indefinitely. It is about to retain, list or delete facts, data, or context provided by the user for future reference. This is not tied to any specific time but serves as a knowledge repository.", 
     "tools": [],
+    "complexity": 0,
     "service_context": "",
     "functions": {}, 
   }
   userList[username].services['remember']['tools'] = userList[username].services['remember']['obj'].tools
+  userList[username].services['remember']['complexity'] = userList[username].services['remember']['obj'].complexity
   userList[username].services['remember']['service_context'] = userList[username].services['remember']['obj'].systemContext
   userList[username].functions = userList[username].functions | userList[username].services['remember']['obj'].functions
 

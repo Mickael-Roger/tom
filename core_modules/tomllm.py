@@ -23,22 +23,23 @@ class TomLLM():
     if global_config['global']['llm'] == "mistral":
       self.llm_client = Mistral(api_key=global_config['global']["mistral"]["api"])
       self.llm = self.callMistral
-      self.llm_model = "mistral-large-latest"
+      self.llm_models = [ "mistral-large-latest", "mistral-large-latest", "mistral-large-latest"]
+      #      self.llm_model = "mistral-large-latest"
 
     elif global_config['global']['llm'] == "openai":
       self.llm_client = OpenAI(api_key=global_config['global']["openai"]["api"])
       self.llm = self.callOpenai
-      self.llm_model = "gpt-4o-mini"
+      self.llm_models = ["gpt-4o-mini", "gpt-4o", "gpt-4o"]
 
     elif global_config['global']['llm'] == "gemini":
       Gemini.configure(api_key=global_config['global']["gemini"]["api"])
       self.llm = self.callGemini
-      self.llm_model = "gemini-1.5-flash"
+      self.llm_models = ["gemini-1.5-flash", "gemini-1.5-flash", "gemini-1.5-flash"]
 
     elif global_config['global']['llm'] == "deepseek":
       self.llm_client = OpenAI(api_key=global_config['global']["deepseek"]["api"], base_url="https://api.deepseek.com")
       self.llm = self.callDeepseek
-      self.llm_model = "deepseek-chat"
+      self.llm_models = ["deepseek-chat", "deepseek-chat", "deepseek-chat"]
 
     else:
       print(f"LLM {global_config['global']['llm']} not supported")
@@ -68,17 +69,17 @@ class TomLLM():
 
 
 
-  def callMistral(self, messages, tools=None):
+  def callMistral(self, messages, tools=None, complexity=0):
     if tools: 
       response = self.llm_client.chat.complete(
-        model = self.llm_model,
+        model = self.llm_models[complexity],
         messages = messages,
         tools = tools,
         tool_choice = "auto",
       )
     else:
       response = self.llm_client.chat.complete(
-        model = self.llm_model,
+        model = self.llm_models[complexity],
         messages = messages
       )
         
@@ -101,7 +102,7 @@ class TomLLM():
     return response
 
 
-  def callDeepseek(self, messages, tools=None):
+  def callDeepseek(self, messages, tools=None, complexity=0):
 
 
     if tools: 
@@ -113,26 +114,26 @@ class TomLLM():
     else:
       newtools = None
 
-    return self.callOpenai(messages, newtools)
+    return self.callOpenai(messages, newtools, complexity)
 
 
 
-  def callOpenai(self, messages, tools=None):
+  def callOpenai(self, messages, tools=None, complexity=0):
 
-    print("---------1----------")
-    print(messages)
-    print("---------1----------")
+    #print("---------1----------")
+    #print(messages)
+    #print("---------1----------")
 
     if tools: 
       response = self.llm_client.chat.completions.create(
-        model = self.llm_model,
+        model = self.llm_models[complexity],
         messages = messages,
         tools = tools,
         tool_choice = "auto",
       )
     else:
       response = self.llm_client.chat.completions.create(
-        model = self.llm_model,
+        model = self.llm_models[complexity],
         messages = messages,
       )
 
@@ -142,26 +143,23 @@ class TomLLM():
 
 
     if not response:
-      print("prout")
       return False
 
     if not response.choices:
-      print("prout2")
       return False
 
     if response.choices[0].finish_reason not in ["tool_calls", "stop"]:
-      print("prout3")
       return False
 
     return response
 
 
-  def callGemini(self, messages, tools=None):
+  def callGemini(self, messages, tools=None, complexity=0):
 
     if tools: 
-      model = Gemini.GenerativeModel(model_name=self.llm_model, tools=tools)
+      model = Gemini.GenerativeModel(model_name=self.llm_models[complexity], tools=tools)
     else:
-      model = Gemini.GenerativeModel(model_name=self.llm_model)
+      model = Gemini.GenerativeModel(model_name=self.llm_models[complexity])
 
     response = model.start_chat().send_message(
       messages,
@@ -267,10 +265,13 @@ class TomLLM():
     conversation.append({"role": "system", "content": f"Here is a list of modules. For each module, you have the its description. Your role is to call the function 'modules_needed_to_answer_user_prompt' with the module needed to provide me the answer to my request. 'module_name' is not a name of a function, it's a possible value of the parameter of the 'modules_needed_to_answer_prompt'. You must never use the field 'module_name' as a function name.\n{tooling}"})
 
     # Alternative to test: As a language model, you cannot respond to all of my requests. Therefore, you might need additional information. Certain information or functionalities can be found in modules. You can load these modules to assist you in responding by using the load_module function. Below, you will find a complete list of modules along with their descriptions.
+
+    complexity = 0
 #
     while True:
 
-      response = self.llm(messages=conversation, tools=tools)
+
+      response = self.llm(messages=conversation, tools=tools, complexity=complexity)
 
       conversation = copy.deepcopy(self.history)
   
@@ -286,12 +287,14 @@ class TomLLM():
           for tool_call in response.choices[0].message.tool_calls:
             if tool_call.function.name.find("modules_needed_to_answer_user_prompt") != -1:    # Probably bad prompt, but sometimes it calls 'module_name.modules_needed_to_answer_user_prompt'
               mod = json.loads(tool_call.function.arguments)
+              mod_name=mod['modules_name']
               #for mod in mods['modules_name']:
-              load_modules.append(mod['modules_name'])
+              load_modules.append(mod_name)
             # Todo add something to check if the function name is a module, if so, it's an LLM error and we must use it as if it was a parameter
             if tool_call.function.name in modules_name_list:
-              load_modules.append(tool_call.function.name)
-
+              mod_name=tool_call.function.name
+              load_modules.append(mod_name)
+            
 
 
           # Yes we are
@@ -301,6 +304,14 @@ class TomLLM():
             tools = []
             for mod in load_modules:
               tools = tools + self.services[mod]['tools']
+
+              try:
+                if self.services[mod]["complexity"] > complexity:
+                  complexity = self.services[mod]["complexity"]
+                  print(f"Complexity increased to {complexity}")
+              except:
+                pass
+
   
           # We are not
           else:

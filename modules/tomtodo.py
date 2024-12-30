@@ -116,6 +116,7 @@ class TomTodo:
     ]
 
     self.systemContext = ""
+    self.complexity = 0
     self.functions = {
       "todo_list_all": {
         "function": functools.partial(self.listTasks), 
