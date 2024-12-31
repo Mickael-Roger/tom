@@ -82,12 +82,12 @@ class TomKwyk:
       },
     ]
 
-    self.systemContext = "Kwyk is a math and french exercises plateform."
+    self.systemContext = "Kwyk is an online platform for math and French exercises."
     self.complexity = 0
     self.functions = {
       "kwyk_get": {
         "function": functools.partial(self.get), 
-        "responseContext": """When the user asks for kwyk status, you always must answer in a consise way. For example 'This week john has done 23 kwywk exercices', 'Today, so far, Bryan hasn't done any kwyk exercice'""" 
+        "responseContext": """When the user asks for kwyk status, you always must answer in a consise way. For example 'This week john has done 23 kwyk exercices', 'Today, so far, Bryan hasn't done any kwyk exercice'""" 
       },
     }
 

@@ -4,6 +4,7 @@ import sqlite3
 
 from datetime import datetime, timedelta, date
 import functools
+import copy
 
 ################################################################################################
 #                                                                                              #
@@ -26,6 +27,9 @@ class TomIdfm:
     self.url = "https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia"
     self.apiKey = config['token']
     self.db =  config['cache_db']
+
+    self.route = None
+    self.routes = []
 
     if not TomIdfm._already_updated:
       TomIdfm._already_updated = True
@@ -58,8 +62,6 @@ class TomIdfm:
       ''')
       dbconn.commit()
       dbconn.close()
-
-      self.journeys = []
 
       # Update data in DB
       res = requests.get('https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/emplacement-des-gares-idf/exports/json')
@@ -186,108 +188,41 @@ class TomIdfm:
           },
         },
       },
-#      {
-#        "type": "function",
-#        "function": {
-#          "name": "list_train_lines",
-#          "description": "List all train, metro and tram lines. For each line, this function returns the line_id, the line name and a the line type (metro, train or tram).",
-#          "parameters": {
-#          },
-#        },
-#      },
-#      {
-#        "type": "function",
-#        "function": {
-#          "name": "list_train_station_lines",
-#          "description": "List all available lines in a station",
-#          "strict": True,
-#          "parameters": {
-#            "type": "object",
-#            "properties": {
-#              "station_id": {
-#                "type": "string",
-#                "description": f"ID of the train station. It's a station_id value that could be retreive using list_train_stations function.",
-#              },
-#            },
-#            "required": ["station_id"],
-#            "additionalProperties": False,
-#          },
-#        },
-#      },
-#      {
-#        "type": "function",
-#        "function": {
-#          "name": "get_train_schedule",
-#          "description": "Get the train, tramway or subway schedule. For a departure station, this function will return a list of all scheduling trains, metro and trams per line with all stops. Use this function when the user prompt ask for train, tramway or subway scheduling information. For example when a user ask 'What are the next train from x to y', 'When are the train from x to y on monday'",
-#          "strict": True,
-#          "parameters": {
-#            "type": "object",
-#            "properties": {
-#              "date": {
-#                "type": "string",
-#                "description": f"Scheduling starting date in the form 'YYYY-MM-DD hh:mm:ss'",
-#              },
-#              "departure_station_id": {
-#                "type": "string",
-#                "description": f"Departure train station_id. It's a station_id value that could be retreive using list_train_stations function.",
-#              },
-#            },
-#            "required": ["date", "departure_station_id"],
-#            "additionalProperties": False,
-#          },
-#        }
-#      },
-#      {
-#        "type": "function",
-#        "description": "Public transportation journey planner (train, subway, tramway and buses). Use this function when the user prompt ask for a public transportation journey plannification. For example when a user ask 'I\'d like to go to x from y', 'What is the best path for going to x by train'",
-#        "function": {
-#          "name": "get_train_planner",
-#          "parameters": {
-#            "type": "object",
-#            "properties": {
-#              "date": {
-#                "type": "string",
-#                "description": f"Scheduling date in the form 'yyyy-mm-dd'",
-#              },
-#              "origin": {
-#                "type": "string",
-#                "enum": self.listStations,
-#                "description": f"Departure station.",
-#              },
-#              "destination": {
-#                "type": "string",
-#                "enum": self.listStations,
-#                "description": f"Arrival station",
-#              },
-#            },
-#            "required": ["date", "origin", "destination"],
-#            "additionalProperties": False,
-#          },
-#        }
-#      },
-#      {
-#        "type": "function",
-#        "description": "Get the train, tramway or subway disturbance. Use this function when the user prompt ask for train, tramway or subway disturbance information. For example 'Is there any incident in line X', 'Is there any disturbance on train line A', 'Is the any disturbance at the train station y'",
-#        "function": {
-#          "name": "get_train_disruption",
-#          "parameters": {
-#            "type": "object",
-#            "properties": {
-#              "line": {
-#                "type": "string",
-#                "enum": self.listLines, 
-#                "description": f"Name of the line. 1,2,3,4,5,6,7,7bis,8,9,10,11,12,13,14 are subway lines. T1,T2,T3a,T3b,T4,T5,T6,T7,T8,T9,T10,T11,T12,T13 are tramway lines. A,B,C,D,E,H,J,K,L,N,P,R,U,V are train lines.",
-#              },
-#            },
-#            "required": ["line"],
-#            "additionalProperties": False,
-#          },
-#        },
-#      },
+      {
+        "type": "function",
+        "function": {
+          "name": "select_a_route",
+          "description": "Used only after calling the 'plan_a_journey' function. If the user is interested in taking one of the suggested routes, this function allows the desired route to be stored in the current route. The stored route can then be used to guide the user during their journey. For example, this is used after a journey calculation request (via the 'plan_a_journey' function) when the user indicates they want to take the proposed route. For instance: 'OK, I willl take this route' or 'Alright, I will go with this one, guide me.'",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "route_id": {
+                "type": "integer",
+                "description": f"ID of the route to keep. The 'route_id' come from a result of 'plan_a_journey' function call.",
+              },
+            },
+            "required": ["route_id"],
+            "additionalProperties": False,
+          },
+        },
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "retreived_current_selected_route",
+          "description": "Retrieve detailed information about the current journey. This allows you to get the information of the journey chosen by the user, for instance, if it's not in the prompt history. It can be used in situations like: 'I am here, what's the next step of my journey?' or 'Okay, resume the guidance of my route.'",
+          "parameters": {
+            "type": "object",
+            "properties": {
+            },
+            "additionalProperties": False,
+          },
+        },
+      },
     ]
 
 
-#    self.journey(departure='stop_area:IDFM:73731', arrival='2.3051858276889905;48.846734773306885', journey_datetime='20241226T110000')
 
     self.systemContext = ""
     self.complexity = 1
@@ -305,14 +240,14 @@ class TomIdfm:
         "function": functools.partial(self.journey), 
         "responseContext": "" 
       },
-#      "list_train_station_lines": {
-#        "function": functools.partial(self.get_station_lines), 
-#        "responseContext": "" 
-#      },
-#      "get_train_schedule": {
-#        "function": functools.partial(self.schedule), 
-#        "responseContext": "" 
-#      },
+      "select_a_route": {
+        "function": functools.partial(self.keep_route), 
+        "responseContext": "" 
+      },
+      "retreived_current_selected_route": {
+        "function": functools.partial(self.retreive_keeped_route), 
+        "responseContext": "" 
+      },
     }
 
 
@@ -535,12 +470,23 @@ class TomIdfm:
           if section_duration > 0:
             sections.append({"section_type": section_type, "section_duration_in_seconds": section_duration, "section_from": section_from, "section_to": section_to, "section_departure_datetime": section_departure_date_time, "section_arrival_datetime": section_arrival_date_time})
 
-      self.journeys.append({"id": i, "departure_datetime": departure_date_time, "arrival_datetime": arrival_date_time, "duration_in_seconds": duration, "nb_transfers": nb_transfers, "sections": sections})
+      self.routes.append({"route_id": i, "departure_datetime": departure_date_time, "arrival_datetime": arrival_date_time, "duration_in_seconds": duration, "nb_transfers": nb_transfers, "sections": sections})
       i = i+1
 
-    print(self.journeys)
+    print(self.routes)
 
-    return self.journeys
+    return self.routes
+
+
+
+  def keep_route(self, route_id):
+    self.route = copy.deepcopy(self.routes[route_id])
+    print(self.route)
+    return True
+
+
+  def retreive_keeped_route(self):
+    return self.route
 
 
 

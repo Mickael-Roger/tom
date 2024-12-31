@@ -34,7 +34,7 @@ class TomRemember:
         "type": "function",
         "function": {
           "name": "tom_list_stored_information",
-          "description": "Function to retrieve all pieces of information that the user has previously asked the system to remember. This provides an overview of the stored facts, events, or data, helping the user recall and manage the remembered context effectively. For example: 'List everything you remember.', 'What have I told you to remember?' or 'Do I ask you to remember something about my pin code?'",
+          "description": "Function to retrieve all pieces of information that the user has previously asked the system to remember. This provides an overview of the stored facts, events, or data, helping the user recall and manage the remembered context effectively. For example: 'List everything you remember.', 'What have I told you to remember?', 'Do I ask you to remember something about my pin code?', 'Do you remember where I park my car?', 'Where are my keys?', 'What is my PIN code?', ...",
           "parameters": {
           },
         },
@@ -50,7 +50,7 @@ class TomRemember:
             "properties": {
               "stored_information_id": {
                 "type": "string",
-                "description": f"ID of the stored information.",
+                "description": f"ID of the stored information to remove. This 'stored_information_id' values must be retreived using 'tom_list_stored_information' function. Unless you already have the 'store_information_value', you must first run 'tom_list_stored_information' function to retreive this id.",
               },
             },
             "required": ["stored_information_id"],
@@ -83,7 +83,7 @@ class TomRemember:
      If the user's request is to remember where the car is parked, you must save the GPS location along with additional information such as the parking spot number, street name, a point of interest (POI), etc. If the user does not provide any additional information, ask if they have any.
      If the request involves retrieving information about where something is located (their car, keys, an object, etc.), at the end, remember to ask the user to confirm that they have retrieved their item, car, etc., so you can delete this entry from your memory.
     """
-    self.complexity = 0
+    self.complexity = 1
 
     self.functions = {
       "tom_list_stored_information": {
@@ -108,9 +108,10 @@ class TomRemember:
       cursor = dbconn.cursor()
       cursor.execute("INSERT INTO remembers (information) VALUES (?)", (information,))
       dbconn.commit()
+      id = cursor.lastrowid
       dbconn.close()
 
-      return True
+      return f"Added with id: {id}"
 
     except:
       return False
@@ -123,8 +124,6 @@ class TomRemember:
       cursor.execute("DELETE FROM remembers WHERE id = ?", (stored_information_id,))
       dbconn.commit()
       dbconn.close()
-
-      response = json.dumps({"stored_information_removed": [{"stored_information_id": stored_information_id}]})
 
       return True
 
@@ -143,7 +142,7 @@ class TomRemember:
 
       remembers = []
       for val in values:
-        remembers.append({"id": val[0], "datetime": val[1], "information": val[2]})
+        remembers.append({"stored_information_id": val[0], "datetime": val[1], "information": val[2]})
 
       return remembers
 

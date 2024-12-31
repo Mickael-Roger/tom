@@ -55,9 +55,24 @@ class TomLLM():
 
     self.user_context = user_config['personalContext']
 
+
     self.tts = None
 
-    self.tom_context = f"""Your name is Tom and you are my personal life assistant. When your answer contains a date, it must be in the form 'Weekday day month'.\n\nImportant: 'Do not make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous'\nYour responses will be transcribed into audio, so by default, and unless otherwise specified, you must reply with audible sentences, without indents, dashes, lists, or any markdown or other formatting. Additionally, you should respond as concisely as possible whenever possible.\n{self.user_context} """
+    #self.tom_context = f"""Your name is Tom and you are my personal life assistant. When your answer contains a date, it must be in the form 'Weekday day month'.\n\nImportant: 'Do not make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous'\nYour responses will be transcribed into audio, so by default, and unless otherwise specified, you must reply with audible sentences, without indents, dashes, lists, or any markdown or other formatting. Additionally, you should respond as concisely as possible whenever possible.\n{self.user_context} """
+
+    self.tom_context = f"""Your name is Tom, and you are my personal assistant. You have access to numerous external functionalities via function calls. Since you have access to more functions than your memory can hold, they are grouped into modules. A module is a logical grouping of functions within a specific scope. One of your primary tasks will be "triage," which involves identifying the modules to load to fulfill the user's request.
+
+    When the user provides you with information, if you think it should be stored in memory, suggest doing so.
+
+    It is important to be precise and not make assumptions. If the request is unclear, ask for clarification.
+
+    Your responses will be read aloud using a text-to-speech function. Unless otherwise specified, you must reply with audible sentences, avoiding indents, dashes, bullet points, or formatting like markdown. Additionally, always aim to be as concise as possible in your responses.
+
+    When your response includes a temporal reference, it must be in the format 'Weekday day month'. Numbers must be written with digits and not in words. 
+
+    {self.user_context}
+
+    """
 
 
 
@@ -192,6 +207,8 @@ class TomLLM():
         svc_context = f"{svc_context}\n{self.services[service]['service_context']}\n"
 
     behaviors = self.services['behavior']['obj'].behavior_get()
+
+    morning_routines = self.services['morningroutine']['obj'].morning_routine_prompt()
     
     
 
@@ -203,9 +220,9 @@ class TomLLM():
       self.history.append(todayMsg)
       self.history.append({"role": "system", "content": self.tom_context})
       self.history.append({"role": "system", "content": f"{svc_context}"})
+
       if behaviors:
         self.history.append({"role": "system", "content": f"{behaviors}"})
-
 
     #behaviors = self.services['behavior']['obj'].behavior_get()
     #if len(behaviors) > 1:
@@ -316,6 +333,7 @@ class TomLLM():
           # We are not
           else:
             
+            self.history.append(response.choices[0].message.to_dict())
             conversation.append(response.choices[0].message.to_dict())
 
             responseContext = {"functions": [], "rules": []}
@@ -346,6 +364,7 @@ class TomLLM():
                 return False
     
   
+              self.history.append({"role": 'tool', "content": json.dumps(function_result), "tool_call_id": tool_call.id})
               conversation.append({"role": 'tool', "content": json.dumps(function_result), "tool_call_id": tool_call.id})
                 
               # TODODODODODDODODO

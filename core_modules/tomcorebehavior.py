@@ -160,7 +160,7 @@ class TomBehavior:
       for val in values:
         behaviors.append({"id": val[0], "date_from": val[1], "date_to": val[2], "behavior": val[3]})
 
-      return True, behaviors
+      return behaviors
 
     except:
       return False

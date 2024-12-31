@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, date
 tom_config = {
   "module_name": "cafetaria",
   "class_name": "TomCafetaria",
-  "description": "This module is used to manage the High school cafetaria usage like making a cafetria reservation, or getting the cafetaria credit."
+  "description": "This module is used to manage the use of the school cafeteria, such as reserving or canceling a cafeteria meal or checking the remaining credit."
 }
 
 class TomCafetaria:

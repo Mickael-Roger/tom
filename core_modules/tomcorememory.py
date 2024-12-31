@@ -1,44 +1,79 @@
-import os
 import sqlite3
-import json
+import os
 import functools
-
+import firebase_admin
+from firebase_admin import credentials, messaging
+import threading
+import time
+import json
 
 ################################################################################################
 #                                                                                              #
-#                                 Memorization capability                                      #
+#                                   Memory capability                                          #
 #                                                                                              #
 ################################################################################################
 class TomMemory:
 
+  _update_thread_started = False
+
   def __init__(self, global_config, username) -> None:
 
-    db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], username)
+    db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], "all")
     os.makedirs(db_path, exist_ok=True)
 
     self.db = os.path.join(db_path, "memory.sqlite")
+    self.creds = global_config['global']['firebase']['sa_token_file']
 
-    self.llm = None
+    self.username = username
 
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
     cursor.execute('''
-    create table if not exists conversations (
+    create table if not exists notifications (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         datetime DATETIME default current_date,
-        summary TEXT,
-        conversation BLOB
+        notification DATETIME,
+        sender TEXT,
+        recipient TEXT,
+        sent BOOLEAN DEFAULT 0,
+        message TEXT
+    )
+    ''')
+    cursor.execute('''
+    create table if not exists fcm_tokens (
+        token TEXT PRIMARY KEY,
+        username TEXT,
+        platform TEXT,
+        last_update DATETIME default current_date
+    )
+    ''')
+    cursor.execute('''
+    create table if not exists temporary (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        datetime DATETIME default current_date,
+        information TEXT
+    )
+    ''')
+    cursor.execute('''
+    create table if not exists permanent (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        datetime DATETIME default current_date,
+        information TEXT
     )
     ''')
     dbconn.commit()
     dbconn.close()
 
+    self.users = []
+    for user in global_config['users']:
+      self.users.append(user['username'])
+
     self.tools = [
       {
         "type": "function",
         "function": {
-          "name": "tom_archive_conversation",
-          "description": "Function use to save the current conversation between me and you for future reference. The archived conversation can be retrieved or reviewed later to preserve context, decisions, or information exchanged during the interaction. For example: 'Archive this conversation' or 'Save our discussion'",
+          "name": "list_reminders",
+          "description": "A function to retrieve a list of all active or pending reminders previously set by the user. This function provides an overview of scheduled reminders and their corresponding times. For example: 'List all my reminders.' or 'What reminders do I have?'",
           "parameters": {
           },
         },
@@ -46,27 +81,18 @@ class TomMemory:
       {
         "type": "function",
         "function": {
-          "name": "tom_list_archived_conversations",
-          "description": "List all archived conversation we previously had. For example when a user aks 'Do we have already talked about something?', 'We already talked about that, could you remember?'. Will return, the conversation ID, the datetime of the conversation and a summary of it.",
-          "parameters": {
-          },
-        },
-      },
-      {
-        "type": "function",
-        "function": {
-          "name": "tom_retreive_archived_conversation_content",
-          "description": "Retreive the content of an archived conversation we previously had.",
+          "name": "delete_reminder",
+          "description": "A function to delete a specific reminder previously set by the user. The function allows the user to specify which reminder to remove by referencing its message, time, or both. This ensures users can manage their reminders efficiently by removing completed or outdated ones. For example: 'Delete the reminder to call my mom.', 'Remove the 8 PM sports reminder.' or 'Cancel the reminder set for tomorrow.'",
           "strict": True,
           "parameters": {
             "type": "object",
             "properties": {
-              "conversation_id": {
+              "reminder_id": {
                 "type": "string",
-                "description": f"ID of the conversation",
+                "description": f"ID of the reminder",
               },
             },
-            "required": ["conversation_id"],
+            "required": ["reminder_id"],
             "additionalProperties": False,
           },
         },
@@ -74,126 +100,316 @@ class TomMemory:
       {
         "type": "function",
         "function": {
-          "name": "tom_delete_archived_conversation_content",
-          "description": "Delete from your memory an archived conversation we previously had.",
+          "name": "add_reminder",
+          "description": "Function to create a reminder. A reminder is a time-specific notification for the user. The purpose of this function is to prompt the user to perform a specific action at a given time. This is for tasks or events that need a one-time or time-sensitive follow-up. For example: 'Remind me to call my mom tomorrow.', 'Reminder Jennifer to go to school tommorow at 9am' or 'Remind me at 8 PM to go to sports.'",
           "strict": True,
           "parameters": {
             "type": "object",
             "properties": {
-              "conversation_id": {
+              "reminder_text": {
                 "type": "string",
-                "description": f"ID of the conversation",
+                "description": f"The text of the reminder",
+              },
+              "reminder_recipient": {
+                "type": "string",
+                "enum": self.users,
+                "description": f"Recipient of the reminder, could be the requester (me: {username}) or someone else.",
+              },
+              "reminder_datetime": {
+                "type": "string",
+                "description": f"The datetime you need to remind me this reminder. Must be in the form of 'YYYY-MM-DD hh:mm:ss'",
               },
             },
-            "required": ["conversation_id"],
+            "required": ["reminder_text", "reminder_datetime", "reminder_recipient"],
+            "additionalProperties": False,
+          },
+        },
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "list_stored_information",
+          "description": "Function to retrieve all pieces of information that the user has previously asked the system to remember. This provides an overview of the stored facts, events, or data, helping the user recall and manage the remembered context effectively. For example: 'List everything you remember.', 'What have I told you to remember?', 'Do I ask you to remember something about my pin code?', 'Do you remember where I park my car?', 'Where are my keys?', 'What is my PIN code?', ... And more generally, any information specific to the user that you cannot know on your own.",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "information_type": {
+                "type": "string",
+                "enum": ["permanent", "temporary"],
+                "description": f"Permanent information is data meant to be stored indefinitely, like birthdays or PIN codes, while temporary information is situational and only relevant for a short time, such as where the user parked their car.",
+              },
+              "stored_information_id": {
+                "type": "string",
+                "description": f"ID of the stored information to remove. This 'stored_information_id' values must be retreived using 'tom_list_stored_information' function. Unless you already have the 'store_information_value', you must first run 'tom_list_stored_information' function to retreive this id.",
+              },
+            },
+            "required": ["information_type", "stored_information_id"],
+            "additionalProperties": False,
+          },
+        },
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "delete_stored_information",
+          "description": "Function to remove specific information previously stored by the user. The function allows the user to specify which piece of remembered information to delete, ensuring that the stored context remains relevant and up-to-date.",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "information_type": {
+                "type": "string",
+                "enum": ["permanent", "temporary"],
+                "description": f"Permanent information is data meant to be stored indefinitely, like birthdays or PIN codes, while temporary information is situational and only relevant for a short time, such as where the user parked their car.",
+              },
+              "stored_information_id": {
+                "type": "string",
+                "description": f"ID of the stored information to remove. This 'stored_information_id' values must be retreived using 'tom_list_stored_information' function. Unless you already have the 'store_information_value', you must first run 'tom_list_stored_information' function to retreive this id.",
+              },
+            },
+            "required": ["information_type", "stored_information_id"],
+            "additionalProperties": False,
+          },
+        },
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "store_information",
+          "description": "A function to store user-provided information permanently or indefinitely. The purpose of this function is to retain facts, data, or context provided by the user for future reference. This is not tied to any specific time but serves as a knowledge repository. For example: 'Remember that my PIN code is 1234.' or 'Remember today I lost my keys.'",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "information_type": {
+                "type": "string",
+                "enum": ["permanent", "temporary"],
+                "description": f"Permanent information is data meant to be stored indefinitely, like birthdays or PIN codes, while temporary information is situational and only relevant for a short time, such as where the user parked their car.",
+              },
+              "information": {
+                "type": "string",
+                "description": f"The text of the information to remember",
+              },
+            },
+            "required": ["information_type", "information"],
             "additionalProperties": False,
           },
         },
       },
     ]
 
-    self.systemContext = ""
+    self.systemContext = """Memory type can take several forms:
+
+     - Reminders: A reminder is an element, task, or action the user asks you to remind them about. It has a temporal aspect and will result in a notification being sent to the user at the appropriate time. For example, the user might say: "Remind me in 2 hours to take out the laundry," or "Remind me tomorrow morning at 9 a.m. to buy bread." A reminder is always associated with a specific deadline.
+
+     - Permanent information: Permanent information is data provided by the user that might be useful to you or to them later. This information is relevant and needs to be stored indefinitely. It is unique to each user, so you cannot know it without being explicitly told. For example: "My PIN code is 1234," "X's date of birth is [date]," or "Mr. X is 45 years old." Typically, this information is shared voluntarily by the user, indicating they expect you to keep it in memory.
+
+     - Temporary information: Temporary information is data that is only useful for a short time, either until a specific event occurs or within a short timeframe. This is helpful for storing temporary details, such as when a user says, "I left my keys on the table," or "I parked in this spot." Such information is meant to help the user retrieve their keys or locate their car but loses relevance once the task is completed. Examples include: "I just parked," "I put the keys under the flowerpot," etc.
+
+     If the user's request is to remember where the car is parked, you must save the GPS location along with additional information such as the parking spot number, street name, a point of interest (POI), etc. If the user does not provide any additional information, ask if they have any.
+
+     When the user asks for information about a temporary detail, remind them to let you know when the information is no longer needed so you can delete it from memory. For example, if the user asks where they parked, you should remind them to tell you once they've retrieved their car so you can erase the information from your memory.
+
+     If the user tells you they've retrieved their car, found their keys, or similar, it means you should delete the temporary information related to that item from your memory.
+     This only applies to temporary information. The deletion of permanent information must be explicitly requested by the user.
+    """
+
     self.complexity = 0
 
     self.functions = {
-      "tom_archive_conversation": {
-        "function": functools.partial(self.history_keep), 
+      "list_reminders": {
+        "function": functools.partial(self.reminder_list), 
+        "responseContext": "Your response must be concise and in the form of a single sentence. You must not reply in list form. For example: 'You have 3 reminders: One for tommorrow about the grocery, another one for next  monday about going to school and a last about calling your mom next month'" 
+      },
+      "delete_reminder": {
+        "function": functools.partial(self.reminder_delete), 
         "responseContext": "" 
       },
-      "tom_list_archived_conversations": {
-        "function": functools.partial(self.history_list), 
+      "add_reminder": {
+        "function": functools.partial(self.reminder_add), 
         "responseContext": "" 
       },
-      "tom_retreive_archived_conversation_content": {
-        "function": functools.partial(self.history_get), 
+      "list_stored_information": {
+        "function": functools.partial(self.remember_list), 
         "responseContext": "" 
       },
-      "tom_delete_archived_conversation_content": {
-        "function": functools.partial(self.history_delete), 
+      "delete_stored_information": {
+        "function": functools.partial(self.remember_delete), 
+        "responseContext": "" 
+      },
+      "store_information": {
+        "function": functools.partial(self.remember_add), 
         "responseContext": "" 
       },
     }
 
+    if not TomMemory._update_thread_started:
+      TomMemory._update_thread_started = True
+      self.cred = credentials.Certificate(self.creds)
+      firebase_admin.initialize_app(self.cred)
+      self.thread = threading.Thread(target=self.notify)
+      self.thread.daemon = True  # Allow the thread to exit when the main program exits
+      self.thread.start()
+    
+
+  def notify(self):
+
+    while True:
+      print("Check for notifications")
+      try:
+        dbconn = sqlite3.connect(self.db)
+        cursor = dbconn.cursor()
+        cursor.execute("SELECT id, message, sender, recipient FROM notifications WHERE sent = 0 and notification < datetime('now')")
+        notifications = cursor.fetchall()
+        cursor.execute("SELECT username, token FROM fcm_tokens WHERE platform = 'android'")
+        tokens = cursor.fetchall()
+        dbconn.close()
+  
+
+        token_list = {}
+        for token in tokens:
+          username = token[0]
+          if username not in token_list.keys():
+            token_list[username] = []
+          token_list[username].append(token[1])
+
+        if notifications:
+          for notification in notifications:
+            id = notification[0]
+            message = notification[1]
+            sender = notification[2]
+            recipient = notification[3]
+  
+            if sender != recipient:
+              title = f"Tom Reminder from {sender}"
+            else:
+              title = f"Tom Reminder"
+  
+            for device in token_list[recipient]:
+              notif = messaging.Message(
+                data={
+                  "title": title,
+                  "body": message,
+                },
+                token=device,
+              )
+              response = messaging.send(notif)
+  
+            dbconn = sqlite3.connect(self.db)
+            cursor = dbconn.cursor()
+            cursor.execute("UPDATE notifications SET sent = 1 WHERE id = ?", (id,))
+            dbconn.commit()
+            dbconn.close()
+  
+            print(f"Successfully sent message: {message}")
+  
+      except Exception as e:
+        print(f"Error in notify: {e}")
+
+      time.sleep(60)
 
 
-  def history_get(self, conversation_id):
 
-    dbconn = sqlite3.connect(self.db)
-    cursor = dbconn.cursor()
-    cursor.execute('SELECT id, datetime, conversation FROM conversations WHERE id = ?', (conversation_id,))
-    val = cursor.fetchone()
-    dbconn.close()
-
-
-    return {"id": val[0], "datetime": val[1], "conversation": val[2]}
+  def reminder_add(self, reminder_text, reminder_datetime, reminder_recipient):
+    try:
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute("INSERT INTO notifications (notification, message, recipient, sender) VALUES (?, ?, ?, ?)", (reminder_datetime, reminder_text, reminder_recipient, self.username))
+      dbconn.commit()
+      dbconn.close()
 
 
-  def history_delete(self, conversation_id):
+      return True
 
-    dbconn = sqlite3.connect(self.db)
-    cursor = dbconn.cursor()
-    cursor.execute('DELETE FROM conversations WHERE id = ?', (conversation_id,))
-    dbconn.commit()
-    dbconn.close()
+    except:
+      return False
 
 
-    return True
+  def reminder_delete(self, reminder_id):
+    try:
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute("DELETE FROM notifications WHERE id = ?", (reminder_id))
+      dbconn.commit()
+      dbconn.close()
 
 
-  def history_list(self):
+      return True
 
-    history = []
-
-    dbconn = sqlite3.connect(self.db)
-    cursor = dbconn.cursor()
-    cursor.execute('SELECT id, datetime, summary FROM conversations')
-    values = cursor.fetchall()
-    dbconn.close()
-
-    for val in values:
-      history.append({"id": val[0], "datetime": val[1], "conversation_summary": val[2]})
-
-    return history
+    except:
+      return False
 
 
 
-  def history_keep(self, history):
+  def reminder_list(self):
+    try:
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute("SELECT id, notification, message FROM notifications WHERE sent = 0 AND recipient = ?", (self.username,))
+      values = cursor.fetchall()
+      dbconn.close()
 
-    conversation = []
+      reminders = []
+      for val in values:
+        reminders.append({"id": val[0], "reminder_datetime": val[1], "reminder_message": val[2]})
 
-    # Parse conversation
-    for message in history:
-      if isinstance(message, dict):     
-        if "role" in message.keys():
-          if message['role'] in ["assistant", "user"]:
-            conversation.append(message)
+      return reminders
 
-    # Then make a summary and extract keywords
-    systemContext = """The user input will be a conversation between you and me. You will need to respond with a brief summary of this conversation."""
+    except:
+      return False
 
-    conversation = json.dumps(conversation)
-    messages = [{"role": "system", "content": systemContext},{"role": "user", "content": conversation}]
 
-    response = self.llm(messages, None)
 
-    if response != False:
-      db = self.db
 
-      if response.choices is not None:
-        if response.choices[0].message.content is not None:
 
-          summary = str(response.choices[0].message.content)
+  def remember_add(self, information, information_type):
 
-          dbconn = sqlite3.connect(db)
-          cursor = dbconn.cursor()
-          cursor.execute('INSERT INTO conversations (summary, conversation) VALUES (?, ?)', (summary, conversation))
-          dbconn.commit()
-          dbconn.close()
+    try:
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      query = f"INSERT INTO {information_type} (information) VALUES (?)"
+      cursor.execute(query, (information,))
+      dbconn.commit()
+      id = cursor.lastrowid
+      dbconn.close()
 
-          response = json.dumps({"history_added": [{"summary": summary}]})
+      return f"Added with id: {id}"
 
-          return True
+    except:
+      return False
 
-    return False
 
+  def remember_delete(self, stored_information_id, information_type):
+    try:
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      query = f"DELETE FROM {information_type} WHERE id = ?"
+      cursor.execute(query, (stored_information_id,))
+      dbconn.commit()
+      dbconn.close()
+
+      return True
+
+    except:
+      return False
+
+
+
+  def remember_list(self, information_type):
+    try:
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute(f"SELECT id, datetime, information FROM {information_type}")
+      values = cursor.fetchall()
+      dbconn.close()
+
+      remembers = []
+      for val in values:
+        remembers.append({"stored_information_id": val[0], "datetime": val[1], "information": val[2]})
+
+      return remembers
+
+    except:
+      return False
 
