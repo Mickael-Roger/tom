@@ -20,31 +20,42 @@ class TomLLM():
 
   def __init__(self, user_config, global_config) -> None:
 
-    if global_config['global']['llm'] == "mistral":
-      self.llm_client = Mistral(api_key=global_config['global']["mistral"]["api"])
-      self.llm = self.callMistral
-      self.llm_models = [ "mistral-large-latest", "mistral-large-latest", "mistral-large-latest"]
-      #      self.llm_model = "mistral-large-latest"
+    self.llms = {}
 
-    elif global_config['global']['llm'] == "openai":
-      self.llm_client = OpenAI(api_key=global_config['global']["openai"]["api"])
-      self.llm = self.callOpenai
-      self.llm_models = ["gpt-4o-mini", "gpt-4o", "gpt-4o"]
+    if 'mistral' in global_config['global'].keys():
+      self.llms['mistral'] = {}
+      self.llms['mistral']['llm_client'] = Mistral(api_key=global_config['global']["mistral"]["api"])
+      self.llms['mistral']['func'] = self.callMistral
+      self.llms['mistral']['llm_models'] = [ "mistral-large-latest", "mistral-large-latest", "mistral-large-latest"]
 
-    elif global_config['global']['llm'] == "gemini":
-      Gemini.configure(api_key=global_config['global']["gemini"]["api"])
-      self.llm = self.callGemini
-      self.llm_models = ["gemini-1.5-flash", "gemini-1.5-flash", "gemini-1.5-flash"]
+    if 'openai' in global_config['global'].keys():
+      self.llms['openai'] = {}
+      self.llms['openai']['llm_client'] = OpenAI(api_key=global_config['global']["openai"]["api"])
+      self.llms['openai']['func'] = self.callOpenai
+      self.llms['openai']['llm_models'] = ["gpt-4o-mini", "gpt-4o", "gpt-4o"]
 
-    elif global_config['global']['llm'] == "deepseek":
-      self.llm_client = OpenAI(api_key=global_config['global']["deepseek"]["api"], base_url="https://api.deepseek.com")
-      self.llm = self.callDeepseek
-      self.llm_models = ["deepseek-chat", "deepseek-chat", "deepseek-chat"]
+    if 'deepseek' in global_config['global'].keys():
+      self.llms['deepseek'] = {}
+      self.llms['deepseek']['llm_client'] = OpenAI(api_key=global_config['global']["deepseek"]["api"], base_url="https://api.deepseek.com")
+      self.llms['deepseek']['func'] = self.callDeepseek
+      self.llms['deepseek']['llm_models'] = ["deepseek-chat", "deepseek-chat", "deepseek-chat"]
 
-    else:
+    if 'xai' in global_config['global'].keys():
+      self.llms['xai'] = {}
+      self.llms['xai']['llm_client'] = OpenAI(api_key=global_config['global']["xai"]["api"], base_url="https://api.x.ai/v1")
+      self.llms['xai']['func'] = self.callXai
+      self.llms['xai']['llm_models'] = ["grok-beta", "grok-beta", "grok-beta"]
+
+    if global_config['global']['llm'] not in ["mistral", "openai", "deepseek", "xai"]:
       print(f"LLM {global_config['global']['llm']} not supported")
       exit(-1)
 
+    self.llm = self.llms[global_config['global']['llm']]
+
+      #elif global_config['global']['llm'] == "gemini":
+      #  Gemini.configure(api_key=global_config['global']["gemini"]["api"])
+      #  self.llm = self.callGemini
+      #  self.llm_models = ["gemini-1.5-flash", "gemini-1.5-flash", "gemini-1.5-flash"]
 
     self.history = []
 
@@ -68,7 +79,9 @@ class TomLLM():
 
     Your responses will be read aloud using a text-to-speech function. Unless otherwise specified, you must reply with audible sentences, avoiding indents, dashes, bullet points, or formatting like markdown. Additionally, always aim to be as concise as possible in your responses.
 
-    When your response includes a temporal reference, it must be in the format 'Weekday day month'. Numbers must be written with digits and not in words. 
+    When your response includes a temporal reference, it must be in the format 'Weekday day month'. Numbers must be written with digits and not in words. It is import you write numbers using digits and not in words. For example, you must answer '123' and not 'one two three' nor 'one hundred and three'.
+
+    It is important that if the user asks you a question, before responding that you don’t know, you must check the information stored in your memory.
 
     {self.user_context}
 
@@ -85,16 +98,19 @@ class TomLLM():
 
 
   def callMistral(self, messages, tools=None, complexity=0):
+
+    print("///////////////// Mistral ///////////////////")
+
     if tools: 
-      response = self.llm_client.chat.complete(
-        model = self.llm_models[complexity],
+      response = self.llms['mistral']['llm_client'].chat.complete(
+        model = self.llms['mistral']['llm_models'][complexity],
         messages = messages,
         tools = tools,
         tool_choice = "auto",
       )
     else:
-      response = self.llm_client.chat.complete(
-        model = self.llm_models[complexity],
+      response = self.llms['mistral']['llm_client'].chat.complete(
+        model = self.llms['mistral']['llm_models'][complexity],
         messages = messages
       )
         
@@ -120,6 +136,9 @@ class TomLLM():
   def callDeepseek(self, messages, tools=None, complexity=0):
 
 
+    print("///////////////// DeepSeek ///////////////////")
+
+
     if tools: 
       newtools = copy.deepcopy(tools)
       for tool in newtools:
@@ -133,22 +152,41 @@ class TomLLM():
 
 
 
-  def callOpenai(self, messages, tools=None, complexity=0):
+  def callXai(self, messages, tools=None, complexity=0):
 
-    #print("---------1----------")
-    #print(messages)
-    #print("---------1----------")
+    print("///////////////// xAI ///////////////////")
 
     if tools: 
-      response = self.llm_client.chat.completions.create(
-        model = self.llm_models[complexity],
+      newtools = copy.deepcopy(tools)
+      for tool in newtools:
+        if "strict" in tool["function"].keys():
+          del tool["function"]["strict"]
+
+    else:
+      newtools = None
+
+    return self.callOpenai(messages, newtools, complexity)
+
+
+
+  def callOpenai(self, messages, tools=None, complexity=0):
+
+    print("---------1----------")
+    print(messages)
+    print("---------1----------")
+    print(tools)
+    print("---------1----------")
+
+    if tools: 
+      response = self.llms['openai']['llm_client'].chat.completions.create(
+        model = self.llms['openai']['llm_models'][complexity],
         messages = messages,
         tools = tools,
         tool_choice = "auto",
       )
     else:
-      response = self.llm_client.chat.completions.create(
-        model = self.llm_models[complexity],
+      response = self.llms['openai']['llm_client'].chat.completions.create(
+        model = self.llms['openai']['llm_models'][complexity],
         messages = messages,
       )
 
@@ -201,10 +239,10 @@ class TomLLM():
     weeknumber = datetime.now().isocalendar().week
     todayMsg = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
 
-    svc_context = ""
-    for service in self.services:
-      if self.services[service]['service_context'] != "":
-        svc_context = f"{svc_context}\n{self.services[service]['service_context']}\n"
+    #svc_context = ""
+    #for service in self.services:
+    #  if self.services[service]['service_context'] != "":
+    #    svc_context = f"{svc_context}\n{self.services[service]['service_context']}\n"
 
     behaviors = self.services['behavior']['obj'].behavior_get()
 
@@ -219,10 +257,10 @@ class TomLLM():
     else:
       self.history.append(todayMsg)
       self.history.append({"role": "system", "content": self.tom_context})
-      self.history.append({"role": "system", "content": f"{svc_context}"})
+      #self.history.append({"role": "system", "content": f"{svc_context}"})
 
       if behaviors:
-        self.history.append({"role": "system", "content": f"{behaviors}"})
+        self.history.append({"role": "system", "content": f"\n{behaviors}"})
 
     #behaviors = self.services['behavior']['obj'].behavior_get()
     #if len(behaviors) > 1:
@@ -230,6 +268,16 @@ class TomLLM():
   
     self.history.append({"role": "user", "content": input})
 
+
+
+  def callLLM(self, messages, tools=None, complexity=0, llm=None):
+
+    if llm == None:
+      llm_call=self.llm
+    else:
+      llm_call = self.llms[llm]
+
+    return llm_call['func'](messages=messages, tools=tools, complexity=complexity)
 
 
 
@@ -284,13 +332,18 @@ class TomLLM():
     # Alternative to test: As a language model, you cannot respond to all of my requests. Therefore, you might need additional information. Certain information or functionalities can be found in modules. You can load these modules to assist you in responding by using the load_module function. Below, you will find a complete list of modules along with their descriptions.
 
     complexity = 0
+
+    llm = "deepseek"
 #
     while True:
 
 
-      response = self.llm(messages=conversation, tools=tools, complexity=complexity)
+      response = self.callLLM(messages=conversation, tools=tools, complexity=complexity, llm=llm)
 
       conversation = copy.deepcopy(self.history)
+
+      print("##################")
+      print(response)
   
       if response != False:
         if response.choices[0].finish_reason == "stop":
@@ -319,6 +372,11 @@ class TomLLM():
             print("Load: " + str(load_modules))
   
             tools = []
+            complexity = 0
+
+            if 'memory' not in load_modules:
+              load_modules.append('memory')
+
             for mod in load_modules:
               tools = tools + self.services[mod]['tools']
 
@@ -329,9 +387,14 @@ class TomLLM():
               except:
                 pass
 
+
+            llm = None
+
   
           # We are not
           else:
+
+            llm = None
             
             self.history.append(response.choices[0].message.to_dict())
             conversation.append(response.choices[0].message.to_dict())

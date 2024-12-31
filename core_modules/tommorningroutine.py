@@ -89,7 +89,7 @@ class TomMorning:
       },
     ]
 
-    self.systemContext = "A morning routine is a set of instructions given to you that must be carried out every morning when the user requests their morning routine."
+    self.systemContext = "This module is used to manage the user's morning routines. A morning routine is a task you perform every morning on behalf of the user without them needing to request it."
     self.complexity = 0
 
     self.functions = {

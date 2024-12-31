@@ -129,7 +129,7 @@ class TomMemory:
         "type": "function",
         "function": {
           "name": "list_stored_information",
-          "description": "Function to retrieve all pieces of information that the user has previously asked the system to remember. This provides an overview of the stored facts, events, or data, helping the user recall and manage the remembered context effectively. For example: 'List everything you remember.', 'What have I told you to remember?', 'Do I ask you to remember something about my pin code?', 'Do you remember where I park my car?', 'Where are my keys?', 'What is my PIN code?', ... And more generally, any information specific to the user that you cannot know on your own.",
+          "description": "Function to retrieve all pieces of information that the user has previously asked the system to remember. This provides an overview of the stored facts, events, or data, helping the user recall and manage the remembered context effectively. For example: 'List everything you remember.', 'What have I told you to remember?', 'Do I ask you to remember something about my pin code?', 'Do you remember where I park my car?', 'Where are my keys?', 'What is my PIN code?', ... And more generally, any information specific to the user that you cannot know on your own. This is the way to retreive previously stored information. Must be called when you want to get previously stored information.",
           "strict": True,
           "parameters": {
             "type": "object",
@@ -139,12 +139,8 @@ class TomMemory:
                 "enum": ["permanent", "temporary"],
                 "description": f"Permanent information is data meant to be stored indefinitely, like birthdays or PIN codes, while temporary information is situational and only relevant for a short time, such as where the user parked their car.",
               },
-              "stored_information_id": {
-                "type": "string",
-                "description": f"ID of the stored information to remove. This 'stored_information_id' values must be retreived using 'tom_list_stored_information' function. Unless you already have the 'store_information_value', you must first run 'tom_list_stored_information' function to retreive this id.",
-              },
             },
-            "required": ["information_type", "stored_information_id"],
+            "required": ["information_type"],
             "additionalProperties": False,
           },
         },
@@ -199,7 +195,7 @@ class TomMemory:
       },
     ]
 
-    self.systemContext = """Memory type can take several forms:
+    self.systemContext = """This module is used to manage everything related to your memory or the user's requests. Memory can take several forms:
 
      - Reminders: A reminder is an element, task, or action the user asks you to remind them about. It has a temporal aspect and will result in a notification being sent to the user at the appropriate time. For example, the user might say: "Remind me in 2 hours to take out the laundry," or "Remind me tomorrow morning at 9 a.m. to buy bread." A reminder is always associated with a specific deadline.
 
@@ -213,6 +209,8 @@ class TomMemory:
 
      If the user tells you they've retrieved their car, found their keys, or similar, it means you should delete the temporary information related to that item from your memory.
      This only applies to temporary information. The deletion of permanent information must be explicitly requested by the user.
+
+     This module must absolutely be used when the user ask explicit you to search in your memory.
     """
 
     self.complexity = 0
