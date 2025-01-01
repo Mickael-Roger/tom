@@ -1143,7 +1143,7 @@ class TomPronote:
     if object_type == "information":
       self.execUpdate(child_name=child_name, req="UPDATE informations SET is_new=0 WHERE id = '" + object_id + "'")
 
-    return True
+    return {"status": "success", "message": "Marked as seen"}
 
 
 

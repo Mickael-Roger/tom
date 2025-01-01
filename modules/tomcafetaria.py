@@ -280,6 +280,7 @@ class TomCafetaria:
       self.update()
 
       return True
+      return {"status": "success", "message": "Reservation changed"}
 
 
 
@@ -306,9 +307,13 @@ class TomCafetaria:
       is_reserved = res[1]
 
       if is_reserved:
-        return True
+        return {"status": "success", "message": "Reservation was already done"}
       else:
-        return self.change_reservation(action="add", id=id)
+        ret = self.change_reservation(action="add", id=id)
+        if ret == True:
+          return {"status": "success", "message": "Reservation done"}
+        else:
+          return {"status": "failure", "message": "Could not make the reservation"}
 
     else:
       return False
@@ -327,9 +332,13 @@ class TomCafetaria:
       is_reserved = res[1]
 
       if is_reserved:
-        return self.change_reservation(action="cancel", id=id)
+        ret = self.change_reservation(action="cancel", id=id)
+        if ret == True:
+          return {"status": "success", "message": "Reservation canceled"}
+        else:
+          return {"status": "failure", "message": "Could not cancel the reservation"}
       else:
-        return True
+        return {"status": "success", "message": "Reservation was already canceled"}
 
     else:
       return False

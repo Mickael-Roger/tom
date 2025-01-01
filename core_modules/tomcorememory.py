@@ -318,7 +318,7 @@ class TomMemory:
       dbconn.close()
 
 
-      return True
+      return {"status": "success", "message": "Reminder added"}
 
     except:
       return False
@@ -333,7 +333,7 @@ class TomMemory:
       dbconn.close()
 
 
-      return True
+      return {"status": "success", "message": "Reminder deleted"}
 
     except:
       return False
@@ -372,7 +372,7 @@ class TomMemory:
       id = cursor.lastrowid
       dbconn.close()
 
-      return f"Added with id: {id}"
+      return {"status": "success", "message": "Added to memory"}
 
     except:
       return False
@@ -387,7 +387,7 @@ class TomMemory:
       dbconn.commit()
       dbconn.close()
 
-      return True
+      return {"status": "success", "message": "Deleted from memory"}
 
     except:
       return False

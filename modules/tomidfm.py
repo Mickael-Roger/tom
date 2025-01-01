@@ -482,7 +482,7 @@ class TomIdfm:
   def keep_route(self, route_id):
     self.route = copy.deepcopy(self.routes[route_id])
     print(self.route)
-    return True
+    return {"status": "success", "message": "Route kept"}
 
 
   def retreive_keeped_route(self):

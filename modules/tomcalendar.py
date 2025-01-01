@@ -251,7 +251,7 @@ class TomCalendar:
 
       print("Delete event: " + str(deleteTitles))
 
-    return True
+    return {"status": "success", "message": "Event deleted"}
 
 
                  
@@ -272,7 +272,7 @@ class TomCalendar:
 
     self.update()
 
-    return True
+    return {"status": "success", "message": "Event added"}
 
 
 

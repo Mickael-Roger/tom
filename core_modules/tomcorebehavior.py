@@ -127,7 +127,7 @@ class TomBehavior:
       dbconn.commit()
       dbconn.close()
 
-      return True
+      return {"status": "success", "message": "Behavior added"}
 
     except:
       return False
@@ -141,7 +141,7 @@ class TomBehavior:
       dbconn.commit()
       dbconn.close()
 
-      return True
+      return {"status": "success", "message": "Behavior deleted"}
 
     except:
       return False

@@ -169,7 +169,7 @@ class TomTodo:
 
     print(f"Task '{taskName}' has been closed.")
 
-    return True
+    return {"status": "success", "message": "Todo task removed"}
 
 
 
@@ -190,7 +190,7 @@ class TomTodo:
 
     self.update()
 
-    return True
+    return {"status": "success", "message": "Todo task added"}
 
 
 

@@ -1,6 +1,7 @@
 # CalDav Calendar and TODO
 import caldav
 from icalendar import Todo, Calendar as iCalendar
+from numpy import who
 import pytz
 from caldav.elements import dav
 
@@ -152,7 +153,7 @@ class TomGroceries:
 
     self.update()
 
-    return True
+    return {"status": "success", "message": "product added."}
 
 
   def remove(self, id):
@@ -167,7 +168,7 @@ class TomGroceries:
         task.delete()
         print(f"Task with UID '{task_uid}: {productName}' has been deleted.")
 
-    return True
+    return {"status": "success", "message": "product removed."}
 
 
 
