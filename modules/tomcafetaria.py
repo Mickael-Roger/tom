@@ -23,7 +23,7 @@ tom_config = {
 
 class TomCafetaria:
 
-  def __init__(self, config) -> None:
+  def __init__(self, config, llm) -> None:
 
     self.url = 'https://webparent.paiementdp.com/aliAuthentification.php?site=aes00152'
     self.username = config['username']

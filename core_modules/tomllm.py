@@ -138,6 +138,11 @@ class TomLLM():
 
     print("///////////////// DeepSeek ///////////////////")
 
+    print("---------1----------")
+    print(messages)
+    print("---------1----------")
+    print(tools)
+    print("---------1----------")
 
     if tools: 
       newtools = copy.deepcopy(tools)
@@ -148,7 +153,34 @@ class TomLLM():
     else:
       newtools = None
 
-    return self.callOpenai(messages, newtools, complexity)
+    if tools: 
+      response = self.llms['deepseek']['llm_client'].chat.completions.create(
+        model = self.llms['deepseek']['llm_models'][complexity],
+        messages = messages,
+        tools = newtools,
+        tool_choice = "auto",
+      )
+    else:
+      response = self.llms['deepseek']['llm_client'].chat.completions.create(
+        model = self.llms['deepseek']['llm_models'][complexity],
+        messages = messages,
+      )
+
+    print("---------2----------")
+    print(response)
+    print("---------2----------\n\n\n")
+
+
+    if not response:
+      return False
+
+    if not response.choices:
+      return False
+
+    if response.choices[0].finish_reason not in ["tool_calls", "stop"]:
+      return False
+
+    return response
 
 
 
@@ -165,7 +197,34 @@ class TomLLM():
     else:
       newtools = None
 
-    return self.callOpenai(messages, newtools, complexity)
+    if tools: 
+      response = self.llms['xai']['llm_client'].chat.completions.create(
+        model = self.llms['xai']['llm_models'][complexity],
+        messages = messages,
+        tools = newtools,
+        tool_choice = "auto",
+      )
+    else:
+      response = self.llms['xai']['llm_client'].chat.completions.create(
+        model = self.llms['xai']['llm_models'][complexity],
+        messages = messages,
+      )
+
+    print("---------2----------")
+    print(response)
+    print("---------2----------\n\n\n")
+
+
+    if not response:
+      return False
+
+    if not response.choices:
+      return False
+
+    if response.choices[0].finish_reason not in ["tool_calls", "stop"]:
+      return False
+
+    return response
 
 
 
@@ -246,7 +305,7 @@ class TomLLM():
 
     behaviors = self.services['behavior']['obj'].behavior_get()
 
-    morning_routines = self.services['morningroutine']['obj'].morning_routine_prompt()
+    #morning_routines = self.services['morningroutine']['obj'].morning_routine_prompt()
     
     
 
@@ -327,13 +386,28 @@ class TomLLM():
   
     tooling = json.dumps(available_tools)
     #    conversation.append({"role": "system", "content": f"Here is a list of available modules. Your role is to identify the necessary module(s) to meet the user's request. To do so, you must call the function 'modules_needed_to_answer_user_prompt' with the list of required modules as a parameter. If you are able to answer the user request without any modules, do it and do not call 'modules_needed_to_answer_user_prompt' function.\n\n{tooling}"})
-    conversation.append({"role": "system", "content": f"Here is a list of modules. For each module, you have the its description. Your role is to call the function 'modules_needed_to_answer_user_prompt' with the module needed to provide me the answer to my request. 'module_name' is not a name of a function, it's a possible value of the parameter of the 'modules_needed_to_answer_prompt'. You must never use the field 'module_name' as a function name.\n{tooling}"})
+    #conversation.append({"role": "system", "content": f"Here is a list of modules. For each module, you have the its description. Your role is to call the function 'modules_needed_to_answer_user_prompt' with the module needed to provide me the answer to my request. 'module_name' is not a name of a function, it's a possible value of the parameter of the 'modules_needed_to_answer_prompt'. You must never use the field 'module_name' as a function name.\n{tooling}"})
+    prompt = f"""As an AI assistant, you have access to a wide range of functions, far more than your API allows. These functions are grouped into modules. A module is a logical grouping of functions for a specific theme.
+
+    For each new user request, you have access to the conversation history.
+
+    If you need a function that is not in your list of tools to respond to the user's request, you should call the 'modules_needed_to_answer_user_prompt' function with the necessary modules. You can call the 'modules_needed_to_answer_user_prompt' function as many times as needed.
+
+    It is very important that you do not invent module names—only the modules provided in the list exist.
+
+    Once you call the 'modules_needed_to_answer_user_prompt' function, the user's request will be sent back to you with the functions from the requested modules added to your tools. At that point, you can choose the appropriate function(s) to respond to the user's request.
+    
+    ```json
+    {tooling}
+    ```
+    """
+    conversation.append({"role": "system", "content": prompt})
 
     # Alternative to test: As a language model, you cannot respond to all of my requests. Therefore, you might need additional information. Certain information or functionalities can be found in modules. You can load these modules to assist you in responding by using the load_module function. Below, you will find a complete list of modules along with their descriptions.
 
-    complexity = 0
+    complexity = 1
 
-    llm = "deepseek"
+    llm = "openai"
 #
     while True:
 
@@ -341,9 +415,6 @@ class TomLLM():
       response = self.callLLM(messages=conversation, tools=tools, complexity=complexity, llm=llm)
 
       conversation = copy.deepcopy(self.history)
-
-      print("##################")
-      print(response)
   
       if response != False:
         if response.choices[0].finish_reason == "stop":
@@ -374,11 +445,14 @@ class TomLLM():
             tools = []
             complexity = 0
 
-            if 'memory' not in load_modules:
-              load_modules.append('memory')
+            #if 'memory' not in load_modules:
+            #  load_modules.append('memory')
 
-            for mod in load_modules:
+
+            for mod in set(load_modules):
               tools = tools + self.services[mod]['tools']
+
+              conversation.append({"role": "system", "content": self.services[mod]["systemContext"]})
 
               try:
                 if self.services[mod]["complexity"] > complexity:
@@ -399,8 +473,6 @@ class TomLLM():
             self.history.append(response.choices[0].message.to_dict())
             conversation.append(response.choices[0].message.to_dict())
 
-            responseContext = {"functions": [], "rules": []}
-    
             for tool_call in response.choices[0].message.tool_calls:
     
               function_name = tool_call.function.name
@@ -408,18 +480,6 @@ class TomLLM():
     
               print("Call: " + str(function_name) + " with " + str(function_params))
     
-                # Memory
-                #if function_name == "tom_keep_current_conversation_in_memory":
-                #  res, msg = userList[username]['services']['memory'].history_keep(userList[username]['history'], username)
-    
-                #  if res:
-                #    userList[username].reset()
-                #    return msg
-                #  else:
-                #    return "Error while keeping our conversation"
-                  
-    
-                # End of memory
               function_result = self.functions[function_name]['function'](**function_params)
     
               if function_result is False:
@@ -427,17 +487,13 @@ class TomLLM():
                 return False
     
   
-              self.history.append({"role": 'tool', "content": json.dumps(function_result), "tool_call_id": tool_call.id})
-              conversation.append({"role": 'tool', "content": json.dumps(function_result), "tool_call_id": tool_call.id})
-                
-              # TODODODODODDODODO
-              if function_name not in responseContext['functions']:
-                responseContext['functions'].append(function_name)
-                if self.functions[function_name]['responseContext'] != "":
-                  responseContext['rules'].append({"role": "system", "content": self.functions[function_name]['responseContext']})
-              
-    
-            conversation = conversation + responseContext['rules']
+              if self.functions[function_name]['responseContext'] != "": 
+                response_data = self.functions[function_name]['responseContext'] + "```json\n" + json.dumps(function_result) + "\n```"
+              else:
+                response_data = json.dumps(function_result) 
+
+              self.history.append({"role": 'tool', "content": response_data, "tool_call_id": tool_call.id})
+              conversation.append({"role": 'tool', "content": response_data, "tool_call_id": tool_call.id})
   
         else:
           return False

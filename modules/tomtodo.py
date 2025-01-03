@@ -22,7 +22,7 @@ tom_config = {
 
 class TomTodo:
 
-  def __init__(self, config, tz=None) -> None:
+  def __init__(self, config, llm, tz=None) -> None:
   
     self.client = caldav.DAVClient(
       url = config['url'],
@@ -120,7 +120,16 @@ class TomTodo:
     self.functions = {
       "todo_list_all": {
         "function": functools.partial(self.listTasks), 
-        "responseContext": """Unless the user explicitly asks for it, name of the tasks (no priority or due date). Tasks must be ordered by due date and if multiple tasks have no due date or same due date, they must be ordered by priority level (the lower the priority value is, the higher the priority level is). The due value correspond the the deadline for closing a task. If a task still exists and has a due date in the past, it means it is an overdue task. Tasks without any due value cannot be overdue. 
+        "responseContext": """The returned tasks have different levels of priority:
+          - Very high priority tasks: the value of the 'priority' field is above 7
+          - Medium priority tasks: the value of the 'priority' field is between 4 and 7
+          - Low priority tasks: the value of the 'priority' field is below 4
+          - Tasks with no priority: the value of the 'priority' field is null
+
+        Unless the user explicitly asks for it, name of the tasks (no priority or due date) and when you need to respond with multiple tasks, you should list them in descending order of their due dates. If multiple tasks have the same due date, you should order them by priority, with 9 being the highest priority.
+
+        You should also respond concisely and in sentence form, as your response is intended to be read via text-to-speech. Therefore, you should never respond with a list, bullet points, or any Markdown-like formatting.
+
        For example, your answer should be like "You have 4 tasks: create a new app, do the groceries, paint the wall and mow the lawn" or if the user asks for overdue tasks, your answer should be like "You have 2 overdue tasks: 'mow the lawn' that is 2 day late and 'paint the wall' that is 1 week late" """
       },
       "todo_create_task": {

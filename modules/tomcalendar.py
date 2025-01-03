@@ -23,7 +23,7 @@ tom_config = {
 
 class TomCalendar:
 
-  def __init__(self, config, tz=None) -> None:
+  def __init__(self, config, llm, tz=None) -> None:
   
     self.client = caldav.DAVClient(
       url = config['url'],

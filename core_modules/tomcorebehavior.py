@@ -82,7 +82,7 @@ class TomBehavior:
       },
     ]
 
-    self.systemContext = "This module is used to manage your instructions and behaviors. It can be used to add or remove an instruction, modify your behaviors, or list your current instructions and behaviors. Use this module only if the user explicitly requests it, such as with phrases like: 'What instructions have I given you?', 'Remove this instruction' or 'From now on, I want you to'"
+    self.systemContext = ""
     self.complexity = 0
 
     self.functions = {

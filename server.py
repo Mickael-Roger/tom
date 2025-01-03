@@ -18,7 +18,7 @@ from tomllm import TomLLM
 from tomcoretts import TomTTS
 from tomcorebehavior import TomBehavior
 from tomcorememory import TomMemory
-#from tomcorereminder import TomReminder
+from tomcorereminder import TomReminder
 #from tomcoreremember import TomRemember
 from tomcoremorningroutine import TomMorning
 
@@ -347,55 +347,67 @@ for user in global_config['users']:
   for service_name in user['services'].keys():
 
     userList[username].services[service_name] = {
-      "obj": globals()[module_list[service_name]['class']](user['services'][service_name]),
-      "description": "",
+      "obj": globals()[module_list[service_name]['class']](user['services'][service_name], userList[username]),
+      "description": module_list[service_name]['description'],
+      "systemContext": "",
       "tools": [],
       "complexity": 0,
       "functions": {}, 
     }
     userList[username].services[service_name]['tools'] = userList[username].services[service_name]['obj'].tools
     userList[username].services[service_name]['complexity'] = userList[username].services[service_name]['obj'].complexity
-    userList[username].services[service_name]['description'] = userList[username].services[service_name]['obj'].systemContext
+    userList[username].services[service_name]['systemContext'] = userList[username].services[service_name]['obj'].systemContext
     userList[username].functions = userList[username].functions | userList[username].services[service_name]['obj'].functions
     
   userList[username].services['behavior'] = {
     "obj": TomBehavior(global_config, username),
-    "description": "",
+    "description": "This module is used to manage your instructions and behaviors. It can be used to add or remove an instruction, modify your behaviors, or list your current instructions and behaviors. Use this module only if the user explicitly requests it, such as with phrases like: 'What instructions have I given you?', 'Remove this instruction' or 'From now on, I want you to'",
+    "systemContext": "",
     "tools": [],
     "complexity": 0,
     "functions": {}, 
   }
   userList[username].services['behavior']['tools'] = userList[username].services['behavior']['obj'].tools
   userList[username].services['behavior']['complexity'] = userList[username].services['behavior']['obj'].complexity
-  userList[username].services['behavior']['description'] = userList[username].services['behavior']['obj'].systemContext
+  userList[username].services['behavior']['systemContext'] = userList[username].services['behavior']['obj'].systemContext
   userList[username].functions = userList[username].functions | userList[username].services['behavior']['obj'].functions
 
   userList[username].services['memory'] = {
     "obj": TomMemory(global_config, username),
-    "description": ""  , 
+    "description": """This module is used to manage everything related to your memory. Memory can take several forms:
+
+     - Permanent information: Permanent information is data provided by the user that might be useful to you or to them later. This information is relevant and needs to be stored indefinitely. It is unique to each user, so you cannot know it without being explicitly told. For example: "My PIN code is 1234," "X's date of birth is [date]," or "Mr. X is 45 years old." Typically, this information is shared voluntarily by the user, indicating they expect you to keep it in memory.
+
+     - Temporary information: Temporary information is data that is only useful for a short time, either until a specific event occurs or within a short timeframe. This is helpful for storing temporary details, such as when a user says, "I left my keys on the table," or "I parked in this spot." Such information is meant to help the user retrieve their keys or locate their car but loses relevance once the task is completed. Examples include: "I just parked," "I put the keys under the flowerpot," etc.
+
+     If the user's request is to remember where the car is parked, you must save the GPS location along with additional information such as the parking spot number, street name, a point of interest (POI), etc. If the user does not provide any additional information, ask if they have any.
+
+     This module must absolutely be used when the user ask explicit you to search in your memory.
+    """, 
+    "systemContext": "",
     "tools": [],
     "complexity": 0,
     "functions": {}, 
   }
   userList[username].services['memory']['tools'] = userList[username].services['memory']['obj'].tools
   userList[username].services['memory']['complexity'] = userList[username].services['memory']['obj'].complexity
-  userList[username].services['memory']['description'] = userList[username].services['memory']['obj'].systemContext
+  userList[username].services['memory']['systemContext'] = userList[username].services['memory']['obj'].systemContext
   userList[username].functions = userList[username].functions | userList[username].services['memory']['obj'].functions
   userList[username].services['memory']['obj'].llm = userList[username].llm
 
-#  userList[username].services['reminder'] = {
-#    "obj": TomReminder(global_config, username),
-#    "description": "This module is used to manage reminders. Reminders are time-specific notification for the user. The purpose is to prompt the user to perform a specific action at a given time. This is for tasks or events that need a one-time or time-sensitive follow-up.", 
-#    "tools": [],
-#    "complexity": 0,
-#    "service_context": "",
-#    "functions": {}, 
-#  }
-#  userList[username].services['reminder']['tools'] = userList[username].services['reminder']['obj'].tools
-#  userList[username].services['reminder']['complexity'] = userList[username].services['reminder']['obj'].complexity
-#  userList[username].services['reminder']['service_context'] = userList[username].services['reminder']['obj'].systemContext
-#  userList[username].functions = userList[username].functions | userList[username].services['reminder']['obj'].functions
-#
+  userList[username].services['reminder'] = {
+    "obj": TomReminder(global_config, username),
+    "description": """This module is used to manage reminders. A reminder is an element, task, or action the user asks you to remind them about. It has a temporal aspect and will result in a notification being sent to the user at the appropriate time. For example, the user might say: "Remind me in 2 hours to take out the laundry," or "Remind me tomorrow morning at 9 a.m. to buy bread." A reminder is always associated with a specific deadline.""", 
+    "systemContext": "",
+    "tools": [],
+    "complexity": 0,
+    "functions": {}, 
+  }
+  userList[username].services['reminder']['tools'] = userList[username].services['reminder']['obj'].tools
+  userList[username].services['reminder']['complexity'] = userList[username].services['reminder']['obj'].complexity
+  userList[username].services['reminder']['systemContext'] = userList[username].services['memory']['obj'].systemContext
+  userList[username].functions = userList[username].functions | userList[username].services['reminder']['obj'].functions
+
 #  userList[username].services['remember'] = {
 #    "obj": TomRemember(global_config, username),
 #    "description": "This module is used to manage store user-provided information permanently, indefinitely or enven temporarly. It is about to retain, list or delete facts, data, or context provided by the user for future reference. This is not tied to any specific time but serves as a knowledge repository. You may use these functions to store both permanent information, such as a credit card code, and temporary information that will be useful to the user later, such as remembering where the car was parked or where the keys were placed. This module is used for example when user request is: 'Remember that I parked my car here', 'I left my keys here', 'Where are my keys?', 'Remember my PIN Code is', 'Remember today ...' or even 'Where is my car parked?'", 
@@ -410,17 +422,17 @@ for user in global_config['users']:
 #  userList[username].functions = userList[username].functions | userList[username].services['remember']['obj'].functions
 
 
-  userList[username].services['morningroutine'] = {
-    "obj": TomMorning(global_config, username),
-    "description": "", 
-    "tools": [],
-    "complexity": 0,
-    "functions": {}, 
-  }
-  userList[username].services['morningroutine']['tools'] = userList[username].services['morningroutine']['obj'].tools
-  userList[username].services['morningroutine']['complexity'] = userList[username].services['morningroutine']['obj'].complexity
-  userList[username].services['morningroutine']['description'] = userList[username].services['morningroutine']['obj'].systemContext
-  userList[username].functions = userList[username].functions | userList[username].services['morningroutine']['obj'].functions
+  #userList[username].services['morningroutine'] = {
+  #  "obj": TomMorning(global_config, username),
+  #  "description": "", 
+  #  "tools": [],
+  #  "complexity": 0,
+  #  "functions": {}, 
+  #}
+  #userList[username].services['morningroutine']['tools'] = userList[username].services['morningroutine']['obj'].tools
+  #userList[username].services['morningroutine']['complexity'] = userList[username].services['morningroutine']['obj'].complexity
+  #userList[username].services['morningroutine']['description'] = userList[username].services['morningroutine']['obj'].systemContext
+  #userList[username].functions = userList[username].functions | userList[username].services['morningroutine']['obj'].functions
 
 
 

@@ -18,12 +18,12 @@ import functools
 tom_config = {
   "module_name": "pronote",
   "class_name": "TomPronote",
-  "description": "This module is used for Pronote application like getting the school schedule, school grades, school information, teachers messages, school absences, school homeworks, school delays and school punishments"
+  "description": "This module is used for Pronote. Pronote is an application used to manage children's school life. It is the only way to access schedules, homework, grades, grade books, and to communicate with schools, middle schools, high schools, and teachers."
 }
 
 class TomPronote:
 
-  def __init__(self, config) -> None:
+  def __init__(self, config, llm) -> None:
 
     self.connexion = {}
 
@@ -447,7 +447,7 @@ class TomPronote:
       },
     ]
 
-    self.systemContext = "Pronote is an application used to manage children's school life. It is the only way to access schedules, homework, grades, grade books, and to communicate with schools, middle schools, high schools, and teachers. Do not try to guess which one the question refers to; ask me to clarify which child I am talking about. "
+    self.systemContext = "This is important you don't try to guess which child the question refers to; ask me to clarify which child I am talking about."
     self.complexity = 1
 
     self.functions = {

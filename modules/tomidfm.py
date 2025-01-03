@@ -22,7 +22,7 @@ class TomIdfm:
 
   _already_updated = False
 
-  def __init__(self, config) -> None:
+  def __init__(self, config, llm) -> None:
 
     self.url = "https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia"
     self.apiKey = config['token']
@@ -238,7 +238,9 @@ class TomIdfm:
       },
       "plan_a_journey": {
         "function": functools.partial(self.journey), 
-        "responseContext": "" 
+        "responseContext": """Your response will be read aloud via text-to-speech, so it should be brief, without any formatting, lists, or numbered items. Your answer should sound like this: "To go from x to y, you have 3 possible routes. One leaves at 9:02 and arrives at 10:14 via lines 4, 7, and 12. A second one leaves at the same time but arrives at 10:25 via lines 4 and 9, and a third one leaves at 9:16 and arrives at 10:35 via line 4."
+        Unless the user asks for more details, don't provide additional information.
+        """
       },
       "select_a_route": {
         "function": functools.partial(self.keep_route), 
@@ -463,12 +465,15 @@ class TomIdfm:
           section_from = section["from"]["name"] 
           section_to = section["to"]["name"] 
           section_type = ""
+          section_best_boarding = None
           if 'mode' in section.keys():
             section_type = section["mode"] 
           if 'display_informations' in section.keys():
             section_type = section['display_informations']['physical_mode'] + " " + section['display_informations']['label']
+          if 'best_boarding_positions' in section.keys():
+            section_best_boarding = section['best_boarding_positions'][0]
           if section_duration > 0:
-            sections.append({"section_type": section_type, "section_duration_in_seconds": section_duration, "section_from": section_from, "section_to": section_to, "section_departure_datetime": section_departure_date_time, "section_arrival_datetime": section_arrival_date_time})
+            sections.append({"section_type": section_type, "section_duration_in_seconds": section_duration, "section_from": section_from, "section_to": section_to, "section_departure_datetime": section_departure_date_time, "section_arrival_datetime": section_arrival_date_time, "section_best_boarding_position": section_best_boarding})
 
       self.routes.append({"route_id": i, "departure_datetime": departure_date_time, "arrival_datetime": arrival_date_time, "duration_in_seconds": duration, "nb_transfers": nb_transfers, "sections": sections})
       i = i+1

@@ -14,12 +14,12 @@ import functools
 tom_config = {
   "module_name": "anki",
   "class_name": "TomAnki",
-  "description": "This module is used to manage Anki"
+  "description": "This module is used to manage Anki. Anki is a flashcard program. It uses cards. It uses technics from cognitive science such as active recall testing and spaced repetition to help me in my memorization. I use Anki to train myself on memorizing and reinforcing my knowledge."
 }
 
 class TomAnki:
 
-  def __init__(self, config) -> None:
+  def __init__(self, config, llm) -> None:
 
     SYNC_SERVER = config['url']
     self.db_dir = config['db_dir']
@@ -131,7 +131,7 @@ class TomAnki:
       },
     ]
 
-    self.systemContext = "Anki is a flashcard program. It uses cards. It uses technics from cognitive science such as active recall testing and spaced repetition to help me in my memorization. I use Anki to train myself on memorizing and reinforcing my knowledge."
+    self.systemContext = ""
     self.complexity = 0
 
     self.functions = {

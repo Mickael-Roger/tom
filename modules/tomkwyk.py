@@ -19,14 +19,14 @@ import functools
 tom_config = {
   "module_name": "kwyk",
   "class_name": "TomKwyk",
-  "description": "This module is used to get information from Kwyk."
+  "description": "This module is used to get information from Kwyk. Kwyk is an online platform for math and French exercises."
 }
 
 class TomKwyk:
 
   _update_thread_started = False
 
-  def __init__(self, config) -> None:
+  def __init__(self, config, llm) -> None:
     self.url = "https://www.kwyk.fr/"
 
     self.db = config['cache_db']
@@ -82,7 +82,7 @@ class TomKwyk:
       },
     ]
 
-    self.systemContext = "Kwyk is an online platform for math and French exercises."
+    self.systemContext = ""
     self.complexity = 0
     self.functions = {
       "kwyk_get": {
