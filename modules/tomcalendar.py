@@ -39,6 +39,11 @@ class TomCalendar:
     principal = self.client.principal()
     self.calendars = principal.calendars()
     self.defaultCalendar = self.calendars[0]
+    for calendar in self.calendars:
+      if calendar.get_properties() is not None:
+        if '{urn:ietf:params:xml:ns:caldav}calendar-timezone' in calendar.get_properties().keys():
+          if calendar.get_properties([dav.DisplayName()])['{DAV:}displayname'] == config['calendar_name']:
+            self.defaultCalendar = calendar
 
     self.calendarsContent = []
 
