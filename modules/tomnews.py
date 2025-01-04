@@ -145,6 +145,9 @@ class TomNews:
         If there are more than two articles in a category, instead of providing a long list, give the title of one article and then offer the user the option to show the next one, and so on.
 
         It is important that you never use the function 'get_news_summary' unless the user explicitly ask for a summary of a particular article.        
+        Your response must not include the URL of news articles; you should only provide the URL for a news article if the user explicitly requests it.
+        If the user explicitly asks you to provide the link to the news, you must format it in HTML so that it is clickable and opens the link in a new window.
+        If the user explicitly asks you to open or display the news, you must enclose the URL within the following tag: `Here is the news [open:PLACE URL HERE]`. This tag is interpreted by the frontend application, so, in this way, the news will be displayed automatically in a browser.
         """
       },
       "get_news_summary": {
@@ -376,7 +379,7 @@ class TomNews:
 
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
-    cursor.execute("SELECT id, category, author, title  FROM news WHERE source = 'rss' AND read = 0")
+    cursor.execute("SELECT id, category, author, title, url  FROM news WHERE source = 'rss' AND read = 0")
     allnews = cursor.fetchall()
     dbconn.close()
 
@@ -387,16 +390,17 @@ class TomNews:
       category = news[1]
       author = news[2]
       title = news[3]
+      url = news[4]
       if category not in unread_news['category'].keys():
         unread_news['category'][category] = []
 
-      unread_news['category'][category].append({"news_id": id, "author": author, "title": title})
+      unread_news['category'][category].append({"news_id": id, "author": author, "title": title, "url": url})
 
     print("-------------------")
     print(unread_news)
     print("-------------------")
     
-    if unread_news:
+    if unread_news['category']:
       return unread_news
     else:
       return {"status": "success", "message": "No news"}

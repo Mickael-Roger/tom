@@ -138,9 +138,38 @@ document.addEventListener("DOMContentLoaded", () => {
     function addMessageToChat(sender, text) {
         const messageDiv = document.createElement("div");
         messageDiv.classList.add("message", sender);
-        messageDiv.textContent = text;
+
+        // Check for custom commands
+        const openPattern = /\[open:(.+)\]/;
+        const matchopen = text.match(openPattern);
+
+        sanitizedText = text;
+        if (matchopen && matchopen[1]) {
+            const url = matchopen[1];
+
+            displayText = text.replace(openPattern, "").trim();
+            sanitizedText = DOMPurify.sanitize(displayText);
+            // Validate the URL
+            if (isValidUrl(url)) {
+                window.open(url, "_blank");
+            } else {
+                console.warn("Invalid URL:", url);
+            }
+        }
+        messageDiv.innerHTML = sanitizedText;
+
         chatBox.appendChild(messageDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    // Helper function to validate URLs
+    function isValidUrl(url) {
+        try {
+            new URL(url); // This will throw an error for invalid URLs
+            return true;
+        } catch (e) {
+            return false;
+        }
     }
 
     // Play Base64 MP3 and stop if speak button is clicked
