@@ -171,6 +171,7 @@ class TomWebService:
     position = input_json.get('position')
     localTTS = input_json.get('tts')
 
+
     response = userList[cherrypy.session['username']].processRequest(input=user_input, lang=lang, position=position)
 
 

@@ -165,7 +165,7 @@ class TomNews:
     }
 
 
-    self.thread = threading.Thread(target=self.news_update)
+    self.thread = threading.Thread(target=self.thread_update)
     self.thread.daemon = True  # Allow the thread to exit when the main program exits
     self.thread.start()
     
@@ -305,10 +305,11 @@ class TomNews:
   def thread_update(self):
     while True:
       try:
+        print("Update news ...")
         self.news_update()
       except:
         print("Fail to update RSS")
-        pass
+
       time.sleep(300)
 
 

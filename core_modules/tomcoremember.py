@@ -80,15 +80,19 @@ class TomRemember:
     ]
 
     self.systemContext = """Remember functions are meant to manage user-provided information permanently, indefinitely or temporary. The purpose of remember functions is to retain facts, data, or context provided by the user for future reference. This is not tied to any specific time but serves as a knowledge repository. You may use these functions to store both permanent information, such as a credit card code, and temporary information that will be useful to the user later, such as remembering where the car was parked or where the keys were placed.
-     If the user's request is to remember where the car is parked, you must save the GPS location along with additional information such as the parking spot number, street name, a point of interest (POI), etc. If the user does not provide any additional information, ask if they have any.
-     If the request involves retrieving information about where something is located (their car, keys, an object, etc.), at the end, remember to ask the user to confirm that they have retrieved their item, car, etc., so you can delete this entry from your memory.
+     If the user's request is to remember where the car is parked, you must save the GPS location along with additional information such as the parking spot number, street name, a point of interest (POI), etc. If the user does not provide any additional information, ask if they have any. If not, just sore the GPS position.
+     When the user asks you to remember where something is (their keys, car, etc.), you must absolutely record at least the GPS location of the said item.
     """
     self.complexity = 1
 
     self.functions = {
       "tom_list_stored_information": {
         "function": functools.partial(self.remember_list), 
-        "responseContext": "Your response must be concise and in the form of a single sentence." 
+        "responseContext": """Your response will be read aloud via text-to-speech, so it should be concise and free from any markdown formatting or URLs.
+        If the request involves retrieving information about where something is located (their car, keys, an object, etc.), at the end, remember to ask the user to confirm that they have retrieved their item, car, etc., so you can delete this entry from your memory.
+        Never directly provide GPS coordinates in your response. However, indicate that you have them if applicable and offer to guide the user.
+        If the user explicitly requests GPS coordinates or guidance to retrieve an object, such as their car, the response should follow this format: `[open: https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=PLACE HERE THE GPS LATITUDE,PLACE HERE THE GPS LONGITUDE&travelmode=walking]`. This tag is interpreted by the frontend application, so, in this way, the user will be guided by an external application to find its object.
+        """
       },
       "tom_delete_stored_information": {
         "function": functools.partial(self.remember_delete), 
@@ -96,7 +100,9 @@ class TomRemember:
       },
       "tom_store_information": {
         "function": functools.partial(self.remember_add), 
-        "responseContext": "" 
+        "responseContext": """
+        """
+
       },
     }
 

@@ -311,7 +311,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // Fetch user position periodically
-    setInterval(fetchUserPosition, 5 * 60 * 1000);
+    fetchUserPosition();
+    setInterval(fetchUserPosition, 30 * 1000);
 
     // Function to fetch user position
     function fetchUserPosition() {
