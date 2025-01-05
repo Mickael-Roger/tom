@@ -148,7 +148,7 @@ class TomReminder:
       try:
         dbconn = sqlite3.connect(self.db)
         cursor = dbconn.cursor()
-        cursor.execute("SELECT id, message, sender, recipient FROM notifications WHERE sent = 0 and notification < datetime('now')")
+        cursor.execute("SELECT id, message, sender, recipient FROM notifications WHERE sent = 0 and notification < datetime('now', 'localtime')")
         notifications = cursor.fetchall()
         cursor.execute("SELECT username, token FROM fcm_tokens WHERE platform = 'android'")
         tokens = cursor.fetchall()

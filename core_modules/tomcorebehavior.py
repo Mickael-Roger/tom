@@ -105,7 +105,7 @@ class TomBehavior:
     try:
       dbconn = sqlite3.connect(self.db)
       cursor = dbconn.cursor()
-      cursor.execute("SELECT behavior FROM behaviors WHERE datetime('now') > date_from AND datetime('now') < date_to")
+      cursor.execute("SELECT behavior FROM behaviors WHERE datetime('now', 'localtime') > date_from AND datetime('now', 'localtime') < date_to")
       values = cursor.fetchall()
       dbconn.close()
 
