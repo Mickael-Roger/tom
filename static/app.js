@@ -107,7 +107,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     playAudioFromBase64(data.voice);
                 } else if (soundEnabled && payload.tts) {
                     // Use TTS if available
-                    speakText(data.response, selectedLanguage);
+                    sanitizedText = sanitizeText(data.response);
+                    speakText(sanitizedText, selectedLanguage);
                 }
             }
         })
@@ -134,6 +135,15 @@ document.addEventListener("DOMContentLoaded", () => {
         sendButton.disabled = true;
     }
 
+    function sanitizeText(text){
+        const openPattern = /\[open:(.+)\]/;
+        displayText = text.replace(openPattern, "").trim();
+        sanitizedText = DOMPurify.sanitize(displayText);
+
+        return sanitizedText;
+
+    }
+
     // Function to add a message to the chat
     function addMessageToChat(sender, text) {
         const messageDiv = document.createElement("div");
@@ -147,8 +157,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (matchopen && matchopen[1]) {
             const url = matchopen[1];
 
-            displayText = text.replace(openPattern, "").trim();
-            sanitizedText = DOMPurify.sanitize(displayText);
+            //displayText = text.replace(openPattern, "").trim();
+            //sanitizedText = DOMPurify.sanitize(displayText);
+            sanitizedText = sanitizeText(text);
             // Validate the URL
             if (isValidUrl(url)) {
                 window.open(url, "_blank");

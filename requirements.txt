@@ -10,3 +10,4 @@ anki
 timezonefinder
 google-generativeai
 firebase_admin
+feedparser
