@@ -42,6 +42,7 @@ class TomYoutube:
     cursor.execute('''
     create table if not exists videos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        video_id TEXT,
         channel_id TEXT,
         channel_name TEXT,
         publication DATETIME,
@@ -157,11 +158,16 @@ class TomYoutube:
       if feed:
         # Get the last update
         for video in feed['entries']:
-          video_date = video['published_parsed']
-          if video_date > update:
+          dbconn = sqlite3.connect(self.db)
+          cursor = dbconn.cursor()
+          cursor.execute("SELECT video_id FROM videos WHERE channel_id=?", (id,))
+          videos = cursor.fetchall()
+          dbconn.close()
+
+          if video['id'] not in videos:
             dbconn = sqlite3.connect(self.db)
             cursor = dbconn.cursor()
-            cursor.execute("INSERT INTO videos (channel_id, channel_name, publication, title, uri) VALUES (?, ?, ?, ?, ?) ", (id, name, datetime.fromtimestamp(time.mktime(video_date)).strftime("%Y-%m-%d %H:%M:%S"), video['title'], video['link']))
+            cursor.execute("INSERT INTO videos (video_id, channel_id, channel_name, publication, title, uri) VALUES (?, ?, ?, ?, ?, ?) ", (video['id'], id, name, datetime.fromtimestamp(time.mktime(video['published_parsed'])).strftime("%Y-%m-%d %H:%M:%S"), video['title'], video['link']))
             dbconn.commit()
             dbconn.close()
 

@@ -303,6 +303,7 @@ class TomNews:
 
 
   def thread_update(self):
+    self.news_update()
     while True:
       try:
         print("Update news ...")
