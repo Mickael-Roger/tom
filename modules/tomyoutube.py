@@ -28,6 +28,7 @@ class TomYoutube:
     self.url = "https://youtube.com/feeds/videos.xml?channel_id="
 
     self.llm = llm
+    self.background_status = {"ts": int(time.time()), "status": None}
 
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
@@ -164,7 +165,11 @@ class TomYoutube:
           videos = cursor.fetchall()
           dbconn.close()
 
-          if video['id'] not in videos:
+          all_videos = []
+          for val in videos:
+            all_videos.append(val[0])
+
+          if video['id'] not in all_videos:
             dbconn = sqlite3.connect(self.db)
             cursor = dbconn.cursor()
             cursor.execute("INSERT INTO videos (video_id, channel_id, channel_name, publication, title, uri) VALUES (?, ?, ?, ?, ?, ?) ", (video['id'], id, name, datetime.fromtimestamp(time.mktime(video['published_parsed'])).strftime("%Y-%m-%d %H:%M:%S"), video['title'], video['link']))
@@ -180,6 +185,23 @@ class TomYoutube:
 
       else:
         print(f"Could not parse feed for channel: {name}")
+
+    dbconn = sqlite3.connect(self.db)
+    cursor = dbconn.cursor()
+    cursor.execute("SELECT count(id) FROM videos WHERE viewed = 0")
+    allvideos = cursor.fetchall()
+    dbconn.close()
+
+    nb_videos = allvideos[0][0]
+
+    if nb_videos == 0:
+      status = None
+    else:
+      status = f"{nb_videos} new videos"
+
+    if status != self.background_status['status']:
+      self.background_status['ts'] = int(time.time())
+      self.background_status['status'] = status
 
 
   def list_unviewed_videos(self):

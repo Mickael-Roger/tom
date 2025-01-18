@@ -437,7 +437,7 @@ for user in global_config['users']:
   userList[username].services['reminder']['systemContext'] = userList[username].services['memory']['obj'].systemContext
   userList[username].functions = userList[username].functions | userList[username].services['reminder']['obj'].functions
 
-  userList[username].tasks = TomBackground(global_config, username, userList[username].services)
+  userList[username].tasks = TomBackground(global_config, username, userList[username].services, userList[username])
 #  userList[username].services['remember'] = {
 #    "obj": TomRemember(global_config, username),
 #    "description": "This module is used to manage store user-provided information permanently, indefinitely or enven temporarly. It is about to retain, list or delete facts, data, or context provided by the user for future reference. This is not tied to any specific time but serves as a knowledge repository. You may use these functions to store both permanent information, such as a credit card code, and temporary information that will be useful to the user later, such as remembering where the car was parked or where the keys were placed. This module is used for example when user request is: 'Remember that I parked my car here', 'I left my keys here', 'Where are my keys?', 'Remember my PIN Code is', 'Remember today ...' or even 'Where is my car parked?'", 

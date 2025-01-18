@@ -5,6 +5,8 @@ import re
 import sqlite3
 import functools
 import json
+import threading
+import time
 
 from datetime import datetime, timedelta, date
 
@@ -23,6 +25,8 @@ tom_config = {
 
 class TomCafetaria:
 
+  _update_thread_started = False
+
   def __init__(self, config, llm) -> None:
 
     self.url = 'https://webparent.paiementdp.com/aliAuthentification.php?site=aes00152'
@@ -31,6 +35,8 @@ class TomCafetaria:
     self.db = config['cache_db']
 
     self.lastUpdate = datetime.now() - timedelta(hours=48)
+
+    self.background_status = {"ts": int(time.time()), "status": None}
 
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
@@ -133,7 +139,20 @@ class TomCafetaria:
     }
 
 
+    if not TomCafetaria._update_thread_started:
+      TomCafetaria._update_thread_started = True
+      self.thread = threading.Thread(target=self.run_update)
+      self.thread.daemon = True  # Allow the thread to exit when the main program exits
+      self.thread.start()
+    
 
+  def run_update(self):
+    while True:
+      time.sleep(3600)
+      print("Cafetaria: Run auto update")
+      time_diff = datetime.now() - self.lastUpdate
+      if time_diff > timedelta(hours=48):
+        self.update()
 
 
   def update(self):
@@ -162,6 +181,26 @@ class TomCafetaria:
       dbconn.execute("""INSERT INTO solde (solde) VALUES (?)""", (solde,))
       dbconn.commit()
       dbconn.close()
+
+      pattern = r"(\d+,\d+)"
+      match = re.search(pattern, solde)
+      if match:
+        amount_str = match.group(1)
+        amount = float(amount_str.replace(',', '.'))
+
+        if amount < 10.0:
+          status = f"Only {amount} euros left on cafetaria credit"
+        else:
+          status = None
+
+        if status != self.background_status['status']:
+          self.background_status['ts'] = int(time.time())
+          self.background_status['status'] = status
+
+      else:
+        print("Could not extract cafetaria credit")
+
+        
 
 
     resp_res_main = session.get('https://webparent.paiementdp.com/aliReservation.php')
@@ -204,6 +243,10 @@ class TomCafetaria:
       dbconn.close()
 
     session.get('https://webparent.paiementdp.com/aliDeconnexion.php')
+
+
+    self.lastUpdate = datetime.now()
+    print("Cafetaria updated")
 
 
 

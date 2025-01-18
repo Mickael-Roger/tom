@@ -12,7 +12,7 @@ import json
 ################################################################################################
 class TomBackground:
 
-  def __init__(self, global_config, username, services) -> None:
+  def __init__(self, global_config, username, services, llm) -> None:
 
     db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], username)
     os.makedirs(db_path, exist_ok=True)
@@ -22,6 +22,8 @@ class TomBackground:
     self.username = username
 
     self.services = services
+
+    self.llm = llm
 
     self.tasks = []
     self.last_update = 0
@@ -62,21 +64,48 @@ class TomBackground:
     for service in self.services:
       if hasattr(self.services[service]['obj'], 'background_status'):
         if self.services[service]['obj'].background_status:
-          self.tasks.append({"module": service, "status": self.services[service]['obj'].background_status['status']})
+          if self.services[service]['obj'].background_status['status']:
+            self.tasks.append({"module": service, "status": self.services[service]['obj'].background_status['status']})
           if self.services[service]['obj'].background_status['ts'] > self.last_update:
             update_msg = True
 
     if update_msg == True:
       #self.llm_synthesis(self.tasks)
-      self.msg = "You have new messages"
+      self.msg = self.llm_synthesis(self.tasks)
       self.status_id = int(time.time())
 
     self.last_update = int(time.time())
 
 
+  def llm_synthesis(self, tasks):
+
+    llm_consign = []
+
+    context = """The user has an application running in the background that retrieves information or performs useful tasks for the user. Each module can provide relevant information to the user. For example, the 'news' module informs the user about the number of unread articles, or the 'weather' module can notify about an upcoming weather event.
+
+    You are an agent to which the user will send a JSON array. Each module with information to report will add an entry to the JSON array. The JSON format is as follows:
+    ```json
+    "module": MODULE_NAME,
+    "status": INFORMATION_USEFUL_FOR_THE_USER
+    ```
+
+    Your task is to synthesize the content of this JSON into a short and intelligible sentence.
+
+    If the array is empty, you should respond with an empty message.
+    """
+
+    llm_consign.append({"role": "system", "content": context})
+    llm_consign.append({"role": "user", "content": json.dumps(tasks)})
+
+    response = self.llm.callLLM(llm_consign, llm='mistral')
+
+    if response:
+      print(response.choices[0].message.content)
+      return response.choices[0].message.content
+    else:
+      return ""
 
 
-  #def llm_synthesis(self, tasks):
 
 
 

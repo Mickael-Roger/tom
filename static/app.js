@@ -87,6 +87,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const message = promptInput.value.trim();
         if (!message) return;
     
+        // Ajouter le message utilisateur à la chat box
         addMessageToChat("user", message);
     
         const payload = {
@@ -96,55 +97,73 @@ document.addEventListener("DOMContentLoaded", () => {
             tts: isTTSAvailable()
         };
     
-        fetch("/process", {
+        // Envoyer la requête à /process sans attendre sa réponse
+        const processRequest = fetch("/process", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
-            // Afficher et lire les messages des tâches non affichés
-            displayAndReadTaskMessages(tasks);
-    
-            // Afficher et lire la réponse du serveur
-            if (data.response) {
-                addMessageToChat("bot", data.response);
-    
-                // Play audio if voice is provided and TTS is not available
-                if (soundEnabled && data.voice && !payload.tts) {
-                    playAudioFromBase64(data.voice);
-                } else if (soundEnabled && payload.tts) {
-                    const sanitizedText = sanitizeText(data.response);
-                    speakText(sanitizedText, selectedLanguage);
-                }
-            }
-        })
-        .catch(error => {
-            console.error("Erreur :", error);
-            fetch("/reset", { method: "POST" })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        const failureMessage = selectedLanguage === "en" ? "Failure" : "Échec";
-                        addMessageToChat("bot", failureMessage);
-                    } else {
-                        console.error("Failed to reset:", data.message);
-                    }
-                })
-                .catch(resetError => {
-                    console.error("Error during reset:", resetError);
-                });
         });
     
-        // Effacer le champ de saisie et désactiver le bouton d'envoi
+        // Fetch immédiat de /tasks pour gérer les nouveaux messages de tâches
+        fetch("/tasks", { method: "GET" })
+            .then(response => response.json())
+            .then(taskData => {
+                // Afficher et lire les messages de tâches
+                displayAndReadTaskMessage(taskData);
+    
+                // Une fois les messages de tâches traités, gérer la réponse de /process
+                processRequest
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error("Network response was not ok");
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        // Afficher la réponse de /process après les messages de tâches
+                        if (data.response) {
+                            addMessageToChat("bot", data.response);
+    
+                            // Jouer l'audio si disponible
+                            if (soundEnabled && data.voice && !payload.tts) {
+                                playAudioFromBase64(data.voice);
+                            } else if (soundEnabled && payload.tts) {
+                                const sanitizedText = sanitizeText(data.response);
+                                speakText(sanitizedText, selectedLanguage);
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error("Erreur lors de l'appel à /process :", error);
+    
+                        // En cas d'échec, effectuer un reset
+                        fetch("/reset", { method: "POST" })
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success) {
+                                    const failureMessage = selectedLanguage === "en" ? "Failure" : "Échec";
+                                    addMessageToChat("bot", failureMessage);
+                                } else {
+                                    console.error("Échec du reset :", data.message);
+                                }
+                            })
+                            .catch(resetError => {
+                                console.error("Erreur lors du reset :", resetError);
+                            });
+                    });
+            })
+            .catch(error => {
+                console.error("Erreur lors de la récupération des tâches :", error);
+            });
+    
+        // Réinitialiser le champ de saisie et désactiver le bouton d'envoi
         promptInput.value = "";
         sendButton.disabled = true;
     }
+
+
+
+
 
     function sanitizeText(text){
         const openPattern = /\[open:(.+)\]/;
@@ -323,13 +342,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (data.success) {
                     // Clear the chat box content
                     chatBox.innerHTML = "";
-                    // Récupérer les tâches après le reset et afficher les nouveaux messages
+    
+                    // Fetch tasks après le reset
                     fetch("/tasks", { method: "GET" })
                         .then(response => response.json())
                         .then(taskData => {
-                            displayAndReadTaskMessage(taskData); // Affiche et lit les nouveaux messages
+                            displayAndReadTaskMessage(taskData);
                         })
-                        .catch(error => console.error("Error fetching tasks:", error));
+                        .catch(error => {
+                            console.error("Erreur lors de la récupération des tâches après reset :", error);
+                        });
                 } else {
                     console.error("Failed to reset:", data.message);
                 }
@@ -459,6 +481,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     speakText(message, selectedLanguage);
                 }
             }
+        } else {
+            return;
         }
     }
 
