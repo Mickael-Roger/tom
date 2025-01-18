@@ -6,6 +6,7 @@ import sqlite3
 import threading
 import time
 from bs4 import BeautifulSoup
+import time
 
 
 ################################################################################################
@@ -32,7 +33,7 @@ class TomNews:
 
     self.llm = llm
 
-    self.background_status = None
+    self.background_status = {"ts": int(time.time()), "status": None}
 
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
@@ -381,11 +382,18 @@ class TomNews:
       val = cursor.fetchall()
       dbconn.close()
 
+
+
       unread = val[0][0]
       if int(unread) > 0:
-        self.background_status = f"{unread} news"
+        status = f"{unread} news"
       else:
-        self.background_status = None
+        status = None
+
+      if status != self.background_status['status']:
+        self.background_status['ts'] = int(time.time())
+        self.background_status['status'] = status
+
 
 
     else:

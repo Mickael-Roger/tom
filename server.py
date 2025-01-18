@@ -204,11 +204,13 @@ class TomWebService:
 
 
     response = userList[cherrypy.session['username']].tasks.tasks
+    message = userList[cherrypy.session['username']].tasks.msg
+    id = userList[cherrypy.session['username']].tasks.status_id
 
     print(response)
 
     if response:
-      return {"background_tasks": response} 
+      return {"background_tasks": response, "message": message, "id": id} 
 
     else:
       raise cherrypy.HTTPError(500, response)

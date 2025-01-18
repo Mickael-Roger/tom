@@ -24,6 +24,9 @@ class TomBackground:
     self.services = services
 
     self.tasks = []
+    self.last_update = 0
+    self.status_id = 0
+    self.msg = ""
 
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
@@ -54,10 +57,28 @@ class TomBackground:
   def background_tasks_status(self):
     self.tasks = []
 
+    update_msg= False
+
     for service in self.services:
       if hasattr(self.services[service]['obj'], 'background_status'):
         if self.services[service]['obj'].background_status:
-          self.tasks.append({"module": service, "status": self.services[service]['obj'].background_status})
+          self.tasks.append({"module": service, "status": self.services[service]['obj'].background_status['status']})
+          if self.services[service]['obj'].background_status['ts'] > self.last_update:
+            update_msg = True
+
+    if update_msg == True:
+      #self.llm_synthesis(self.tasks)
+      self.msg = "You have new messages"
+      self.status_id = int(time.time())
+
+    self.last_update = int(time.time())
+
+
+
+
+  #def llm_synthesis(self, tasks):
+
+
 
 
 
