@@ -32,6 +32,8 @@ class TomNews:
 
     self.llm = llm
 
+    self.background_status = None
+
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
     cursor.execute('''
@@ -317,15 +319,15 @@ class TomNews:
   def news_update(self):
 
     # List all RSS feed ID from current DB
-    rss_ids = []
+    rss_ids = {}
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
-    cursor.execute("SELECT news_id FROM news WHERE source = 'rss'")
+    cursor.execute("SELECT news_id, read FROM news WHERE source = 'rss'")
     ids = cursor.fetchall()
     dbconn.close()
 
     for id in ids:
-      rss_ids.append(id[0])
+      rss_ids[id[0]] = id[1]
 
     # Get all folders
     folders = {}
@@ -351,17 +353,40 @@ class TomNews:
 
 
     # Get all rss unread news
-    val = self.api_call(path='/items', method='get', args={"getRead": "false", "type": 3, "id": 0})
+    val = self.api_call(path='/items', method='get', args={"type": 3, "id": 0})
     if val is not False:
       if val:
         for item in val['items']:
-          if item['id'] not in rss_ids:
+          if item['id'] not in rss_ids.keys():
             # New news, insert into table
             dbconn = sqlite3.connect(self.db)
             cursor = dbconn.cursor()
             cursor.execute("INSERT INTO news (source, category, news_id, author, title, url) VALUES ('rss', ?, ?, ?, ?, ?)", (feeds[item['feedId']]['category'], item['id'], feeds[item['feedId']]['source'], item['title'], item['url']))
             dbconn.commit()
             dbconn.close()
+          else:
+            read = not item['unread']
+            if rss_ids[item['id']] != read:
+              dbconn = sqlite3.connect(self.db)
+              cursor = dbconn.cursor()
+              cursor.execute("UPDATE news SET read=? WHERE source = 'rss' AND news_id=?", (read, item['id']))
+              dbconn.commit()
+              dbconn.close()
+
+
+      # Update the background status
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute("select count(news_id) FROM news where read=0")
+      val = cursor.fetchall()
+      dbconn.close()
+
+      unread = val[0][0]
+      if int(unread) > 0:
+        self.background_status = f"{unread} news"
+      else:
+        self.background_status = None
+
 
     else:
       print("Could not list RSS folders")

@@ -3,7 +3,7 @@ caldav
 PyYAML
 cherrypy
 openai
-pronotepy
+pronotepy==2.14.2
 beautifulsoup4
 TTS
 anki
@@ -11,3 +11,4 @@ timezonefinder
 google-generativeai
 firebase_admin
 feedparser
+litellm

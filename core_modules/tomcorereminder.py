@@ -208,10 +208,10 @@ class TomReminder:
       dbconn.close()
 
 
-      return True
+      return {"status": "success", "message": "Reminder added"}
 
     except:
-      return False
+      return {"status": "failure", "message": "Could not add reminder"}
 
 
   def reminder_delete(self, reminder_id):
@@ -223,10 +223,10 @@ class TomReminder:
       dbconn.close()
 
 
-      return True
+      return {"status": "success", "message": "Reminder deleted"}
 
     except:
-      return False
+      return {"status": "failure", "message": "Could not delete reminder"}
 
 
 
@@ -245,7 +245,7 @@ class TomReminder:
       return reminders
 
     except:
-      return False
+      return {"status": "failure", "message": "Could not list reminders"}
 
 
 

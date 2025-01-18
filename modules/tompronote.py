@@ -447,7 +447,7 @@ class TomPronote:
       },
     ]
 
-    self.systemContext = "This is important you don't try to guess which child the question refers to; ask me to clarify which child I am talking about."
+    self.systemContext = "If the user does not provide you information about which child the question refers to; ask him to clarify which child he is talking about."
     self.complexity = 1
 
     self.functions = {
@@ -751,7 +751,7 @@ class TomPronote:
               max_date = datetime.strptime("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
 
 
-            for observation in val['donneesSec']['donnees']['listeAbsences']['V']:
+            for observation in val['donneesSec']['data']['listeAbsences']['V']:
               if "genreObservation" in observation.keys():
 
                 date = datetime.strptime(observation['date']['V'], "%d/%m/%Y %H:%M:%S")
@@ -781,9 +781,9 @@ class TomPronote:
           # Update Calendar
           try:
             self.cal[child['name']] = []
-            l = client.parametres_utilisateur['donneesSec']['donnees']['ressource']['L']
-            g = client.parametres_utilisateur['donneesSec']['donnees']['ressource']['G']
-            n = client.parametres_utilisateur['donneesSec']['donnees']['ressource']['N']
+            l = client.parametres_utilisateur['donneesSec']['data']['ressource']['L']
+            g = client.parametres_utilisateur['donneesSec']['data']['ressource']['G']
+            n = client.parametres_utilisateur['donneesSec']['data']['ressource']['N']
 
             for i in range(0, 4):
               week = client.week+i
@@ -814,7 +814,7 @@ class TomPronote:
               cal_week = client.post("PageEmploiDuTemps", 16, data)
 
 
-              for lesson in cal_week['donneesSec']['donnees']['ListeCours']:
+              for lesson in cal_week['donneesSec']['data']['ListeCours']:
 
                 start_date = datetime.strptime(lesson['DateDuCours']['V'], "%d/%m/%Y %H:%M:%S")
                 duration = lesson['duree'] * 0.5
@@ -906,7 +906,7 @@ class TomPronote:
     for avg in avgs:
       averages['grades_averages'].append({"period": avg[0], "subject": avg[1], "student_avg": avg[2], "class_min_avg": avg[3], "class_max_avg": avg[4], "class_avg": avg[5]})
 
-    return averages
+    return {"child": child_name, "grades_averages": averages}
 
 
   def grades(self, child_name, is_new):
@@ -930,7 +930,7 @@ class TomPronote:
 
       grades.append({"id": grade[9], "date": grade[0].replace(" 00:00:00", ""), "subject": grade[1], "grade": grade[2], "grade_out_of": grade[3], "class_min_grade": grade[4], "class_max_grade": grade[5], "class_avg_grade": grade[6], "grade_comment": grade[7], "is_new": new})
 
-    return grades
+    return {"child": child_name, "grades": grades}
 
 
 
@@ -952,7 +952,7 @@ class TomPronote:
 
       homeworks.append({"due_date": homework[0].replace(" 00:00:00", ""), "subject": homework[1], "description": homework[2], "is_done": done})
 
-    return homeworks
+    return {"child": child_name, "homeworks": homeworks}
 
 
 
@@ -973,7 +973,7 @@ class TomPronote:
 
       absences.append({"id": absence[5], "date_from": absence[0], "date_to": absence[1], "duration": absence[2], "reasons": absence[3], "is_justified": justified})
 
-    return absences
+    return {"child": child_name, "absences": absences}
 
 
   def delays(self, child_name):
@@ -993,7 +993,7 @@ class TomPronote:
 
       delays.append({"id": delay[5], "date": delay[0], "minutes": delay[1], "justification": delay[2], "reasons": delay[3], "is_justified": justified})
 
-    return delays
+    return {"child": child_name, "delays": delays}
 
 
   def evaluations(self, child_name):
@@ -1013,7 +1013,7 @@ class TomPronote:
 
       evaluations.append({"id": evaluation[6], "date": evaluation[0].replace(" 00:00:00", ""), "name": evaluation[1], "subject": evaluation[2], "description": evaluation[3], "acquisitions": evaluation[4], "is_new": new})
 
-    return evaluations
+    return {"child": child_name, "evaluations": evaluations}
 
 
   def punishments(self, child_name):
@@ -1033,7 +1033,7 @@ class TomPronote:
 
       punishments.append({"id": punishment[6], "date": punishment[0].replace(" 00:00:00", ""), "circumstances": punishment[1], "nature": punishment[2], "reasons": punishment[3], "giver": punishment[4], "is_new": new})
 
-    return punishments
+    return {"child": child_name, "punishments": punishments}
 
 
   def teachers(self, child_name):
@@ -1048,7 +1048,7 @@ class TomPronote:
     for teacher in val:
       teachers.append({"name": teacher[0], "subject": teacher[1]})
 
-    return teachers
+    return {"child": child_name, "teachers": teachers}
 
 
   def getCal(self, child_name, date):
@@ -1064,7 +1064,7 @@ class TomPronote:
       if day == date:
         lessons.append(lesson)
 
-    return lessons
+    return {"child": child_name, "calendar": lessons}
 
 
   def observations(self, child_name):
@@ -1079,7 +1079,7 @@ class TomPronote:
     for observation in val:
       observations.append({"id": observation[0], "date": observation[1], "subject": observation[2], "teacher": observation[3], "observation_title": observation[4], "comment": observation[5],"is_new": observation[6], "need_ar": observation[7], "is_new": observation[8]})
 
-    return observations
+    return {"child": child_name, "observations": observations}
 
 
   def informations(self, child_name, is_new):
@@ -1099,7 +1099,7 @@ class TomPronote:
     for information in val:
       informations.append({"id": information[0], "date": information[1], "title": information[2], "author": information[3], "is_read": information[4], "is_new": information[5]})
 
-    return informations
+    return {"child": child_name, "informations": informations}
 
 
   def information_message(self, child_name, id):
@@ -1114,7 +1114,7 @@ class TomPronote:
     for information in val:
       informations.append({"id": information[0], "date": information[1], "title": information[2], "author": information[3], "message_content": information[4], "is_read": information[5], "is_new": information[6]})
 
-    return informations
+    return {"child": child_name, "informaiton_messages": informations}
 
 
   def mark_seen(self, child_name, object_type, object_id):

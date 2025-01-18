@@ -2,6 +2,8 @@ config.yml
 *.pyc
 __pycache__/
 
+test.py
+
 data/*
 # Except for the .gitkeep file
 !data/.gitkeep

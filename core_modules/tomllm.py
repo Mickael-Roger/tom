@@ -7,11 +7,15 @@ import copy
 
 
 # OpenAI
-from openai import OpenAI
+#from openai import OpenAI
 # Mistral AI
-from mistralai import Mistral
+#from mistralai import Mistral
 # Gemini
-import google.generativeai as Gemini
+#import google.generativeai as Gemini
+
+# LitLLM
+from litellm import completion
+import os
 
 
 
@@ -22,35 +26,32 @@ class TomLLM():
 
     self.llms = {}
 
-    if 'mistral' in global_config['global'].keys():
-      self.llms['mistral'] = {}
-      self.llms['mistral']['llm_client'] = Mistral(api_key=global_config['global']["mistral"]["api"])
-      self.llms['mistral']['func'] = self.callMistral
-      self.llms['mistral']['llm_models'] = [ "mistral-large-latest", "mistral-large-latest", "mistral-large-latest"]
-
     if 'openai' in global_config['global'].keys():
-      self.llms['openai'] = {}
-      self.llms['openai']['llm_client'] = OpenAI(api_key=global_config['global']["openai"]["api"])
-      self.llms['openai']['func'] = self.callOpenai
-      self.llms['openai']['llm_models'] = ["gpt-4o-mini", "gpt-4o", "gpt-4o"]
+      os.environ["OPENAI_API_KEY"] = global_config['global']["openai"]["api"]
+      self.llms['openai'] = ["openai/gpt-4o-mini", "openai/gpt-4o", "openai/gpt-4o"]
+
+    if 'mistral' in global_config['global'].keys():
+      os.environ["MISTRAL_API_KEY"] = global_config['global']["mistral"]["api"]
+      self.llms['mistral'] = [ "mistral/mistral-large-latest", "mistral/mistral-large-latest", "mistral/mistral-large-latest"]
 
     if 'deepseek' in global_config['global'].keys():
-      self.llms['deepseek'] = {}
-      self.llms['deepseek']['llm_client'] = OpenAI(api_key=global_config['global']["deepseek"]["api"], base_url="https://api.deepseek.com")
-      self.llms['deepseek']['func'] = self.callDeepseek
-      self.llms['deepseek']['llm_models'] = ["deepseek-chat", "deepseek-chat", "deepseek-chat"]
+      os.environ["DEEPSEEK_API_KEY"] = global_config['global']["deepseek"]["api"]
+      self.llms['deepseek'] = ["deepseek/deepseek-chat", "deepseek/deepseek-chat", "deepseek/deepseek-chat"]
 
     if 'xai' in global_config['global'].keys():
-      self.llms['xai'] = {}
-      self.llms['xai']['llm_client'] = OpenAI(api_key=global_config['global']["xai"]["api"], base_url="https://api.x.ai/v1")
-      self.llms['xai']['func'] = self.callXai
-      self.llms['xai']['llm_models'] = ["grok-beta", "grok-beta", "grok-beta"]
+      os.environ["XAI_API_KEY"] = global_config['global']["xai"]["api"]
+      self.llms['xai'] = ["xai/grok-beta", "xai/grok-beta", "xai/grok-beta"]
 
-    if global_config['global']['llm'] not in ["mistral", "openai", "deepseek", "xai"]:
+    if 'gemini' in global_config['global'].keys():
+      os.environ["GEMINI_API_KEY"] = global_config['global']["gemini"]["api"]
+      self.llms['gemini'] = ["gemini/gemini-1.5-flash", "gemini/gemini-1.5-flash", "gemini/gemini-1.5-flash"]
+
+
+    if global_config['global']['llm'] not in ["mistral", "openai", "deepseek", "xai", "gemini"]:
       print(f"LLM {global_config['global']['llm']} not supported")
       exit(-1)
 
-    self.llm = self.llms[global_config['global']['llm']]
+    self.llm = global_config['global']['llm']
 
       #elif global_config['global']['llm'] == "gemini":
       #  Gemini.configure(api_key=global_config['global']["gemini"]["api"])
@@ -63,6 +64,7 @@ class TomLLM():
 
     self.services = {}
     self.functions = {}
+    self.modules = []
 
     self.user_context = user_config['personalContext']
 
@@ -84,7 +86,6 @@ class TomLLM():
     It is important that if the user asks you a question, before responding that you don’t know, you must check the information stored in your memory.
 
     {self.user_context}
-
     """
 
 
@@ -94,192 +95,6 @@ class TomLLM():
     self.history = []
 
     return True
-
-
-
-  def callMistral(self, messages, tools=None, complexity=0):
-
-    print("///////////////// Mistral ///////////////////")
-
-    if tools: 
-      response = self.llms['mistral']['llm_client'].chat.complete(
-        model = self.llms['mistral']['llm_models'][complexity],
-        messages = messages,
-        tools = tools,
-        tool_choice = "auto",
-      )
-    else:
-      response = self.llms['mistral']['llm_client'].chat.complete(
-        model = self.llms['mistral']['llm_models'][complexity],
-        messages = messages
-      )
-        
-    values = {}
-
-    if response:
-      if response.choices:
-        values["finish_reason"] = response.choices[0].finish_reason
-        if response.choices[0].message:
-          values["role"] = response.choices[0].message.role
-          values["content"] = response.choices[0].message.content
-          values["tool_calls"] = response.choices[0].message.tool_calls
-
-    if not values:
-      return False
-
-    if values["finish_reason"] not in ["tool_calls", "stop"]:
-      return False
-
-    return response
-
-
-  def callDeepseek(self, messages, tools=None, complexity=0):
-
-
-    print("///////////////// DeepSeek ///////////////////")
-
-    print("---------1----------")
-    print(messages)
-    print("---------1----------")
-    print(tools)
-    print("---------1----------")
-
-    if tools: 
-      newtools = copy.deepcopy(tools)
-      for tool in newtools:
-        if not tool["function"]["parameters"]:
-          del tool["function"]["parameters"]
-
-    else:
-      newtools = None
-
-    if tools: 
-      response = self.llms['deepseek']['llm_client'].chat.completions.create(
-        model = self.llms['deepseek']['llm_models'][complexity],
-        messages = messages,
-        tools = newtools,
-        tool_choice = "auto",
-      )
-    else:
-      response = self.llms['deepseek']['llm_client'].chat.completions.create(
-        model = self.llms['deepseek']['llm_models'][complexity],
-        messages = messages,
-      )
-
-    print("---------2----------")
-    print(response)
-    print("---------2----------\n\n\n")
-
-
-    if not response:
-      return False
-
-    if not response.choices:
-      return False
-
-    if response.choices[0].finish_reason not in ["tool_calls", "stop"]:
-      return False
-
-    return response
-
-
-
-  def callXai(self, messages, tools=None, complexity=0):
-
-    print("///////////////// xAI ///////////////////")
-
-    if tools: 
-      newtools = copy.deepcopy(tools)
-      for tool in newtools:
-        if "strict" in tool["function"].keys():
-          del tool["function"]["strict"]
-
-    else:
-      newtools = None
-
-    if tools: 
-      response = self.llms['xai']['llm_client'].chat.completions.create(
-        model = self.llms['xai']['llm_models'][complexity],
-        messages = messages,
-        tools = newtools,
-        tool_choice = "auto",
-      )
-    else:
-      response = self.llms['xai']['llm_client'].chat.completions.create(
-        model = self.llms['xai']['llm_models'][complexity],
-        messages = messages,
-      )
-
-    print("---------2----------")
-    print(response)
-    print("---------2----------\n\n\n")
-
-
-    if not response:
-      return False
-
-    if not response.choices:
-      return False
-
-    if response.choices[0].finish_reason not in ["tool_calls", "stop"]:
-      return False
-
-    return response
-
-
-
-  def callOpenai(self, messages, tools=None, complexity=0):
-
-    print("---------1----------")
-    print(messages)
-    print("---------1----------")
-    print(tools)
-    print("---------1----------")
-
-    if tools: 
-      response = self.llms['openai']['llm_client'].chat.completions.create(
-        model = self.llms['openai']['llm_models'][complexity],
-        messages = messages,
-        tools = tools,
-        tool_choice = "auto",
-      )
-    else:
-      response = self.llms['openai']['llm_client'].chat.completions.create(
-        model = self.llms['openai']['llm_models'][complexity],
-        messages = messages,
-      )
-
-    print("---------2----------")
-    print(response)
-    print("---------2----------\n\n\n")
-
-
-    if not response:
-      return False
-
-    if not response.choices:
-      return False
-
-    if response.choices[0].finish_reason not in ["tool_calls", "stop"]:
-      return False
-
-    return response
-
-
-  def callGemini(self, messages, tools=None, complexity=0):
-
-    if tools: 
-      model = Gemini.GenerativeModel(model_name=self.llm_models[complexity], tools=tools)
-    else:
-      model = Gemini.GenerativeModel(model_name=self.llm_models[complexity])
-
-    response = model.start_chat().send_message(
-      messages,
-    )
-
-    return response
-
-
 
 
 
@@ -309,8 +124,6 @@ class TomLLM():
     
     
 
-
-
     if self.history: 
       self.history[0] = todayMsg
     else:
@@ -332,14 +145,50 @@ class TomLLM():
   def callLLM(self, messages, tools=None, complexity=0, llm=None):
 
     if llm == None:
-      llm_call=self.llm
+      llm=self.llm
+
+    model=self.llms[self.llm][complexity]
+
+    print("---------1----------")
+    print(messages)
+    print("---------1----------")
+    print(tools)
+    print("---------1----------")
+
+    if llm == "deepseek":
+      if tools: 
+        for tool in tools:
+          if not tool["function"]["parameters"]:
+            del tool["function"]["parameters"]
+
+    if tools: 
+      response = completion(
+        model = model,
+        messages = messages,
+        tools = tools,
+        tool_choice = "auto",
+      )
     else:
-      llm_call = self.llms[llm]
+      response = completion(
+        model = model,
+        messages = messages,
+      )
 
-    return llm_call['func'](messages=messages, tools=tools, complexity=complexity)
+    print("---------2----------")
+    print(response)
+    print("---------2----------\n\n\n")
 
 
+    if not response:
+      return False
 
+    if not response.choices:
+      return False
+
+    if response.choices[0].finish_reason not in ["tool_calls", "stop"]:
+      return False
+
+    return response
 
 
   def processRequest(self, input, lang, position):
@@ -408,7 +257,8 @@ class TomLLM():
     complexity = 1
 
     llm = "openai"
-#
+    #llm = self.llm
+
     while True:
 
 
@@ -470,7 +320,16 @@ class TomLLM():
 
             llm = None
             
-            self.history.append(response.choices[0].message.to_dict())
+            current_functions = []
+
+            for tool_call in response.choices[0].message.tool_calls:
+              function_name = tool_call.function.name
+              if function_name not in current_functions:
+                current_functions.append(function_name)
+                if self.functions[function_name]['responseContext'] != "":
+                  conversation.append({"role": 'system', "content": self.functions[function_name]['responseContext']})
+
+            #self.history.append(response.choices[0].message.to_dict())
             conversation.append(response.choices[0].message.to_dict())
 
             for tool_call in response.choices[0].message.tool_calls:
@@ -486,14 +345,9 @@ class TomLLM():
                 self.history.append({"role": 'assistant', "content": "Error while executing the function call"})
                 return False
     
-  
-              if self.functions[function_name]['responseContext'] != "": 
-                response_data = self.functions[function_name]['responseContext'] + "```json\n" + json.dumps(function_result) + "\n```"
-              else:
-                response_data = json.dumps(function_result) 
 
-              self.history.append({"role": 'tool', "content": response_data, "tool_call_id": tool_call.id})
-              conversation.append({"role": 'tool', "content": response_data, "tool_call_id": tool_call.id})
+              self.history.append({"role": 'system', "content": json.dumps(function_result)})
+              conversation.append({"role": 'tool', "content": json.dumps(function_result), "tool_call_id": tool_call.id})
   
         else:
           return False
