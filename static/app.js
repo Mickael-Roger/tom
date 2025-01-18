@@ -385,6 +385,24 @@ document.addEventListener("DOMContentLoaded", () => {
             .catch(error => console.error("Error fetching tasks:", error));
     }
 
+    // Fonction pour détecter un clic en dehors d'un élément
+    function closeOnClickOutside(boxElement, toggleElement) {
+        document.addEventListener("click", (event) => {
+            const isClickInsideBox = boxElement.contains(event.target);
+            const isClickOnToggle = toggleElement.contains(event.target);
+    
+            if (!isClickInsideBox && !isClickOnToggle) {
+                boxElement.classList.add("hidden"); // Cacher la boîte si clic à l'extérieur
+            }
+        });
+    }
+    
+    // Appliquer la logique pour la boîte de configuration
+    closeOnClickOutside(configBox, gearIcon);
+    
+    // Appliquer la logique pour la boîte des tâches
+    closeOnClickOutside(tasksBox, tasksIcon);
+
     function updateTasksUI() {
         // Update counter
         tasksCounter.textContent = tasks.length;
