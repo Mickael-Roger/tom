@@ -10,6 +10,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const soundConfig = document.getElementById("sound-config");
     const languageConfigEn = document.getElementById("language-config-en");
     const languageConfigFr = document.getElementById("language-config-fr");
+    const tasksIcon = document.getElementById("tasks-icon");
+    const tasksBox = document.getElementById("tasks-box");
+    const tasksCounter = document.getElementById("tasks-counter");
+    const tasksList = document.getElementById("tasks-list");
+
+    let tasks = [];
 
     let userPosition = null;
     let currentAudio = null; // Reference to the currently playing audio
@@ -350,4 +356,59 @@ document.addEventListener("DOMContentLoaded", () => {
     function isTTSAvailable() {
         return 'speechSynthesis' in window;
     }
+
+
+    // Toggle tasks box visibility
+    tasksIcon.addEventListener("click", () => {
+        if (tasksBox.classList.contains("hidden")) {
+            tasksBox.classList.remove("hidden");
+            console.log("Tasks box shown");
+        } else {
+            tasksBox.classList.add("hidden");
+            console.log("Tasks box hidden");
+        }
+    });
+
+    // Fetch background tasks periodically
+    setInterval(fetchBackgroundTasks, 60000); // Every 60 seconds
+    fetchBackgroundTasks();
+
+    function fetchBackgroundTasks() {
+        fetch("/tasks", { method: "GET" })
+            .then(response => response.json())
+            .then(data => {
+                if (data.background_tasks) {
+                    tasks = data.background_tasks;
+                    updateTasksUI();
+                }
+            })
+            .catch(error => console.error("Error fetching tasks:", error));
+    }
+
+    function updateTasksUI() {
+        // Update counter
+        tasksCounter.textContent = tasks.length;
+
+        // Update tasks list
+        tasksList.innerHTML = ""; // Clear existing items
+        tasks.forEach(task => {
+            const taskItem = document.createElement("div");
+            taskItem.className = "tasks-list-item";
+
+            const moduleName = document.createElement("span");
+            moduleName.className = "module-name";
+            moduleName.textContent = task.module;
+
+            const status = document.createElement("span");
+            status.className = "status";
+            status.textContent = task.status;
+
+            taskItem.appendChild(moduleName);
+            taskItem.appendChild(status);
+
+            tasksList.appendChild(taskItem);
+        });
+    }
+
+
 });

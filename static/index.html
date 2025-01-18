@@ -36,6 +36,12 @@
         <img src="/static/gears.png" alt="Gear" class="gear-image">
     </div>
 
+    <!-- Tasks Icon -->
+    <div id="tasks-icon" class="tasks-icon">
+        <img src="/static/notifs.png" alt="Tasks" class="tasks-image">
+        <span id="tasks-counter" class="tasks-counter">0</span>
+    </div>
+
     <!-- Configuration Box -->
     <div id="config-box" class="config-box hidden">
         <div class="config-layer">
@@ -50,6 +56,12 @@
             <div id="language-config-en" class="config-item">🇺🇸</div>
             <div id="language-config-fr" class="config-item">🇫🇷</div>
         </div>
+    </div>
+
+    <!-- Tasks Box -->
+    <div id="tasks-box" class="tasks-box hidden">
+        <h3>Notifications</h3>
+        <div id="tasks-list"></div>
     </div>
 
     <script src="/static/app.js?%version%"></script>
