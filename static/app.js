@@ -17,6 +17,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let tasks = [];
 
+    let lastDisplayedId = 0;
+
     let userPosition = null;
     let currentAudio = null; // Reference to the currently playing audio
     let isSpeaking = false; // Flag for TTS state
@@ -79,20 +81,21 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+
     // Function to send the message
     function sendMessage() {
         const message = promptInput.value.trim();
         if (!message) return;
-
+    
         addMessageToChat("user", message);
-
+    
         const payload = {
             request: message,
             lang: selectedLanguage,
-            position: userPosition, // GPS position
-            tts: isTTSAvailable() // TTS availability
+            position: userPosition,
+            tts: isTTSAvailable()
         };
-
+    
         fetch("/process", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -105,28 +108,29 @@ document.addEventListener("DOMContentLoaded", () => {
             return response.json();
         })
         .then(data => {
+            // Afficher et lire les messages des tâches non affichés
+            displayAndReadTaskMessages(tasks);
+    
+            // Afficher et lire la réponse du serveur
             if (data.response) {
                 addMessageToChat("bot", data.response);
-
+    
                 // Play audio if voice is provided and TTS is not available
                 if (soundEnabled && data.voice && !payload.tts) {
                     playAudioFromBase64(data.voice);
                 } else if (soundEnabled && payload.tts) {
-                    // Use TTS if available
-                    sanitizedText = sanitizeText(data.response);
+                    const sanitizedText = sanitizeText(data.response);
                     speakText(sanitizedText, selectedLanguage);
                 }
             }
         })
         .catch(error => {
             console.error("Erreur :", error);
-            // Call /reset on failure
             fetch("/reset", { method: "POST" })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        // Add failure message to chat based on selected language
-                        const failureMessage = selectedLanguage === "en" ? "Failure" : "Echec";
+                        const failureMessage = selectedLanguage === "en" ? "Failure" : "Échec";
                         addMessageToChat("bot", failureMessage);
                     } else {
                         console.error("Failed to reset:", data.message);
@@ -136,7 +140,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     console.error("Error during reset:", resetError);
                 });
         });
-
+    
+        // Effacer le champ de saisie et désactiver le bouton d'envoi
         promptInput.value = "";
         sendButton.disabled = true;
     }
@@ -318,6 +323,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (data.success) {
                     // Clear the chat box content
                     chatBox.innerHTML = "";
+                    // Récupérer les tâches après le reset et afficher les nouveaux messages
+                    fetch("/tasks", { method: "GET" })
+                        .then(response => response.json())
+                        .then(taskData => {
+                            displayAndReadTaskMessage(taskData); // Affiche et lit les nouveaux messages
+                        })
+                        .catch(error => console.error("Error fetching tasks:", error));
                 } else {
                     console.error("Failed to reset:", data.message);
                 }
@@ -379,7 +391,8 @@ document.addEventListener("DOMContentLoaded", () => {
             .then(data => {
                 if (data.background_tasks) {
                     tasks = data.background_tasks;
-                    updateTasksUI();
+                    updateTasksUI(); // Met à jour l'interface pour les tâches
+                    displayAndReadTaskMessage(data); // Affiche et lit le message et ID
                 }
             })
             .catch(error => console.error("Error fetching tasks:", error));
@@ -428,5 +441,25 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // Tasks messages
+    function displayAndReadTaskMessage(data) {
+        const message = data.message;
+        const id = data.id;
+    
+        // Afficher et lire le message uniquement si l'ID est supérieur au dernier affiché
+        if (id > lastDisplayedId) {
+            lastDisplayedId = id; // Mettre à jour le dernier ID traité
+    
+            // Ajouter le message à la chat box
+            if (message) {
+                addMessageToChat("bot", message);
+    
+                // Lire le message avec TTS si activé
+                if (soundEnabled) {
+                    speakText(message, selectedLanguage);
+                }
+            }
+        }
+    }
 
 });
