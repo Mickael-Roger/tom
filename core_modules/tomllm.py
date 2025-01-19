@@ -328,6 +328,7 @@ class TomLLM():
                 current_functions.append(function_name)
                 if self.functions[function_name]['responseContext'] != "":
                   conversation.append({"role": 'system', "content": self.functions[function_name]['responseContext']})
+                  self.history.append({"role": 'system', "content": self.functions[function_name]['responseContext']})
 
             #self.history.append(response.choices[0].message.to_dict())
             conversation.append(response.choices[0].message.to_dict())
