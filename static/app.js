@@ -231,60 +231,77 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Use local TTS to speech
+//    function speakText(text, language) {
+//        if (isSpeaking) {
+//            window.speechSynthesis.cancel(); // Stop any ongoing TTS
+//            isSpeaking = false;
+//        }
+//
+//        const utterance = new SpeechSynthesisUtterance(text);
+//        utterance.lang = language === "fr" ? "fr-FR" : "en-US";
+//
+//        utterance.onstart = () => {
+//            isSpeaking = true;
+//        };
+//
+//        utterance.onend = () => {
+//            isSpeaking = false;
+//        };
+//
+//        window.speechSynthesis.speak(utterance);
+//    }
+
     function speakText(text, language) {
         if (isSpeaking) {
-            window.speechSynthesis.cancel(); // Stop any ongoing TTS
-            isSpeaking = false;
-        }
-
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = language === "fr" ? "fr-FR" : "en-US";
-
-        utterance.onstart = () => {
-            isSpeaking = true;
-        };
-
-        utterance.onend = () => {
-            isSpeaking = false;
-        };
-
-        window.speechSynthesis.speak(utterance);
-    }
-
-    // Handle Speak button click
-    speakButton.addEventListener("click", () => {
-        // Stop audio playback if active
-        if (currentAudio) {
-            currentAudio.pause();
-            currentAudio = null;
-        }
-
-        // Stop TTS if active
-        if (isSpeaking) {
-            window.speechSynthesis.cancel();
-            isSpeaking = false;
-        }
-
-        // Start speech recognition
-        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        recognition.lang = selectedLanguage === "fr" ? "fr-FR" : "en-US";
-        recognition.start();
-
-        recognition.onresult = (event) => {
-            const transcript = event.results[0][0].transcript;
-            promptInput.value = transcript;
-            sendButton.disabled = !transcript.trim();
-
-            // Auto-submit if enabled
-            if (autoSubmitEnabled) {
-                sendMessage();
+            // Arrêter tout TTS en cours
+            if (window.speechSynthesis) {
+                window.speechSynthesis.cancel();
             }
-        };
+            if (window.AndroidTTS) {
+                // AndroidTTS ne dispose pas de fonction pour annuler, mais on peut gérer via isSpeaking
+                console.log("Stopping Android TTS...");
+            }
+            isSpeaking = false;
+        }
 
-        recognition.onerror = (event) => {
-            console.error("Erreur de reconnaissance vocale :", event.error);
-        };
-    });
+        // Utilisation de SpeechSynthesis si disponible
+        if (window.speechSynthesis) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = language === "fr" ? "fr-FR" : "en-US";
+
+            utterance.onstart = () => {
+                isSpeaking = true;
+            };
+
+            utterance.onend = () => {
+                isSpeaking = false;
+            };
+
+            window.speechSynthesis.speak(utterance);
+        } 
+        // Sinon, utilisation de l'API AndroidTTS
+        else if (window.AndroidTTS) {
+            const androidLanguage = language === "fr" ? "fr-FR" : "en-US";
+
+            try {
+                isSpeaking = true; // Marquer comme en cours de parole
+                // Utilisation de AndroidTTS avec les paramètres textuels et linguistiques
+                window.AndroidTTS.speak(text, androidLanguage);
+                console.log(`Android TTS: Speaking "${text}" in ${androidLanguage}`);
+
+                // Simuler les événements onstart et onend avec un délai basé sur la longueur du texte
+                setTimeout(() => {
+                    isSpeaking = false; // Fin du TTS
+                    console.log("Android TTS finished speaking.");
+                }, Math.max(1000, text.length * 100)); // Estimation du temps basé sur 100 ms par caractère
+            } catch (error) {
+                console.error("Error with Android TTS:", error);
+                isSpeaking = false;
+            }
+        } else {
+            console.error("No TTS engine available.");
+        }
+    }
 
     // Handle Speak button click
     speakButton.addEventListener("click", () => {
@@ -388,7 +405,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Function to check if TTS is available
     function isTTSAvailable() {
-        return 'speechSynthesis' in window;
+        return 'speechSynthesis' in window  || 'AndroidTTS' in window;;
     }
 
 
