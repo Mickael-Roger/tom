@@ -12,3 +12,4 @@ google-generativeai
 firebase_admin
 feedparser
 litellm
+paramiko
