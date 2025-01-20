@@ -36,7 +36,7 @@ class TomLLM():
 
     if 'deepseek' in global_config['global'].keys():
       os.environ["DEEPSEEK_API_KEY"] = global_config['global']["deepseek"]["api"]
-      self.llms['deepseek'] = ["deepseek/deepseek-chat", "deepseek/deepseek-chat", "deepseek/deepseek-chat"]
+      self.llms['deepseek'] = ["deepseek/deepseek-chat", "deepseek/deepseek-reasoner", "deepseek/deepseek-reasoner"]
 
     if 'xai' in global_config['global'].keys():
       os.environ["XAI_API_KEY"] = global_config['global']["xai"]["api"]

@@ -62,7 +62,9 @@ class TomVm:
     }
 
     #self.create('Count the number of line of code in that git repo: https://github.com/Mickael-Roger/tom')
-    self.process('Count the number of line of code in that git repo: https://github.com/Mickael-Roger/tom')
+    #self.process('Count the number of line of code in that git repo: https://github.com/Mickael-Roger/tom')
+    #self.process('Clone that git repo: https://github.com/Mickael-Roger/tom and tell me if there are some security hole in the code in it. Install all software you need to perform this full and detailled security analysis')
+    self.process("""You can access a file named '/root/cookomix.apk'. This file is an android apk that contains a receipe application. Your job is to analyze this apk and extract how the application search and display a receipe. You are free to install everything you need to do your job on the server.""")
 
 
 
@@ -126,6 +128,7 @@ class TomVm:
     ```json
     {"return_code": RETURN_CODE_OF_THE_COMMAND, "stdout": COMMAND_STDOUT, "stderr": COMMAND_STDERR}
     ```
+    Because the command and its output will be added to your contaxt that has a finite size, its a good idea to use silent mode or redirect output to a file for commands that could returns lots of data that is useless (for instance when running apt install, curl, tar, pip, wget or even docker run, ...) and more generaly, unles it is necessary always use silent mode or redirect output ot a file for command that provides progress information, ...
     """})
 
     prompt.append({"role": "user", "content": request})
