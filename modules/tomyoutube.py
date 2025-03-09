@@ -59,7 +59,7 @@ class TomYoutube:
       {
         "type": "function",
         "function": {
-          "name": "get_all_videos",
+          "name": "get_all_new_videos",
           "description": "Retrieves a list of all non viewed youtube videos, organized by channel. This function returns for each channel, the video_id, the video title, the video publicaiton date, the video url and a description of the video.",
           "parameters": {
           },
@@ -94,7 +94,7 @@ class TomYoutube:
     """
     self.complexity = 1
     self.functions = {
-      "get_all_videos": {
+      "get_all_new_videos": {
         "function": functools.partial(self.list_unviewed_videos), 
         "responseContext": """Your response will be read aloud via text-to-speech, so it should be concise and free from any markdown formatting or URLs. It's important that you do not translate category names.
 
@@ -220,7 +220,7 @@ class TomYoutube:
       title = video[2]
       uri = video[3]
 
-      videos['videos'].append({"video_id": id, "channel": channel, "title": title, "url": uri})
+      videos['videos'].append({"video_id": id, "channel": channel, "title": title, "url": uri, "viewed": False})
 
     print("-------------------")
     print(videos)

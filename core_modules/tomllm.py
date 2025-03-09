@@ -6,13 +6,6 @@ import copy
 
 
 
-# OpenAI
-#from openai import OpenAI
-# Mistral AI
-#from mistralai import Mistral
-# Gemini
-#import google.generativeai as Gemini
-
 # LitLLM
 from litellm import completion
 import os
@@ -36,7 +29,7 @@ class TomLLM():
 
     if 'deepseek' in global_config['global'].keys():
       os.environ["DEEPSEEK_API_KEY"] = global_config['global']["deepseek"]["api"]
-      self.llms['deepseek'] = ["deepseek/deepseek-chat", "deepseek/deepseek-reasoner", "deepseek/deepseek-reasoner"]
+      self.llms['deepseek'] = ["deepseek/deepseek-chat", "deepseek/deepseek-chat", "deepseek/deepseek-reasoner"]
 
     if 'xai' in global_config['global'].keys():
       os.environ["XAI_API_KEY"] = global_config['global']["xai"]["api"]
@@ -83,7 +76,7 @@ class TomLLM():
 
     When your response includes a temporal reference, it must be in the format 'Weekday day month'. Numbers must be written with digits and not in words. It is import you write numbers using digits and not in words. For example, you must answer '123' and not 'one two three' nor 'one hundred and three'.
 
-    It is important that if the user asks you a question, before responding that you don’t know, you must check the information stored in your memory.
+    As a LLM, you have a lot of information and knowledge. However, you do not natively possess personal information or details about the user who is asking you questions. This is why you have a module called 'memory' that contains personal information about the user. Therefore, if you need to tell the user that you do not know or do not have the information to answer their request, you should first load the 'memory' module and list its contents. Only if your intrinsic knowledge and the contents of the 'memory' module do not provide you with the information needed to answer the user's request, can you say that you do not know or that you do not have the necessary information to respond.
 
     {self.user_context}
     """
@@ -158,8 +151,9 @@ class TomLLM():
     if llm == "deepseek":
       if tools: 
         for tool in tools:
-          if not tool["function"]["parameters"]:
-            del tool["function"]["parameters"]
+          if "parameters" in tool["function"]:
+            if not tool["function"]["parameters"]:
+              del tool["function"]["parameters"]
 
     if tools: 
       response = completion(

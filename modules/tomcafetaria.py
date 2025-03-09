@@ -122,19 +122,19 @@ class TomCafetaria:
     self.functions = {
       "get_cafetaria_credit": {
         "function": functools.partial(self.credit), 
-        "responseContext": "" 
+        "responseContext": """Your answer should be as short as possible. For example: "12.30 euros"."""
       },
       "list_cafetaria_reservations": {
         "function": functools.partial(self.reservations), 
-        "responseContext": "" 
+        "responseContext": """Your answer should be as short as possible. For example: "Reservation made for moday june the 3rd"."""
       },
       "make_a_cafetaria_reservation": {
         "function": functools.partial(self.add), 
-        "responseContext": "" 
+        "responseContext": """Your answer should be as short as possible. For example: "Reservation canceled for tuesday march the 2nd".""" 
       },
       "cancel_a_cafetaria_reservation": {
         "function": functools.partial(self.cancel), 
-        "responseContext": "" 
+        "responseContext": """Your answer should be as short as possible. For example: "The cafeteria is reserved on monday march the first" or "The cafeteria is not reserved on friday march the 23st".""" 
       },
     }
 

@@ -213,7 +213,7 @@ class TomWebService:
       return {"background_tasks": response, "message": message, "id": id} 
 
     else:
-      raise cherrypy.HTTPError(500, response)
+      return {"background_tasks": [], "message": "", "id": 0} 
 
 
 

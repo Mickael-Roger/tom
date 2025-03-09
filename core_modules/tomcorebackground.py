@@ -89,9 +89,12 @@ class TomBackground:
     "status": INFORMATION_USEFUL_FOR_THE_USER
     ```
 
+    If there is no new information for a module, do not mention it in your response and do not say anything about that module.
+
     Your task is to synthesize the content of this JSON into a short and intelligible sentence.
 
     If the array is empty, you should respond with an empty message.
+    Your answer must be in french and you must address me informally
     """
 
     llm_consign.append({"role": "system", "content": context})

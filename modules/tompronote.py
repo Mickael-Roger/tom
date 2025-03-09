@@ -1,10 +1,12 @@
 import pronotepy
 
 from datetime import datetime, timedelta
+import time
 
 from pathlib import Path
 import json
 import sqlite3
+import threading
 
 import functools
 
@@ -36,6 +38,7 @@ class TomPronote:
 
     self.cal = {} 
 
+    self.background_status = {"ts": int(time.time()), "status": None}
 
     for child in self.config:
 
@@ -504,6 +507,68 @@ class TomPronote:
       },
     }
 
+    self.thread = threading.Thread(target=self.thread_update)
+    self.thread.daemon = True  # Allow the thread to exit when the main program exits
+    self.thread.start()
+    
+
+  def thread_update(self):
+    while True:
+      try:
+        if datetime.now() > (self.lastUpdate + timedelta(hours=4)):
+          print("Update pronote ...")
+          self.update()
+      except:
+        print("Fail to update pronote")
+
+      msg = None
+      for child in self.config:
+        childname = child['name']
+
+        db = child['cache']
+        dbconn = sqlite3.connect(db)
+        cursor = dbconn.cursor()
+        cursor.execute('SELECT count(*) FROM grades WHERE is_new=1')
+        grades = cursor.fetchone()
+        cursor.execute('SELECT count(*) FROM observations WHERE is_new=1')
+        observations = cursor.fetchone()
+        cursor.execute('SELECT count(*) FROM punishments WHERE is_new=1')
+        punishments = cursor.fetchone()
+        cursor.execute('SELECT count(*) FROM informations WHERE is_new=1')
+        informations = cursor.fetchone()
+        dbconn.close()
+
+        if grades[0] > 0 or informations[0] > 0 or observations[0] > 0 or punishments[0] > 0:
+          if msg == None:
+            msg = ""
+          msg = msg + f"{childname}: "
+
+          if grades[0] > 0:
+            msg = msg + f"{grades[0]} new grades,"
+
+          if informations[0] > 0:
+            msg = msg + f"{informations[0]} new messages,"
+
+          if observations[0] > 0:
+            msg = msg + f"{observations[0]} new observations,"
+
+          if punishments[0] > 0:
+            msg = msg + f"{punishments[0]} new punishments,"
+
+          msg = msg[:-1] + "\n"
+
+      if msg is not None:
+        msg = msg[:-1]
+
+
+      if msg != self.background_status['status']:
+        self.background_status['ts'] = int(time.time())
+        self.background_status['status'] = msg
+
+
+      time.sleep(60)
+
+
 
 
   def connect(self, child_name, token):
@@ -537,7 +602,7 @@ class TomPronote:
   def update(self):
 
     if datetime.now() > (self.lastUpdate + timedelta(hours=1)):
-      
+
       for child in self.config:
 
         childname = child['name']
@@ -843,7 +908,7 @@ class TomPronote:
           except:
             print(f'Error: Could not update calendar for {childname}')
 
-        self.lastUpdate = datetime.now() 
+        self.lastUpdate = datetime.now()
 
       else:
         print("Update too recent, use cache")
@@ -923,7 +988,7 @@ class TomPronote:
     grades = []
 
     for grade in val:
-      if grade[8] == "1":
+      if str(grade[8]) == "1":
         new = True
       else:
         new = False

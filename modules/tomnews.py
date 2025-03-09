@@ -1,5 +1,5 @@
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import functools
 from requests.auth import HTTPBasicAuth
 import sqlite3
@@ -31,6 +31,7 @@ class TomNews:
 
     self.db = config['cache_db']
 
+    self.lastUpdate = datetime.now() - timedelta(hours=48)
     self.llm = llm
 
     self.background_status = {"ts": int(time.time()), "status": None}
@@ -374,38 +375,84 @@ class TomNews:
               dbconn.commit()
               dbconn.close()
 
-
-      # Update the background status
-      dbconn = sqlite3.connect(self.db)
-      cursor = dbconn.cursor()
-      cursor.execute("select count(news_id) FROM news where read=0")
-      val = cursor.fetchall()
-      dbconn.close()
-
-
-
-      unread = val[0][0]
-      if int(unread) > 0:
-        status = f"{unread} news"
-      else:
-        status = None
-
-      if status != self.background_status['status']:
-        self.background_status['ts'] = int(time.time())
-        self.background_status['status'] = status
-
-
-
     else:
       print("Could not list RSS folders")
       return False
 
-
-
+    ##########################################################
+    #                                                        #
+    #                    Mistral Web News                    #
+    #                                                        #
+    ##########################################################
     
+    # To prevent any blocking, doe not scrap more than every 6 hours
+    time_diff = datetime.now() - self.lastUpdate
+
+    if time_diff > timedelta(hours=6):
+      mistral_url = 'https://cms.mistral.ai/items/posts?fields=*,translations.*,category.*,parent.id&sort=-date&limit=10&page=1'
+      response = requests.get(mistral_url)
+
+      if response.status_code == 200:
+        data = response.json()
+
+        # Get news ID in cache
+        mistral_news_ids = []
+        dbconn = sqlite3.connect(self.db)
+        cursor = dbconn.cursor()
+        cursor.execute("SELECT news_id FROM news WHERE source = 'mistral'")
+        ids = cursor.fetchall()
+        dbconn.close()
+
+        for id in ids:
+          mistral_news_ids.append(id[0])
+
+
+        for item in data['data']:
+          item_id = item['id']
+          date = item['date']
+          slug = item['slug']
+      
+          for news_lang in item['translations']:
+
+            if news_lang['languages_code'] == 'en':
+              title_en = news_lang['title']
+              description_en = news_lang['description']
+
+              if item_id not in mistral_news_ids:
+                dbconn = sqlite3.connect(self.db)
+                cursor = dbconn.cursor()
+                
+                date_obj = datetime.fromisoformat(date.replace('Z', '+00:00'))
+                news_date = date_obj.strftime('%Y-%m-%d')
+            
+                cursor.execute("INSERT INTO news (source, category, news_id, author, title, summary, url, datetime) VALUES ('mistral', 'AI', ?, 'mistral', ?, ?, ?, ?)", (item_id, title_en, description_en, f"https://mistral.ai/en/news/{slug}", news_date))
+                dbconn.commit()
+                dbconn.close()
+
+      else:
+        print(f"Erreur when scrapping mistral: {response.status_code}")
+
+
+    # Update the background status
+    dbconn = sqlite3.connect(self.db)
+    cursor = dbconn.cursor()
+    cursor.execute("select count(news_id) FROM news where read=0")
+    val = cursor.fetchall()
+    dbconn.close()
 
 
 
+    unread = val[0][0]
+    if int(unread) > 0:
+      status = f"{unread} news"
+    else:
+      status = None
+
+    if status != self.background_status['status']:
+      self.background_status['ts'] = int(time.time())
+      self.background_status['status'] = status
+
+    self.lastUpdate = datetime.now()
 
 
 
