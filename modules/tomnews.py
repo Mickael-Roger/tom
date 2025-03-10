@@ -379,6 +379,56 @@ class TomNews:
       print("Could not list RSS folders")
       return False
 
+
+    ##########################################################
+    #                                                        #
+    #                    Kyutai Web News                     #
+    #                                                        #
+    ##########################################################
+
+    # To prevent any blocking, doe not scrap more than every 6 hours
+    time_diff = datetime.now() - self.lastUpdate
+
+    if time_diff > timedelta(hours=6):
+      kyutai_url="https://kyutai.org/blog.html"
+
+      response = requests.get(kyutai_url)
+
+      if response.status_code == 200:
+        html = response.text
+
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        kyutai_news_ids = []
+        dbconn = sqlite3.connect(self.db)
+        cursor = dbconn.cursor()
+        cursor.execute("SELECT news_id FROM news WHERE source = 'kyutai'")
+        ids = cursor.fetchall()
+        dbconn.close()
+
+        for id in ids:
+          kyutai_news_ids.append(id[0])
+
+        for h1 in soup.find_all('h1'):
+          a_tag = h1.find('a')
+          if a_tag:
+            item_url = a_tag['href']
+            item_title = a_tag.get_text(strip=True)
+            
+            post_text_div = h1.find_next_sibling('div', class_='post-text')
+            item_description = post_text_div.p.get_text(strip=True) if post_text_div and post_text_div.p else ""
+            
+            if item_url not in kyutai_news_ids:
+              dbconn = sqlite3.connect(self.db)
+              cursor = dbconn.cursor()
+              cursor.execute("INSERT INTO news (source, category, news_id, author, title, summary, url) VALUES ('kyutai', 'AI', ?, 'kyutai', ?, ?, ?)", (item_url, item_title, item_description, f"https://kyutai.org/{item_url}"))
+              dbconn.commit()
+              dbconn.close()
+
+      else:
+        print(f"Erreur when scrapping Kyutai: {response.status_code}")
+
+
     ##########################################################
     #                                                        #
     #                    Mistral Web News                    #
@@ -461,7 +511,7 @@ class TomNews:
 
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
-    cursor.execute("SELECT id, category, author, title, url  FROM news WHERE source = 'rss' AND read = 0")
+    cursor.execute("SELECT id, category, author, title, url  FROM news WHERE read = 0")
     allnews = cursor.fetchall()
     dbconn.close()
 

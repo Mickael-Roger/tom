@@ -59,25 +59,26 @@ class TomAnki:
       #    },
       #  }
       #},
-      #{
-      #  "type": "function",
-      #  "function": {
-      #    "name": "anki_list_all_cards",
-      #    "description": "List all Anki cards of a deck.",
-      #    "strict": True,
-      #    "parameters": {
-      #      "type": "object",
-      #      "properties": {
-      #        "deck_name": {
-      #          "type": "string",
-      #          "description": "Name of the Anki deck.",
-      #        },
-      #      },
-      #      "required": ["deck_name"],
-      #      "additionalProperties": False,
-      #    },
-      #  }
-      #},
+      {
+        "type": "function",
+        "function": {
+          "name": "anki_list_all_cards",
+          "description": "List all Anki cards of a deck.",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "deck_name": {
+                "type": "string",
+                "enum": self.decks,
+                "description": "Name of the Anki deck.",
+              },
+            },
+            "required": ["deck_name"],
+            "additionalProperties": False,
+          },
+        }
+      },
       #{
       #  "type": "function",
       #  "function": {
@@ -144,10 +145,10 @@ class TomAnki:
       #  "function": functools.partial(self.due_cards), 
       #  "responseContext": """You should always answered in a consise way: For example, your answer should be like "You have x cards to review in your 'deckname' deck." """ 
       #},
-      #"anki_list_all_cards": {
-      #  "function": functools.partial(self.list_cards), 
-      #  "responseContext": """You should always answered in a consise way.""" 
-      #},
+      "anki_list_all_cards": {
+        "function": functools.partial(self.list_cards), 
+        "responseContext": """You should always answered in a consise way.""" 
+      },
       #"anki_review_card": {
       #  "function": functools.partial(self.card_review), 
       #  "responseContext": "" 
@@ -186,7 +187,7 @@ class TomAnki:
     if due_cards == 0:
       self.background_status['status'] = ""
     else:
-      self.background_status['status'] = f"Tu as {due_cards} cartes Anki a revoir"
+      self.background_status['status'] = f"{due_cards} cards to review"
 
     self.lastUpdate = datetime.now()
 
@@ -221,7 +222,7 @@ class TomAnki:
           decks_info.append({
               "deck_name": stats[deck]["name"],
               "total_cards": stats[deck]["total_in_deck"],
-              "due_cards": stats[deck]["review_count"] + stats[deck]["new_count"]
+              "due_cards": stats[deck]["review_count"] + stats[deck]["new_count"] + stats[deck]["learn_count"]
           })
       else:
         return False
@@ -255,6 +256,35 @@ class TomAnki:
       return True
     else:
       return False
+
+
+  def list_cards(self, deck_name):
+
+    self.sync()
+
+    cards_list = []
+
+    cards_ids = self.anki_request("findCards", {"query": f"deck:{deck_name}"})
+    print("==================")
+    print(cards_ids)
+    print("==================")
+    if not cards_ids:
+        return cards_list
+    
+    cards_info = self.anki_request("cardsInfo", {"cards": cards_ids})
+    print("==================")
+    print(cards_info)
+    print("==================")
+    
+    if cards_info:
+      for card in cards_info:
+          cards_list.append({
+              "front": card["fields"]["Front"]["value"],
+              "back": card["fields"]["Back"]["value"]
+          })
+          
+    return cards_list
+
 
 
 #####################################################################
@@ -310,25 +340,4 @@ class TomAnki:
   #    return False, f"Erro while updating the card status: {e}"
   
 
-
-#  def list_cards(self, deck_name):
-#
-#    self.sync()
-#
-#    cards_info = []
-#    
-#    try:
-#      cards = self.col.findCards(f"deck:{deck_name}")
-#      
-#      for card_id in cards:
-#        card = self.col.getCard(card_id)
-#        front = card.note().fields[0]
-#        back = card.note().fields[1]
-#        due = True if card.due <= int(datetime.now().timestamp()) else False
-#        cards_info.append({ 'card_id': card.id, 'front': front, 'back': back, 'due': due })
-#          
-#      return True, cards_info
-#
-#    except Exception as e:
-#      return False, f"Error while listing cards for deck '{deck_name}': {e}"
 
