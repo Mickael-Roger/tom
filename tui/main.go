@@ -122,7 +122,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.Width = m.width
 			m.viewport.Height = m.height - verticalMarginHeight
 			m.viewport.YPosition = headerHeight
-			m.chatInput.Width = m.width - styleChatBox.GetHorizontalFrameSize() - lipgloss.Width(m.chatInput.Prompt) - 1
 			m.viewport.SetContent(m.renderMessages())
 		}
 
@@ -166,7 +165,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		verticalMarginHeight := headerHeight + footerHeight + commandBarHeight
 		m.viewport = viewport.New(m.width, m.height-verticalMarginHeight)
 		m.viewport.YPosition = headerHeight
-		m.chatInput.Width = m.width - styleChatBox.GetHorizontalFrameSize() - lipgloss.Width(m.chatInput.Prompt) - 1
 		m.messages = []string{"Tom: Welcome! Type /help for a list of commands."}
 		m.viewport.SetContent(m.renderMessages())
 		return m, textinput.Blink
@@ -275,7 +273,7 @@ func (m model) headerView() string {
 }
 
 func (m model) footerView() string {
-	return styleChatBox.Copy().Width(m.width).Render(m.chatInput.View())
+	return styleChatBox.Copy().Width(m.width - 3).Render(m.chatInput.View())
 }
 
 func (m model) commandBarView() string {
