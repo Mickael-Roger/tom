@@ -41,9 +41,10 @@ class TomCalendar:
     self.defaultCalendar = self.calendars[0]
     for calendar in self.calendars:
       if calendar.get_properties() is not None:
-        if '{urn:ietf:params:xml:ns:caldav}calendar-timezone' not in calendar.get_properties().keys():
-          if calendar.get_properties([dav.DisplayName()])['{DAV:}displayname'] == config['calendar_name']:
-            self.defaultCalendar = calendar
+        #if '{urn:ietf:params:xml:ns:caldav}calendar-timezone' not in calendar.get_properties().keys():
+        if calendar.get_properties([dav.DisplayName()])['{DAV:}displayname'] == config['calendar_name']:
+          self.defaultCalendar = calendar
+
 
     self.calendarsContent = []
 
@@ -100,24 +101,6 @@ class TomCalendar:
           },
         }
       },
-#      {
-#        "type": "function",
-#        "function": {
-#          "name": "calendar_remove",
-#          "description": f"Remove or delete an appointment, meeting or event in my calendar. For example when a user aks 'Delete from my calendar', 'Remove this appoitment', 'Remove this meeting', 'Delete my appointment'. Calendar content is: {self.calendarsContent}",
-#          "parameters": {
-#            "type": "object",
-#            "properties": {
-#              "ids": {
-#                "type": "string",
-#                "description": f"List of the events id that must be removed from my calendar",
-#              },
-#            },
-#            "required": ["ids"],
-#            "additionalProperties": False,
-#          },
-#        }
-#      },
     ]
 
     self.systemContext = ""
@@ -131,8 +114,6 @@ class TomCalendar:
         "function": functools.partial(self.addEvent)
       },
     }
-
-    
 
 
   def update(self):
@@ -170,8 +151,8 @@ class TomCalendar:
   # List event in one or many calendar(s) for a certain period of time
   def listEvent(self, start="1900-01-01 00:00:00", end="2040-01-01 00:00:00", calendar=None):
 
-    if calendar == None:
-      calendar = self.defaultCalendar
+    #if calendar == None:
+    calendar = self.defaultCalendar
   
     evts = []
 
@@ -211,55 +192,12 @@ class TomCalendar:
     return evts
 
 
-  def deleteEvents(self, ids=[], calendar=None):
-    
-    if calendar == None:
-      calendar = self.defaultCalendar
-  
-    # Find the event by its ID
-    events = calendar.events()
-    event = None
-
-    deleteTitles = []
-
-
-    if len(ids) > 2:
-      return False
-
-    if len(ids) == 0:
-      return "No event is corresponding to your request" 
-
-    for elem in ids:
-      events = calendar.events()
-      for e in events:
-        for component in e.icalendar_instance.walk():
-          if component.name != "VEVENT":
-            continue
-
-          if component.get("uid") == elem:
-            event = e
-            deleteTitles.append(str(component.get("dtstart").dt.strftime("%Y-%m-%d %H:%M:%S")) + " " + str(component.get("summary")))
-            break
-
-      if event is None:
-          return False
-
-      # Delete the event
-      event.delete()
-      
-
-      self.update()
-
-      print("Delete event: " + str(deleteTitles))
-
-    return {"status": "success", "message": "Event deleted"}
-
 
                  
   def addEvent(self, title, start, end, description=None, calendar=None):
     
-    if calendar == None:
-      calendar = self.defaultCalendar
+    #if calendar == None:
+    calendar = self.defaultCalendar
   
     date_format = "%Y-%m-%d %H:%M"
 
@@ -274,3 +212,6 @@ class TomCalendar:
     self.update()
 
     return {"status": "success", "message": "Event added"}
+
+  
+
