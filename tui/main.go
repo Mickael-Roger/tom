@@ -466,6 +466,10 @@ func sendMessage(m model, userInput string) tea.Cmd {
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
+			if resp.StatusCode == http.StatusInternalServerError {
+				log.Printf("Received 500 error, triggering reset.")
+				return resetCmd(m)() // Call resetCmd and return its message
+			}
 			return errorMsg{fmt.Errorf("failed to send message: %s", resp.Status)}
 		}
 
@@ -497,17 +501,20 @@ func resetCmd(m model) tea.Cmd {
 	return func() tea.Msg {
 		req, err := http.NewRequest("POST", "http://localhost:8082/reset", nil)
 		if err != nil {
-			return errorMsg{err}
+			log.Printf("Error creating reset request: %v", err)
+			return resetSuccessMsg{}
 		}
 
 		resp, err := m.client.Do(req)
 		if err != nil {
-			return errorMsg{err}
+			log.Printf("Error sending reset request: %v", err)
+			return resetSuccessMsg{}
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return errorMsg{fmt.Errorf("reset failed: %s", resp.Status)}
+			log.Printf("Reset failed with status: %s", resp.Status)
+			return resetSuccessMsg{}
 		}
 
 		return resetSuccessMsg{}
