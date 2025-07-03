@@ -1,7 +1,6 @@
 # CalDav Calendar and TODO
 import caldav
 from icalendar import Todo, Calendar as iCalendar
-from numpy import who
 import pytz
 from caldav.elements import dav
 

@@ -11,16 +11,7 @@ global:
 
   user_datadir: ./data/users/
   
-  tts:
-   langs: 
-     fr: 
-       model: "XXXXXX"
-       langage: fr
-       speaker: 'XXXX'
-     en:
-       model: "XXXXXX"
-       langage: fr
-       speaker: 'XXXX'
+  
 
   idfm:
     token: XXXXXXXXXXXXXXXXXXXXXXXX

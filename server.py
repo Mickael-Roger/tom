@@ -15,7 +15,7 @@ if core_module_dir not in sys.path:
     sys.path.append(core_module_dir)
 
 from tomllm import TomLLM
-from tomcoretts import TomTTS
+
 from tomcorebehavior import TomBehavior
 from tomcorememory import TomMemory
 from tomcorereminder import TomReminder
@@ -182,11 +182,7 @@ class TomWebService:
 
     if response:
 
-      voice= None
-      if not localTTS and client_type != 'tui':
-        voice = userList[username].tts.infere(response, lang)
-
-      return {"response": response, "voice": voice} 
+      return {"response": response} 
 
     else:
       raise cherrypy.HTTPError(500, response)
@@ -363,7 +359,7 @@ global_config = {}
 
 global_config = initConf()
 
-tts = TomTTS(global_config)
+
 
 userList = {}
 
@@ -371,7 +367,7 @@ for user in global_config['users']:
 
   username = user['username']
   userList[username] = TomLLM(user, global_config)
-  userList[username].tts = tts
+  
   userList[username].functions = {}
 
 
