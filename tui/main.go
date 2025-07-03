@@ -18,8 +18,9 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/glamour"
 )
 
 // Styles
@@ -43,6 +44,8 @@ var (
 	styleCommandBar = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("240")).
 		Padding(0, 1)
+
+	
 )
 
 type (
@@ -61,7 +64,7 @@ type (
 		ID      int    `json:"id"`
 	}
 	credentials struct {
-		Username string `json:"username"`
+		Username string `json:"username"`	
 		Password string `json:"password"`
 	}
 )
@@ -81,6 +84,7 @@ type model struct {
 	client        *http.Client
 	err           error
 	width, height int
+	mdRenderer    *glamour.TermRenderer
 }
 
 func initialModel() model {
@@ -100,12 +104,18 @@ func initialModel() model {
 	chat := textinput.New()
 	chat.Placeholder = ""
 
+	mdRenderer, _ := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(0),
+	)
+
 	return model{
 		currentView:   viewLogin,
 		usernameInput: username,
 		passwordInput: password,
 		chatInput:     chat,
 		client:        client,
+		mdRenderer:    mdRenderer,
 	}
 }
 
@@ -260,15 +270,40 @@ func (m *model) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 	}
 }
 
+
+
 func (m model) renderMessages() string {
 	var renderedMessages []string
 	contentWidth := m.viewport.Width - styleChatBox.GetHorizontalFrameSize()
 	for _, msg := range m.messages {
 		style := styleBotMessage
+		prefix := ""
+		messageContent := msg
+
 		if strings.HasPrefix(msg, "You: ") {
 			style = styleUserMessage
+			prefix = "You: "
+			messageContent = strings.TrimPrefix(msg, prefix)
+		} else if strings.HasPrefix(msg, "Tom: ") {
+			prefix = "Tom: "
+			messageContent = strings.TrimPrefix(msg, prefix)
+			// Render Markdown for bot messages
+			rendered, err := m.mdRenderer.Render(messageContent)
+			if err != nil {
+				// Fallback to plain text if rendering fails
+				rendered = messageContent
+				log.Printf("Error rendering markdown: %v", err)
+			}
+			messageContent = rendered
+		} else if strings.HasPrefix(msg, "Notification: ") {
+			prefix = "Notification: "
+			messageContent = strings.TrimPrefix(msg, prefix)
+		} else if strings.HasPrefix(msg, "System: ") {
+			prefix = "System: "
+			messageContent = strings.TrimPrefix(msg, prefix)
 		}
-		renderedMessages = append(renderedMessages, style.Copy().Width(contentWidth).Render(msg))
+
+		renderedMessages = append(renderedMessages, style.Copy().Width(contentWidth).Render(prefix+messageContent))
 	}
 	return strings.Join(renderedMessages, "\n")
 }
@@ -352,7 +387,7 @@ func loadCredentials() (string, string, error) {
 
 	decodedData, err := base64.StdEncoding.DecodeString(string(encodedData))
 	if err != nil {
-		return "", "", err
+		return "", "", err	
 	}
 
 	var creds credentials
