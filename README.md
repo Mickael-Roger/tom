@@ -15,3 +15,4 @@ pip3 install -r requirements.txt
 python3 server.py
 
 ```
+docker build -t tom:current .; sudo systemctl restart tom; sleep 5; docker logs -f tom

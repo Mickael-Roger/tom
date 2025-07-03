@@ -90,11 +90,14 @@ document.addEventListener("DOMContentLoaded", () => {
         // Ajouter le message utilisateur à la chat box
         addMessageToChat("user", message);
     
+        const clientType = window.matchMedia('(display-mode: standalone)').matches ? 'pwa' : 'web';
+
         const payload = {
             request: message,
             lang: selectedLanguage,
             position: userPosition,
-            tts: isTTSAvailable()
+            tts: isTTSAvailable(),
+            client_type: clientType
         };
     
         // Envoyer la requête à /process sans attendre sa réponse

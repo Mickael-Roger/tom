@@ -171,9 +171,11 @@ class TomWebService:
     lang = input_json.get('lang')
     position = input_json.get('position')
     localTTS = input_json.get('tts')
+    client_type = input_json.get('client_type', 'android')
+    username = cherrypy.session['username']
 
 
-    response = userList[cherrypy.session['username']].processRequest(input=user_input, lang=lang, position=position)
+    response = userList[username].processRequest(input=user_input, lang=lang, position=position, client_type=client_type)
 
 
     print(response)
@@ -181,8 +183,8 @@ class TomWebService:
     if response:
 
       voice= None
-      if not localTTS:
-        voice = userList[username]['tts'].infere(response, lang)
+      if not localTTS and client_type != 'tui':
+        voice = userList[username].tts.infere(response, lang)
 
       return {"response": response, "voice": voice} 
 

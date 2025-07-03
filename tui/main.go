@@ -306,6 +306,7 @@ func sendMessage(m model, userInput string) tea.Cmd {
 			"request": userInput,
 			"lang":    "fr",
 			"tts":     true, // Pretend we have TTS to prevent server-side generation
+      "client_type": "tui",
 		})
 
 		req, err := http.NewRequest("POST", "http://localhost:8082/process", bytes.NewBuffer(postBody))

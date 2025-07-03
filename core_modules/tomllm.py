@@ -91,7 +91,7 @@ class TomLLM():
 
 
 
-  def generateContextPrompt(self, input, lang, position):
+  def generateContextPrompt(self, input, lang, position, client_type):
   
     gps = "" 
 
@@ -185,9 +185,9 @@ class TomLLM():
     return response
 
 
-  def processRequest(self, input, lang, position):
+  def processRequest(self, input, lang, position, client_type):
   
-    self.generateContextPrompt(input, lang, position)
+    self.generateContextPrompt(input, lang, position, client_type)
 
 
     available_tools = []
