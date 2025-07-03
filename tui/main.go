@@ -305,7 +305,7 @@ func (m model) renderMessages() string {
 
 		renderedMessages = append(renderedMessages, style.Copy().Width(contentWidth).Render(prefix+messageContent))
 	}
-	return strings.Join(renderedMessages, "\n")
+	return strings.Join(renderedMessages, "\n\n")
 }
 
 func (m model) View() string {
