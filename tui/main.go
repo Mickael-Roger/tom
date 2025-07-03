@@ -315,7 +315,7 @@ func (m model) View() string {
 
 	if m.currentView == viewLogin {
 		var b strings.Builder
-		b.WriteString("Login to Tom TUI\n\n")
+		b.WriteString("Login to Tom\n\n")
 		b.WriteString(m.usernameInput.View())
 		b.WriteString("\n")
 		b.WriteString(m.passwordInput.View())
@@ -328,7 +328,7 @@ func (m model) View() string {
 }
 
 func (m model) headerView() string {
-	title := styleChatBox.Render("Tom TUI")
+	title := styleChatBox.Render(" Tom ")
 	return lipgloss.Place(m.width, lipgloss.Height(title), lipgloss.Center, lipgloss.Top, title)
 }
 
