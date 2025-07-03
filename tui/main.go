@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,7 +10,9 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -29,7 +32,7 @@ var (
 	styleChatBox = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("63")).
-		Padding(0, 1) // Add horizontal padding
+		Padding(0, 1)
 
 	styleUserMessage = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("229"))
@@ -45,6 +48,8 @@ var (
 type (
 	loginSuccessMsg   struct{}
 	resetSuccessMsg   struct{}
+	disconnectMsg     struct{}
+	autoLoginMsg      struct{ username, password string }
 	notifMsg          string
 	serverResponseMsg string
 	errorMsg          struct{ error }
@@ -54,6 +59,10 @@ type (
 	tasksResponse struct {
 		Message string `json:"message"`
 		ID      int    `json:"id"`
+	}
+	credentials struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
 	}
 )
 
@@ -99,7 +108,7 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return textinput.Blink
+	return tea.Batch(textinput.Blink, checkAuth)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -156,6 +165,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+	case autoLoginMsg:
+		if msg.username != "" {
+			m.usernameInput.SetValue(msg.username)
+			m.passwordInput.SetValue(msg.password)
+			return m, login(m)
+		}
+
 	case loginSuccessMsg:
 		m.currentView = viewChat
 		m.chatInput.Focus()
@@ -167,6 +183,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.YPosition = headerHeight
 		m.messages = []string{"Tom: Welcome! Type /help for a list of commands."}
 		m.viewport.SetContent(m.renderMessages())
+		return m, textinput.Blink
+
+	case disconnectMsg:
+		m.currentView = viewLogin
+		m.usernameInput.Reset()
+		m.passwordInput.Reset()
+		m.messages = nil
+		m.usernameInput.Focus()
 		return m, textinput.Blink
 
 	case serverResponseMsg:
@@ -219,8 +243,10 @@ func (m *model) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 		return m, resetCmd(*m)
 	case "/notif":
 		return m, fetchNotifsCmd(*m)
+	case "/disconnect":
+		return m, disconnect
 	case "/help":
-		m.messages = append(m.messages, "Available commands: /quit, /reset, /notif, /help")
+		m.messages = append(m.messages, "Available commands: /quit, /reset, /notif, /disconnect, /help")
 		m.viewport.SetContent(m.renderMessages())
 		m.viewport.GotoBottom()
 		return m, nil
@@ -233,9 +259,7 @@ func (m *model) handleCommand(cmd string) (tea.Model, tea.Cmd) {
 }
 
 func (m model) renderMessages() string {
-	// Render messages with word wrap
 	var renderedMessages []string
-	// Correct width for message content, accounting for viewport padding/borders
 	contentWidth := m.viewport.Width - styleChatBox.GetHorizontalFrameSize()
 	for _, msg := range m.messages {
 		style := styleBotMessage
@@ -277,7 +301,87 @@ func (m model) footerView() string {
 }
 
 func (m model) commandBarView() string {
-	return styleCommandBar.Copy().Width(m.width).Render("Commands: /quit, /reset, /notif, /help")
+	return styleCommandBar.Copy().Width(m.width).Render("Commands: /quit, /reset, /notif, /disconnect, /help")
+}
+
+func getAuthFilePath() (string, error) {
+	usr, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(usr, ".tom", "auth"), nil
+}
+
+func saveCredentials(username, password string) error {
+	authPath, err := getAuthFilePath()
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(authPath), 0700); err != nil {
+		return err
+	}
+
+	creds := credentials{
+		Username: username,
+		Password: password,
+	}
+
+	data, err := json.Marshal(creds)
+	if err != nil {
+		return err
+	}
+
+	encodedData := base64.StdEncoding.EncodeToString(data)
+
+	return os.WriteFile(authPath, []byte(encodedData), 0600)
+}
+
+func loadCredentials() (string, string, error) {
+	authPath, err := getAuthFilePath()
+	if err != nil {
+		return "", "", err
+	}
+
+	encodedData, err := os.ReadFile(authPath)
+	if err != nil {
+		return "", "", err
+	}
+
+	decodedData, err := base64.StdEncoding.DecodeString(string(encodedData))
+	if err != nil {
+		return "", "", err
+	}
+
+	var creds credentials
+	if err := json.Unmarshal(decodedData, &creds); err != nil {
+		return "", "", err
+	}
+
+	return creds.Username, creds.Password, nil
+}
+
+func deleteCredentials() error {
+	authPath, err := getAuthFilePath()
+	if err != nil {
+		return err
+	}
+	return os.Remove(authPath)
+}
+
+func checkAuth() tea.Msg {
+	username, password, err := loadCredentials()
+	if err != nil {
+		return autoLoginMsg{} // No credentials, stay on login view
+	}
+	return autoLoginMsg{username, password}
+}
+
+func disconnect() tea.Msg {
+	if err := deleteCredentials(); err != nil {
+		return errorMsg{fmt.Errorf("failed to disconnect: %w", err)}
+	}
+	return disconnectMsg{}
 }
 
 func login(m model) tea.Cmd {
@@ -296,6 +400,10 @@ func login(m model) tea.Cmd {
 			return errorMsg{fmt.Errorf("login failed: %s (%s)", resp.Status, string(bodyBytes))}
 		}
 
+		if err := saveCredentials(m.usernameInput.Value(), m.passwordInput.Value()); err != nil {
+			return errorMsg{fmt.Errorf("failed to save credentials: %w", err)}
+		}
+
 		return loginSuccessMsg{}
 	}
 }
@@ -303,10 +411,10 @@ func login(m model) tea.Cmd {
 func sendMessage(m model, userInput string) tea.Cmd {
 	return func() tea.Msg {
 		postBody, _ := json.Marshal(map[string]interface{}{
-			"request": userInput,
-			"lang":    "fr",
-			"tts":     true, // Pretend we have TTS to prevent server-side generation
-      "client_type": "tui",
+			"request":     userInput,
+			"lang":        "fr",
+			"tts":         true,
+			"client_type": "tui",
 		})
 
 		req, err := http.NewRequest("POST", "http://localhost:8082/process", bytes.NewBuffer(postBody))
@@ -335,16 +443,14 @@ func sendMessage(m model, userInput string) tea.Cmd {
 			return errorMsg{err}
 		}
 
-		// Check for [open:URL] command
 		re := regexp.MustCompile(`\[open:(\S+)\]`)
 		matches := re.FindStringSubmatch(serverResp.Response)
 		if len(matches) > 1 {
 			urlToOpen := matches[1]
 			cmd := exec.Command("firefox", urlToOpen)
-			cmd.Start() // Run in background
+			cmd.Start()
 		}
 
-		// Clean the response for display
 		cleanedResponse := re.ReplaceAllString(serverResp.Response, "")
 
 		return serverResponseMsg(cleanedResponse)
@@ -404,16 +510,8 @@ func fetchNotifsCmd(m model) tea.Cmd {
 }
 
 func main() {
-	// Note: We're not using tea.WithMouseCellMotion() to allow for text selection.
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
 	}
 }
-
-
-
-
-
-
-
