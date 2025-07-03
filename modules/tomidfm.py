@@ -229,26 +229,19 @@ class TomIdfm:
 
     self.functions = {
       "search_station": {
-        "function": functools.partial(self.search_station), 
-        "responseContext": "" 
+        "function": functools.partial(self.search_station)
       },
       "search_place_gps": {
-        "function": functools.partial(self.search_place_gps), 
-        "responseContext": "" 
+        "function": functools.partial(self.search_place_gps)
       },
       "plan_a_journey": {
-        "function": functools.partial(self.journey), 
-        "responseContext": """Your response will be read aloud via text-to-speech, so it should be brief, without any formatting, lists, or numbered items. Your answer should sound like this: "To go from x to y, you have 3 possible routes. One leaves at 9:02 and arrives at 10:14 via lines 4, 7, and 12. A second one leaves at the same time but arrives at 10:25 via lines 4 and 9, and a third one leaves at 9:16 and arrives at 10:35 via line 4."
-        Unless the user asks for more details, don't provide additional information.
-        """
+        "function": functools.partial(self.journey)
       },
       "select_a_route": {
-        "function": functools.partial(self.keep_route), 
-        "responseContext": "" 
+        "function": functools.partial(self.keep_route)
       },
       "retreived_current_selected_route": {
-        "function": functools.partial(self.retreive_keeped_route), 
-        "responseContext": "" 
+        "function": functools.partial(self.retreive_keeped_route)
       },
     }
 
@@ -627,5 +620,3 @@ class TomIdfm:
   #  print(schedules)
 
   #  return schedules
-
-

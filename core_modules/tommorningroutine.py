@@ -94,20 +94,16 @@ class TomMorning:
 
     self.functions = {
       "tom_morning_routine": {
-        "function": functools.partial(self.morning_routine_prompt), 
-        "responseContext": "" 
+        "function": functools.partial(self.morning_routine_prompt)
       },
       "tom_list_routines": {
-        "function": functools.partial(self.routine_list), 
-        "responseContext": "" 
+        "function": functools.partial(self.routine_list)
       },
       "tom_add_routine": {
-        "function": functools.partial(self.routine_add), 
-        "responseContext": "" 
+        "function": functools.partial(self.routine_add)
       },
       "tom_delete_routine": {
-        "function": functools.partial(self.routine_delete), 
-        "responseContext": "" 
+        "function": functools.partial(self.routine_delete)
       },
     }
 
@@ -188,7 +184,3 @@ class TomMorning:
         routine_prompt = routine_prompt + routine['routine_consigne'] + '\n'
 
     return routine_prompt
-
-
-
-

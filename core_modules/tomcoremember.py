@@ -25,7 +25,8 @@ class TomRemember:
         datetime DATETIME default current_date,
         information TEXT
     )
-    ''')
+    ''
+')
     dbconn.commit()
     dbconn.close()
 
@@ -87,22 +88,13 @@ class TomRemember:
 
     self.functions = {
       "tom_list_stored_information": {
-        "function": functools.partial(self.remember_list), 
-        "responseContext": """Your response will be read aloud via text-to-speech, so it should be concise and free from any markdown formatting or URLs.
-        If the request involves retrieving information about where something is located (their car, keys, an object, etc.), at the end, remember to ask the user to confirm that they have retrieved their item, car, etc., so you can delete this entry from your memory.
-        Never directly provide GPS coordinates in your response. However, indicate that you have them if applicable and offer to guide the user.
-        If the user explicitly requests GPS coordinates or guidance to retrieve an object, such as their car, the response should follow this format: `[open: https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=PLACE HERE THE GPS LATITUDE,PLACE HERE THE GPS LONGITUDE&travelmode=walking]`. This tag is interpreted by the frontend application, so, in this way, the user will be guided by an external application to find its object.
-        """
+        "function": functools.partial(self.remember_list)
       },
       "tom_delete_stored_information": {
-        "function": functools.partial(self.remember_delete), 
-        "responseContext": "" 
+        "function": functools.partial(self.remember_delete)
       },
       "tom_store_information": {
-        "function": functools.partial(self.remember_add), 
-        "responseContext": """
-        """
-
+        "function": functools.partial(self.remember_add)
       },
     }
 
@@ -154,7 +146,3 @@ class TomRemember:
 
     except:
       return False
-
-
-
-

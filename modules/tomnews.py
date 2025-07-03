@@ -140,31 +140,16 @@ class TomNews:
     self.complexity = 1
     self.functions = {
       "get_all_news": {
-        "function": functools.partial(self.list_unread), 
-        "responseContext": """Your response will be read aloud via text-to-speech, so it should be concise and free from any markdown formatting or URLs. It's important that you do not translate category names.
- 
-        When the question is about all categories, simply indicate the number of new news items in each category.
-        
-        If the user asks for more information about a specific category, only provide the titles and authors of the news in that category, without summarizing the articles.
-        If there are more than two articles in a category, instead of providing a long list, give the title of one article and then offer the user the option to show the next one, and so on.
-
-        It is important that you never use the function 'get_news_summary' unless the user explicitly ask for a summary of a particular article.        
-        Your response must not include the URL of news articles; you should only provide the URL for a news article if the user explicitly requests it.
-        If the user explicitly asks you to provide the link to the news, you must format it in HTML so that it is clickable and opens the link in a new window.
-        If the user explicitly asks you to open or display the news, you must enclose the URL within the following tag: `Here is the news [open:PLACE URL HERE]`. This tag is interpreted by the frontend application, so, in this way, the news will be displayed automatically in a browser.
-        """
+        "function": functools.partial(self.list_unread)
       },
       "get_news_summary": {
-        "function": functools.partial(self.get_news_summary), 
-        "responseContext": "Your response will be read aloud via text-to-speech, so it should be concise and free from any markdown formatting or URLs." 
+        "function": functools.partial(self.get_news_summary)
       },
       "mark_news_as_read": {
-        "function": functools.partial(self.mark_as_read), 
-        "responseContext": "" 
+        "function": functools.partial(self.mark_as_read)
       },
       "mark_news_to_read": {
-        "function": functools.partial(self.mark_as_read), 
-        "responseContext": "" 
+        "function": functools.partial(self.mark_as_read)
       },
     }
 
@@ -536,4 +521,3 @@ class TomNews:
       return unread_news
     else:
       return {"status": "success", "message": "No news"}
-

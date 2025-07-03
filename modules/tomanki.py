@@ -138,24 +138,19 @@ class TomAnki:
 
     self.functions = {
       "anki_list_decks": {
-        "function": functools.partial(self.list_decks), 
-        "responseContext": """You should always answered in a consise way. If a user ask for Anki deck status, unless you are explicitly asked to, do not indicate decks with 0 cards to review. For example, when a user ask "What is my anki decks status?", your answer should be like "You have 4 reviews in 'English', 3 reviews in 'Tech' and 2 reviews in 'Culture G'""" 
+        "function": functools.partial(self.list_decks)
       },
       #"anki_list_due_cards": {
-      #  "function": functools.partial(self.due_cards), 
-      #  "responseContext": """You should always answered in a consise way: For example, your answer should be like "You have x cards to review in your 'deckname' deck." """ 
+      #  "function": functools.partial(self.due_cards)
       #},
       "anki_list_all_cards": {
-        "function": functools.partial(self.list_cards), 
-        "responseContext": """You should always answered in a consise way.""" 
+        "function": functools.partial(self.list_cards)
       },
       #"anki_review_card": {
-      #  "function": functools.partial(self.card_review), 
-      #  "responseContext": "" 
+      #  "function": functools.partial(self.card_review)
       #},
       "anki_add_card": {
-        "function": functools.partial(self.add_card), 
-        "responseContext": """You should always answered in a consise way: For example, your answer should be like "Card 'front label of my card' with the back 'back sentence of my card' added to deck 'Tech'" """ 
+        "function": functools.partial(self.add_card)
       },
     }
 
@@ -171,7 +166,6 @@ class TomAnki:
       if time_diff > timedelta(minutes=15):
         self.update()
       time.sleep(300)
-
 
 
   def update(self):

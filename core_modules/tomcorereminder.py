@@ -119,16 +119,13 @@ class TomReminder:
 
     self.functions = {
       "tom_list_reminders": {
-        "function": functools.partial(self.reminder_list), 
-        "responseContext": "Your response must be concise and in the form of a single sentence. You must not reply in list form. For example: 'You have 3 reminders: One for tommorrow about the grocery, another one for next  monday about going to school and a last about calling your mom next month'" 
+        "function": functools.partial(self.reminder_list)
       },
       "tom_delete_reminder": {
-        "function": functools.partial(self.reminder_delete), 
-        "responseContext": "" 
+        "function": functools.partial(self.reminder_delete)
       },
       "tom_add_reminder": {
-        "function": functools.partial(self.reminder_add), 
-        "responseContext": "" 
+        "function": functools.partial(self.reminder_add)
       },
     }
 
@@ -246,7 +243,3 @@ class TomReminder:
 
     except:
       return {"status": "failure", "message": "Could not list reminders"}
-
-
-
-

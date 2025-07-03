@@ -64,9 +64,9 @@ class TomLLM():
 
     self.tts = None
 
-    #self.tom_context = f"""Your name is Tom and you are my personal life assistant. When your answer contains a date, it must be in the form 'Weekday day month'.\n\nImportant: 'Do not make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous'\nYour responses will be transcribed into audio, so by default, and unless otherwise specified, you must reply with audible sentences, without indents, dashes, lists, or any markdown or other formatting. Additionally, you should respond as concisely as possible whenever possible.\n{self.user_context} """
+    #self.tom_context = f'''Your name is Tom and you are my personal life assistant. When your answer contains a date, it must be in the form 'Weekday day month'.\n\nImportant: 'Do not make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous'\nYour responses will be transcribed into audio, so by default, and unless otherwise specified, you must reply with audible sentences, without indents, dashes, lists, or any markdown or other formatting. Additionally, you should respond as concisely as possible whenever possible.\n{self.user_context} '''
 
-    self.tom_context = f"""Your name is Tom, and you are my personal assistant. You have access to numerous external functionalities via function calls. Since you have access to more functions than your memory can hold, they are grouped into modules. A module is a logical grouping of functions within a specific scope. One of your primary tasks will be "triage," which involves identifying the modules to load to fulfill the user's request.
+    self.tom_context = f'''Your name is Tom, and you are my personal assistant. You have access to numerous external functionalities via function calls. Since you have access to more functions than your memory can hold, they are grouped into modules. A module is a logical grouping of functions within a specific scope. One of your primary tasks will be "triage," which involves identifying the modules to load to fulfill the user's request.
 
     When the user provides you with information, if you think it should be stored in memory, suggest doing so.
 
@@ -79,7 +79,7 @@ class TomLLM():
     As a LLM, you have a lot of information and knowledge. However, you do not natively possess personal information or details about the user who is asking you questions. This is why you have a module called 'memory' that contains personal information about the user. Therefore, if you need to tell the user that you do not know or do not have the information to answer their request, you should first load the 'memory' module and list its contents. Only if your intrinsic knowledge and the contents of the 'memory' module do not provide you with the information needed to answer the user's request, can you say that you do not know or that you do not have the necessary information to respond.
 
     {self.user_context}
-    """
+    '''
 
 
 
@@ -184,6 +184,11 @@ class TomLLM():
 
     return response
 
+  def set_response_context(self, client_type):
+    if client_type == 'tui':
+      return "Your response will be displayed in a TUI terminal application. You should use markdown to format your answer for better readability. You can use titles, lists, bold text, etc."
+    else: # web and pwa
+      return "Your response will be displayed in a web browser or in an mobile app, so it must be concise and free of any markdown formatting, lists, or complex layouts. Use simple text and line breaks for readability. Do not forget in most case, your response will be play using a text to speech feature. Unless the user explicitly ask for it, you must never directly write URL or stuff like that. Instead, you must use the tag [open:PLACE URL HERE]"
 
   def processRequest(self, input, lang, position, client_type):
   
@@ -230,7 +235,7 @@ class TomLLM():
     tooling = json.dumps(available_tools)
     #    conversation.append({"role": "system", "content": f"Here is a list of available modules. Your role is to identify the necessary module(s) to meet the user's request. To do so, you must call the function 'modules_needed_to_answer_user_prompt' with the list of required modules as a parameter. If you are able to answer the user request without any modules, do it and do not call 'modules_needed_to_answer_user_prompt' function.\n\n{tooling}"})
     #conversation.append({"role": "system", "content": f"Here is a list of modules. For each module, you have the its description. Your role is to call the function 'modules_needed_to_answer_user_prompt' with the module needed to provide me the answer to my request. 'module_name' is not a name of a function, it's a possible value of the parameter of the 'modules_needed_to_answer_prompt'. You must never use the field 'module_name' as a function name.\n{tooling}"})
-    prompt = f"""As an AI assistant, you have access to a wide range of functions, far more than your API allows. These functions are grouped into modules. A module is a logical grouping of functions for a specific theme.
+    prompt = f'''As an AI assistant, you have access to a wide range of functions, far more than your API allows. These functions are grouped into modules. A module is a logical grouping of functions for a specific theme.
 
     For each new user request, you have access to the conversation history.
 
@@ -243,7 +248,7 @@ class TomLLM():
     ```json
     {tooling}
     ```
-    """
+    '''
     conversation.append({"role": "system", "content": prompt})
 
     # Alternative to test: As a language model, you cannot respond to all of my requests. Therefore, you might need additional information. Certain information or functionalities can be found in modules. You can load these modules to assist you in responding by using the load_module function. Below, you will find a complete list of modules along with their descriptions.
@@ -252,6 +257,10 @@ class TomLLM():
 
     llm = "openai"
     #llm = self.llm
+
+    response_context = self.set_response_context(client_type)
+    conversation.append({"role": 'system', "content": response_context})
+    self.history.append({"role": 'system', "content": response_context})
 
     while True:
 
@@ -314,16 +323,6 @@ class TomLLM():
 
             llm = None
             
-            current_functions = []
-
-            for tool_call in response.choices[0].message.tool_calls:
-              function_name = tool_call.function.name
-              if function_name not in current_functions:
-                current_functions.append(function_name)
-                if self.functions[function_name]['responseContext'] != "":
-                  conversation.append({"role": 'system', "content": self.functions[function_name]['responseContext']})
-                  self.history.append({"role": 'system', "content": self.functions[function_name]['responseContext']})
-
             #self.history.append(response.choices[0].message.to_dict())
             conversation.append(response.choices[0].message.to_dict())
 
@@ -349,6 +348,3 @@ class TomLLM():
     
       else: 
         return False
-
-
-

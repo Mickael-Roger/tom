@@ -119,26 +119,13 @@ class TomTodo:
     self.complexity = 0
     self.functions = {
       "todo_list_all": {
-        "function": functools.partial(self.listTasks), 
-        "responseContext": """The returned tasks have different levels of priority:
-          - Very high priority tasks: the value of the 'priority' field is above 7
-          - Medium priority tasks: the value of the 'priority' field is between 4 and 7
-          - Low priority tasks: the value of the 'priority' field is below 4
-          - Tasks with no priority: the value of the 'priority' field is null
-
-        Unless the user explicitly asks for it, name of the tasks (no priority or due date) and when you need to respond with multiple tasks, you should list them in descending order of their due dates. If multiple tasks have the same due date, you should order them by priority, with 9 being the highest priority.
-
-        You should also respond concisely and in sentence form, as your response is intended to be read via text-to-speech. Therefore, you should never respond with a list, bullet points, or any Markdown-like formatting.
-
-       For example, your answer should be like "You have 4 tasks: create a new app, do the groceries, paint the wall and mow the lawn" or if the user asks for overdue tasks, your answer should be like "You have 2 overdue tasks: 'mow the lawn' that is 2 day late and 'paint the wall' that is 1 week late" """
+        "function": functools.partial(self.listTasks)
       },
       "todo_create_task": {
-        "function": functools.partial(self.create), 
-        "responseContext": """Your answer must be consise like 'Task "mow the lawn" added'""" 
+        "function": functools.partial(self.create)
       },
       "todo_close_task": {
-        "function": functools.partial(self.close), 
-        "responseContext": """Your answer must be consise like 'Task "mow the lawn" closed'""" 
+        "function": functools.partial(self.close)
       },
     }
 
@@ -200,6 +187,3 @@ class TomTodo:
     self.update()
 
     return {"status": "success", "message": "Todo task added"}
-
-
-

@@ -85,16 +85,13 @@ class TomMorning:
 
     self.functions = {
       "tom_list_routines": {
-        "function": functools.partial(self.routine_list), 
-        "responseContext": "" 
+        "function": functools.partial(self.routine_list)
       },
       "tom_add_routine": {
-        "function": functools.partial(self.routine_add), 
-        "responseContext": "" 
+        "function": functools.partial(self.routine_add)
       },
       "tom_delete_routine": {
-        "function": functools.partial(self.routine_delete), 
-        "responseContext": "" 
+        "function": functools.partial(self.routine_delete)
       },
     }
 
@@ -103,7 +100,7 @@ class TomMorning:
     try:
       dbconn = sqlite3.connect(self.db)
       cursor = dbconn.cursor()
-      cursor.execute("SELECT routine FROM routines")
+      cursor.execute("SELECT routine FROM routines WHERE datetime('now', 'localtime') > date_from AND datetime('now', 'localtime') < date_to")
       values = cursor.fetchall()
       dbconn.close()
 
@@ -175,7 +172,3 @@ class TomMorning:
         routine_prompt = routine_prompt + routine['routine_consigne'] + '\n'
 
     return routine_prompt
-
-
-
-

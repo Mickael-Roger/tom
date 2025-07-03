@@ -41,7 +41,7 @@ class TomCalendar:
     self.defaultCalendar = self.calendars[0]
     for calendar in self.calendars:
       if calendar.get_properties() is not None:
-        if '{urn:ietf:params:xml:ns:caldav}calendar-timezone' in calendar.get_properties().keys():
+        if '{urn:ietf:params:xml:ns:caldav}calendar-timezone' not in calendar.get_properties().keys():
           if calendar.get_properties([dav.DisplayName()])['{DAV:}displayname'] == config['calendar_name']:
             self.defaultCalendar = calendar
 
@@ -125,14 +125,10 @@ class TomCalendar:
 
     self.functions = {
       "calendar_search": {
-        "function": functools.partial(self.search), 
-        "responseContext": """When a user ask for a appointment, an event or any information from it's calendar, you must give him information about the weekday, the date and the hour of the event an the title of the event
-       For example, if the user asks "What appointments do I have tommorrow?", your answer must be like "Tommorrow, saturday december the 2nd, you have 2 appointments: 'Doctor' at 9am and 'Meeting with John at 4pm'". If the user asks "What appointments do I have next week?" your answer should be like "Next week, you will have 3 appointments: 'Doctor' on monday morning, 'Meeting with John' on monday afternoon and 'Playing chess' on wednesday afternoon"
-      """ 
+        "function": functools.partial(self.search)
       },
       "calendar_add": {
-        "function": functools.partial(self.addEvent), 
-        "responseContext": """Your answer must be consise like 'Appointment 'Doctor' on monday december the 15th added to your calendar""" 
+        "function": functools.partial(self.addEvent)
       },
     }
 
@@ -278,6 +274,3 @@ class TomCalendar:
     self.update()
 
     return {"status": "success", "message": "Event added"}
-
-
-

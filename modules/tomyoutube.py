@@ -69,14 +69,14 @@ class TomYoutube:
         "type": "function",
         "function": {
           "name": "mark_video_as_seen",
-          "description": """Marks a specific viewed.""",
+          "description": "Marks a specific viewed.",
           "strict": True,
           "parameters": {
             "type": "object",
             "properties": {
               "video_id": {
                 "type": "string",
-                "description": f"ID of the video you want to mark as seen.",
+                "description": "ID of the video you want to mark as seen.",
               },
             },
             "required": ["video_id"],
@@ -86,26 +86,19 @@ class TomYoutube:
       },
     ]
 
-    self.systemContext = """
+    self.systemContext = '''
     The function 'mark_video_as_seen' is used in 3 scenarios:
        - When the user has already wtached the video and wants to remove it from the non viewed video list.
        - When the user ask to mark as seen a video
        - When the user is not interested in watching this video and does not plan to watch it, but still wants to mark it as seen to declutter the non viewed video list.
-    """
+    '''
     self.complexity = 1
     self.functions = {
       "get_all_new_videos": {
-        "function": functools.partial(self.list_unviewed_videos), 
-        "responseContext": """Your response will be read aloud via text-to-speech, so it should be concise and free from any markdown formatting or URLs. It's important that you do not translate category names.
-
-        Your response must not include the URL of the video;
-
-        If the user explicitly asks you to open or show the video, you must enclose the URL of the video within the following tag: `Here is the video [open:PLACE URL HERE]`. This tag is interpreted by the frontend application, so, in this way, the video will be displayed automatically in the youtube application.
-        """
+        "function": functools.partial(self.list_unviewed_videos)
       },
       "mark_video_as_seen": {
-        "function": functools.partial(self.mark_video_as_viewed), 
-        "responseContext": "" 
+        "function": functools.partial(self.mark_video_as_viewed)
       },
     }
 
@@ -230,4 +223,3 @@ class TomYoutube:
       return videos
     else:
       return {"status": "success", "message": "No non viewed video"}
-

@@ -97,20 +97,16 @@ class TomMemory:
 
     self.functions = {
       "tom_archive_conversation": {
-        "function": functools.partial(self.history_keep), 
-        "responseContext": "" 
+        "function": functools.partial(self.history_keep)
       },
       "tom_list_archived_conversations": {
-        "function": functools.partial(self.history_list), 
-        "responseContext": "" 
+        "function": functools.partial(self.history_list)
       },
       "tom_retreive_archived_conversation_content": {
-        "function": functools.partial(self.history_get), 
-        "responseContext": "" 
+        "function": functools.partial(self.history_get)
       },
       "tom_delete_archived_conversation_content": {
-        "function": functools.partial(self.history_delete), 
-        "responseContext": "" 
+        "function": functools.partial(self.history_delete)
       },
     }
 
@@ -195,5 +191,3 @@ class TomMemory:
           return True
 
     return False
-
-

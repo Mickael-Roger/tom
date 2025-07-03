@@ -98,7 +98,7 @@ class TomSportcoach:
 
     You must log all elements that seem relevant to your role as a fitness coach using this function.
 
-    Feel free to ask for additional information if necessary. For example, if the user tells you they’ve been running, don’t hesitate to ask for details such as the distance, duration, difficulty, terrain type, etc.
+    Feel free to ask for additional information if necessary. For example, if the user tells you they’ve been running, don’t hesitate to ask for details suchs as the distance, duration, difficulty, terrain type, etc.
 
     If, as a fitness coach, you don’t have enough information from the history of your interactions, don’t hesitate to ask the user for clarification (while making sure to record both your questions and the user’s answers using the record_sport_history function).
 
@@ -111,12 +111,10 @@ class TomSportcoach:
     self.complexity = 1
     self.functions = {
       "get_sport_history": {
-        "function": functools.partial(self.get_history), 
-        "responseContext": "" 
+        "function": functools.partial(self.get_history)
       },
       "record_sport_history": {
-        "function": functools.partial(self.record_history), 
-        "responseContext": "" 
+        "function": functools.partial(self.record_history)
       },
     }
 
@@ -152,11 +150,11 @@ class TomSportcoach:
   #def thread_update(self):
   #  self.news_update()
   #  while True:
-  #    try:
-  #      print("Update news ...")
-  #      self.news_update()
-  #    except:
-  #      print("Fail to update RSS")
+  #  #    try:
+  #  #      print("Update news ...")
+  #  #      self.news_update()
+  #  #    except:
+  #  #      print("Fail to update RSS")
 
   #    time.sleep(300)
 
@@ -172,4 +170,3 @@ class TomSportcoach:
     dbconn.close()
 
     return {"status": "success", "message": "Message added to the sport_history"}
-

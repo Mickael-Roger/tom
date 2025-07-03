@@ -171,7 +171,7 @@ class TomWebService:
     lang = input_json.get('lang')
     position = input_json.get('position')
     localTTS = input_json.get('tts')
-    client_type = input_json.get('client_type', 'android')
+    client_type = input_json.get('client_type', 'pwa')
     username = cherrypy.session['username']
 
 

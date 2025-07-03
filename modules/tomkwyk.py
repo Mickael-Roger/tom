@@ -86,8 +86,7 @@ class TomKwyk:
     self.complexity = 0
     self.functions = {
       "kwyk_get": {
-        "function": functools.partial(self.get), 
-        "responseContext": """When the user asks for kwyk status, you always must answer in a consise way. For example 'This week john has done 23 kwyk exercices', 'Today, so far, Bryan hasn't done any kwyk exercice'""" 
+        "function": functools.partial(self.get)
       },
     }
 
@@ -190,7 +189,3 @@ class TomKwyk:
     dbconn.close()
 
     return data
-
-
-
-

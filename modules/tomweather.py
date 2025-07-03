@@ -110,12 +110,10 @@ class TomWeather:
     self.complexity = 0
     self.functions = {
       "weather_get_by_gps_position": {
-        "function": functools.partial(self.getGps), 
-        "responseContext": """When you are asked about the weather, you always must be consise. For example, when the user asked "What will the weather be like tommorrow?", your answer should be like "Tommorrow, saturday december the 1st, temperature will be from 2°C to 7°C and it will have moderate rain in the afternoon" or "Tommorrow, saturday december the 1st, temperature will be from 2°C to 7°C and it's not gonna rain" or if the user asks "Will it rain tommorrow?" your answer should be like "No, it's not gonna rain tommorrow". """ 
+        "function": functools.partial(self.getGps)
       },
       "get_gps_position_by_city_name": {
-        "function": functools.partial(self.getCity), 
-        "responseContext": "" 
+        "function": functools.partial(self.getCity)
       },
     }
 
@@ -172,5 +170,3 @@ class TomWeather:
           data['daily'].append({"timestamp": responseDict['daily']['time'][i], "temperature_min": responseDict['daily']['temperature_2m_min'][i], "temperature_max": responseDict['daily']['temperature_2m_max'][i], "apparent_temperature_min": responseDict['daily']['apparent_temperature_min'][i], "apparent_temperature_max": responseDict['daily']['apparent_temperature_max'][i], "weather_condition": self.convertWMO(str(responseDict['daily']['weather_code'][i]))})
 
     return data
-
-

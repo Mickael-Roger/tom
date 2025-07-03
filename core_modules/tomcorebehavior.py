@@ -87,16 +87,13 @@ class TomBehavior:
 
     self.functions = {
       "tom_list_behaviors": {
-        "function": functools.partial(self.behavior_list), 
-        "responseContext": "" 
+        "function": functools.partial(self.behavior_list)
       },
       "tom_add_behavior": {
-        "function": functools.partial(self.behavior_add), 
-        "responseContext": "" 
+        "function": functools.partial(self.behavior_add)
       },
       "tom_delete_behavior": {
-        "function": functools.partial(self.behavior_delete), 
-        "responseContext": "" 
+        "function": functools.partial(self.behavior_delete)
       },
     }
 
@@ -164,6 +161,3 @@ class TomBehavior:
 
     except:
       return False
-
-
-

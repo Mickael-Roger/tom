@@ -124,11 +124,13 @@ class TomMemory:
      - Temporary information: Temporary information is data that is only useful for a short time, either until a specific event occurs or within a short timeframe. This is helpful for storing temporary details, such as when a user says, "I left my keys on the table," or "I parked in this spot." Such information is meant to help the user retrieve their keys or locate their car but loses relevance once the task is completed. Examples include: "I just parked," "I put the keys under the flowerpot," etc.
 
      If the user's request is to remember where the car is parked, you must save the GPS location along with additional information such as the parking spot number, street name, a point of interest (POI), etc. If the user does not provide any additional information, ask if they have any.
-     GPS position must be stored in json format: `{"latitude": PLACE HERE THE LATITUDE VALUE, "longitude": PLACE HERE THE LONGITUDE VALUE}`
+     GPS position must be stored in json format: `{"latitude": PLACE HERE THE GPS LATITUDE VALUE, "longitude": PLACE HERE THE GPS LONGITUDE VALUE}`
 
      When the user asks for information about a temporary detail, remind them to let you know when the information is no longer needed so you can delete it from memory. For example, if the user asks where they parked, you should remind them to tell you once they've retrieved their car so you can erase the information from your memory.
 
-     If the user tells you they've retrieved their car, found their keys, or similar, it means you should delete the temporary information related to that item from your memory.
+     Never directly provide GPS coordinates in your response. However, indicate that you have them if applicable and offer to guide the user.
+     If the user explicitly requests GPS coordinates or guidance to retrieve an object, such as their car, the response should follow this format: `[open: https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=PLACE HERE THE GPS LATITUDE,PLACE HERE THE GPS LONGITUDE&travelmode=walking]`. This tag is interpreted by the frontend application, so, in this way, the user will be guided by an external application to find its object.
+
      This only applies to temporary information. The deletion of permanent information must be explicitly requested by the user.
     """
 
@@ -136,20 +138,13 @@ class TomMemory:
 
     self.functions = {
       "list_stored_information": {
-        "function": functools.partial(self.remember_list), 
-        "responseContext": """Your response will be read aloud via text-to-speech, so it should be concise and free from any markdown formatting or URLs.
-        If the request involves retrieving information about where something is located (their car, keys, an object, etc.), at the end, remember to ask the user to confirm that they have retrieved their item, car, etc., so you can delete this entry from your memory.
-        Never directly provide GPS coordinates in your response. However, indicate that you have them if applicable and offer to guide the user.
-        If the user explicitly requests GPS coordinates or guidance to retrieve an object, such as their car, the response should follow this format: `[open: https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=PLACE HERE THE GPS LATITUDE,PLACE HERE THE GPS LONGITUDE&travelmode=walking]`. This tag is interpreted by the frontend application, so, in this way, the user will be guided by an external application to find its object.
-        """
+        "function": functools.partial(self.remember_list)
       },
       "delete_stored_information": {
-        "function": functools.partial(self.remember_delete), 
-        "responseContext": "" 
+        "function": functools.partial(self.remember_delete)
       },
       "store_information": {
-        "function": functools.partial(self.remember_add), 
-        "responseContext": "" 
+        "function": functools.partial(self.remember_add)
       },
     }
 
@@ -203,4 +198,3 @@ class TomMemory:
 
     except:
       return False
-

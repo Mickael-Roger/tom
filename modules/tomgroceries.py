@@ -110,16 +110,13 @@ class TomGroceries:
 
     self.functions = {
       "grocery_list_content": {
-        "function": functools.partial(self.listProducts), 
-        "responseContext": """You should always answered in a consise way. Your answer must be in the form of a sentence and not contains '-' or element numbers. For example, when a user ask "What are in my grocery list?", your answer should be like "You have 4 products: pears, milk, water and sugar" or if the user asks "Do I have milk in my grocery list?", your answer should be like "Yes, you have" """
+        "function": functools.partial(self.listProducts)
       },
       "grocery_list_add": {
-        "function": functools.partial(self.add), 
-        "responseContext": """You should always answered in a consise way: For example, when a user ask "Add milk to my grocery list?", your answer should be like "Milk added" """ 
+        "function": functools.partial(self.add)
       },
       "grocery_list_remove": {
-        "function": functools.partial(self.remove), 
-        "responseContext": """You should always answered in a consise way: For example, when a user ask "Remove milk from my grocery list", your answer should be like "Milk removed" """ 
+        "function": functools.partial(self.remove)
       },
     }
 
@@ -169,10 +166,3 @@ class TomGroceries:
         print(f"Task with UID '{task_uid}: {productName}' has been deleted.")
 
     return {"status": "success", "message": "product removed."}
-
-
-
-
-
-
-
