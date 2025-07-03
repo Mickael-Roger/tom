@@ -90,13 +90,15 @@ func initialModel() model {
 	username := textinput.New()
 	username.Placeholder = "Username"
 	username.Focus()
+	username.Width = 20
 
 	password := textinput.New()
 	password.Placeholder = "Password"
 	password.EchoMode = textinput.EchoPassword
+	password.Width = 20
 
 	chat := textinput.New()
-	chat.Placeholder = "Send a message or type a command..."
+	chat.Placeholder = ""
 
 	return model{
 		currentView:   viewLogin,
