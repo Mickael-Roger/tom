@@ -329,8 +329,7 @@ func (m model) View() string {
 
 func (m model) headerView() string {
 	title := styleChatBox.Render("Tom TUI")
-	line := strings.Repeat("─", m.width-lipgloss.Width(title))
-	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
+	return lipgloss.Place(m.width, lipgloss.Height(title), lipgloss.Center, lipgloss.Top, title)
 }
 
 func (m model) footerView() string {
