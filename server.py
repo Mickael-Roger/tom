@@ -14,8 +14,8 @@ core_module_dir = './core_modules'
 if core_module_dir not in sys.path:
     sys.path.append(core_module_dir)
 
+from tomcoremodules import TomCoreModules
 from tomllm import TomLLM
-
 from tomcorebehavior import TomBehavior
 from tomcorememory import TomMemory
 from tomcorereminder import TomReminder
@@ -44,39 +44,7 @@ def initConf():
 
 
 
-################################################################################################
-#                                                                                              #
-#                                     Modules loading                                          #
-#                                                                                              #
-################################################################################################
-mod_dir = './modules'
 
-module_list = {}
-
-# Iterate over the files in the 'modules' directory
-for filename in os.listdir(mod_dir):
-  if filename.endswith('.py') and filename != '__init__.py':
-    # Construct the full path to the module file
-    module_name = filename[:-3]  # Remove the '.py' extension
-    file_path = os.path.join(mod_dir, filename)
-    
-    # Dynamically import the module
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    if spec is not None:
-      module = importlib.util.module_from_spec(spec)
-      if spec.loader is not None:
-        spec.loader.exec_module(module)
-    
-        # Inspect the module and add all classes to the global namespace
-        for name, obj in inspect.getmembers(module, inspect.isclass):
-          globals()[name] = obj
-
-        if hasattr(module, 'tom_config'):
-          tom_mod_config = getattr(module, 'tom_config')
-          module_list[tom_mod_config['module_name']] = {"class": tom_mod_config['class_name'], "description": tom_mod_config['description']}
-        else:
-          print(f"Module {module_name} does not have tom_config variable")
-          exit(-1)
         
 
 
@@ -366,25 +334,13 @@ userList = {}
 for user in global_config['users']:
 
   username = user['username']
-  userList[username] = TomLLM(user, global_config)
+  llm_instance = TomLLM(user, global_config)
+  userList[username] = llm_instance
   
-  userList[username].functions = {}
-
-
-  for service_name in user['services'].keys():
-
-    userList[username].services[service_name] = {
-      "obj": globals()[module_list[service_name]['class']](user['services'][service_name], userList[username]),
-      "description": module_list[service_name]['description'],
-      "systemContext": "",
-      "tools": [],
-      "complexity": 0,
-      "functions": {}, 
-    }
-    userList[username].services[service_name]['tools'] = userList[username].services[service_name]['obj'].tools
-    userList[username].services[service_name]['complexity'] = userList[username].services[service_name]['obj'].complexity
-    userList[username].services[service_name]['systemContext'] = userList[username].services[service_name]['obj'].systemContext
-    userList[username].functions = userList[username].functions | userList[username].services[service_name]['obj'].functions
+  # Load modules using TomCoreModules
+  module_manager = TomCoreModules(global_config, user, llm_instance)
+  userList[username].services = module_manager.services
+  userList[username].functions = module_manager.functions
     
   userList[username].services['behavior'] = {
     "obj": TomBehavior(global_config, username),
