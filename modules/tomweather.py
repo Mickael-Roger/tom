@@ -12,7 +12,8 @@ import functools
 tom_config = {
   "module_name": "weather",
   "class_name": "TomWeather",
-  "description": "This module is used for for any question about the weather forecast."
+  "description": "This module is used for for any question about the weather forecast.",
+  "type": "global"
 }
 
 class TomWeather:

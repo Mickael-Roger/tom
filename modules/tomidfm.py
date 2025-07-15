@@ -15,7 +15,8 @@ import copy
 tom_config = {
   "module_name": "idfm",
   "class_name": "TomIdfm",
-  "description": "This module is used for getting public transportation information."
+  "description": "This module is used for getting public transportation information.",
+  "type": "global"
 }
 
 class TomIdfm:

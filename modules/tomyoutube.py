@@ -16,7 +16,8 @@ import time
 tom_config = {
   "module_name": "youtube",
   "class_name": "TomYoutube",
-  "description": "This module is used for for any question about the youtube videos and youtube channels."
+  "description": "This module is used for for any question about the youtube videos and youtube channels.",
+  "type": "personal"
 }
 
 class TomYoutube:

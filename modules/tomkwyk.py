@@ -19,7 +19,8 @@ import functools
 tom_config = {
   "module_name": "kwyk",
   "class_name": "TomKwyk",
-  "description": "This module is used to get information from Kwyk. Kwyk is an online platform for math and French exercises."
+  "description": "This module is used to get information from Kwyk. Kwyk is an online platform for math and French exercises.",
+  "type": "global"
 }
 
 class TomKwyk:

@@ -18,7 +18,8 @@ import time
 tom_config = {
   "module_name": "news",
   "class_name": "TomNews",
-  "description": "This module is used for for any question about the news."
+  "description": "This module is used for for any question about the news.",
+  "type": "global"
 }
 
 class TomNews:

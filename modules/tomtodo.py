@@ -17,7 +17,8 @@ import functools
 tom_config = {
   "module_name": "todo",
   "class_name": "TomTodo",
-  "description": "This module is used for managing TODO list."
+  "description": "This module is used for managing TODO list.",
+  "type": "personal"
 }
 
 class TomTodo:

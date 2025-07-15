@@ -18,7 +18,8 @@ import functools
 tom_config = {
   "module_name": "groceries",
   "class_name": "TomGroceries",
-  "description": "This module is used to manage groceries list."
+  "description": "This module is used to manage groceries list.",
+  "type": "personal"
 }
 
 class TomGroceries:

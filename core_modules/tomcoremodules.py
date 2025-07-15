@@ -30,7 +30,8 @@ class TomCoreModules:
               tom_mod_config = getattr(module, 'tom_config')
               self.module_list[tom_mod_config['module_name']] = {
                 "class": tom_mod_config['class_name'],
-                "description": tom_mod_config['description']
+                "description": tom_mod_config['description'],
+                "type": tom_mod_config.get('type', 'global')
               }
 
   def _load_user_modules(self):
@@ -60,6 +61,7 @@ class TomCoreModules:
                 "tools": getattr(module_instance, 'tools', []),
                 "complexity": getattr(module_instance, 'complexity', 0),
                 "functions": getattr(module_instance, 'functions', {}),
+                "type": module_info['type']
               }
               self.functions.update(module_instance.functions)
             else:

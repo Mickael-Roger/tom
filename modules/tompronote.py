@@ -20,7 +20,8 @@ import functools
 tom_config = {
   "module_name": "pronote",
   "class_name": "TomPronote",
-  "description": "This module is used for Pronote. Pronote is an application used to manage children's school life. It is the only way to access schedules, homework, grades, grade books, and to communicate with schools, middle schools, high schools, and teachers."
+  "description": "This module is used for Pronote. Pronote is an application used to manage children's school life. It is the only way to access schedules, homework, grades, grade books, and to communicate with schools, middle schools, high schools, and teachers.",
+  "type": "personal"
 }
 
 class TomPronote:

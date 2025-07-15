@@ -18,7 +18,8 @@ import functools
 tom_config = {
   "module_name": "calendar",
   "class_name": "TomCalendar",
-  "description": "This module is used to manage my personal and familial calendar events, meetings and appointments."
+  "description": "This module is used to manage my personal and familial calendar events, meetings and appointments.",
+  "type": "personal"
 }
 
 class TomCalendar:

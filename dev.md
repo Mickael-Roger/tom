@@ -14,7 +14,8 @@ import functools
 tom_config = {
   "module_name": "your_module_name",
   "class_name": "YourModuleClassName",
-  "description": "A brief description of what this module does."
+  "description": "A brief description of what this module does.",
+  "type": "global"  # "global" or "personal" - Optional, defaults to "global"
 }
 
 class YourModuleClassName:
@@ -94,6 +95,7 @@ This dictionary is crucial for Tom to discover and load your module. It must be 
 *   `module_name` (string): A unique identifier for your module. This name will be used in `config.yml` to enable the module for a user.
 *   `class_name` (string): The exact name of the main class within your module file.
 *   `description` (string): A concise description of the module's purpose. This description is used by Tom to inform the LLM about the module's capabilities.
+*   `type` (string, optional): Defines the module type - either "global" or "personal". Global modules have the same configuration for all users (e.g., weather module), while personal modules have user-specific configurations (e.g., email reader). Defaults to "global" if not specified.
 
 ### Main Module Class (`YourModuleClassName`)
 
@@ -164,7 +166,8 @@ import functools
 tom_config = {
   "module_name": "example",
   "class_name": "TomExample",
-  "description": "A simple example module to demonstrate module development."
+  "description": "A simple example module to demonstrate module development.",
+  "type": "global"
 }
 
 class TomExample:

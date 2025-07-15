@@ -14,7 +14,8 @@ import functools
 tom_config = {
   "module_name": "sport_coach",
   "class_name": "TomSportcoach",
-  "description": "This module allows you to act as the user's personal fitness coach. Use it for any questions they might ask their sports coach."
+  "description": "This module allows you to act as the user's personal fitness coach. Use it for any questions they might ask their sports coach.",
+  "type": "personal"
 }
 
 class TomSportcoach:
