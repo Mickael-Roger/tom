@@ -20,6 +20,7 @@ global:
 users:
   - username: user1
     password: password1
+    admin: true  # Optional: Set to true to make this user an administrator (default: false)
     memory: true
     services:
 

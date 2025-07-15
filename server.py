@@ -337,6 +337,9 @@ for user in global_config['users']:
   llm_instance = TomLLM(user, global_config)
   userList[username] = llm_instance
   
+  # Set admin status (default: False if not specified)
+  userList[username].admin = user.get('admin', False)
+  
   # Load modules using TomCoreModules
   module_manager = TomCoreModules(global_config, user, llm_instance)
   userList[username].services = module_manager.services
