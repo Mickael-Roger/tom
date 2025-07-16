@@ -2,12 +2,14 @@ import os
 import importlib.util
 import inspect
 import functools
+import yaml
 
 class TomCoreModules:
-  def __init__(self, global_config, user_config, llm_instance):
+  def __init__(self, global_config, user_config, llm_instance, module_managers=None):
     self.global_config = global_config
     self.user_config = user_config
     self.llm_instance = llm_instance
+    self.module_managers = module_managers  # Reference to all user module managers
     self.services = {}
     self.functions = {}
     self.module_list = {}
@@ -21,11 +23,42 @@ class TomCoreModules:
         "type": "function",
         "function": {
           "name": "list_modules_status",
-          "description": "List the status of all available modules for the current user. Shows which modules are loaded, disabled, or have errors. Use this when the user asks about module status, available modules, or wants to know what modules are currently active.",
+          "description": "List the status of Tom's modules. Use this when the user asks about module status, available modules, or wants to know what modules are currently active.",
           "parameters": {
             "type": "object",
-            "properties": {},
+            "properties": {
+              "username": {
+                "type": "string",
+                "description": "Optional: specific username to get status for"
+              }
+            },
             "required": [],
+            "additionalProperties": False,
+          },
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "toggle_module_status",
+          "description": "Enable or disable a module for a specific user (admin only). This modifies the config.yml file to change the enable status of a module.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "username": {
+                "type": "string",
+                "description": "Username for which to toggle the module status"
+              },
+              "module_name": {
+                "type": "string",
+                "description": "Name of the module to enable/disable"
+              },
+              "enable": {
+                "type": "boolean",
+                "description": "True to enable the module, False to disable it"
+              }
+            },
+            "required": ["username", "module_name", "enable"],
             "additionalProperties": False,
           },
         }
@@ -36,7 +69,10 @@ class TomCoreModules:
     self.complexity = 0
     self.functions = {
       "list_modules_status": {
-        "function": functools.partial(self.list_modules_status_for_user)
+        "function": functools.partial(self.list_modules_status)
+      },
+      "toggle_module_status": {
+        "function": functools.partial(self.toggle_module_status)
       }
     }
 
@@ -234,21 +270,68 @@ class TomCoreModules:
     """Return the current status of all modules for this user"""
     return self.module_status.copy()
   
-  def list_modules_status_for_user(self):
-    """List modules status for user queries"""
+  def list_modules_status(self, username=None):
+    """List modules status with permission-based access control"""
+    current_user = self.user_config['username']
+    is_admin = self.user_config.get('admin', False)
+    
+    # Convert username to lowercase if provided
+    if username:
+      username = username.lower()
+    
+    # Non-admin users can only see their own modules
+    if not is_admin and username and username != current_user:
+      return {
+        "error": "Access denied. You can only view your own module status.",
+        "current_user": current_user
+      }
+    
+    # If no username specified
+    if not username:
+      # Both admin and regular user without username: show their own modules
+      return self._get_user_module_status(self)
+    
+    # Username specified
+    if username == current_user:
+      # User requesting their own modules
+      return self._get_user_module_status(self)
+    
+    # Admin requesting another user's modules
+    if is_admin:
+      if not self.module_managers:
+        return {
+          "error": "Module managers not available. Cannot retrieve other users' status."
+        }
+      
+      if username in self.module_managers:
+        module_manager = self.module_managers[username]
+        return {username: self._get_user_module_status(module_manager)}
+      else:
+        return {
+          "error": f"User '{username}' not found."
+        }
+    
+    # This should never be reached due to the first check, but just in case
+    return {
+      "error": "Access denied."
+    }
+
+  
+  def _get_user_module_status(self, module_manager):
+    """Helper function to get module status for a specific module manager"""
     status_info = {
       "loaded_modules": [],
       "disabled_modules": [],
       "error_modules": [],
-      "available_modules": list(self.module_list.keys())
+      "available_modules": list(module_manager.module_list.keys())
     }
     
     # Get current status of configured modules
-    for module_name, status in self.module_status.items():
+    for module_name, status in module_manager.module_status.items():
       module_info = {
         "name": module_name,
-        "description": self.module_list.get(module_name, {}).get("description", "No description available"),
-        "type": self.module_list.get(module_name, {}).get("type", "unknown")
+        "description": module_manager.module_list.get(module_name, {}).get("description", "No description available"),
+        "type": module_manager.module_list.get(module_name, {}).get("type", "unknown")
       }
       
       if status == "loaded":
@@ -260,13 +343,91 @@ class TomCoreModules:
     
     # Add summary
     status_info["summary"] = {
-      "total_available": len(self.module_list),
+      "total_available": len(module_manager.module_list),
       "total_loaded": len(status_info["loaded_modules"]),
       "total_disabled": len(status_info["disabled_modules"]),
       "total_errors": len(status_info["error_modules"])
     }
     
     return status_info
+
+  def toggle_module_status(self, username, module_name, enable):
+    """Enable or disable a module for a specific user (admin only)"""
+    # Check if current user is admin
+    if not self.user_config.get('admin', False):
+      return {
+        "error": "Access denied. Administrator privileges required to modify module status."
+      }
+    
+    # Convert username to lowercase for consistency
+    username = username.lower()
+    
+    # Check if module exists in available modules
+    if module_name not in self.module_list:
+      return {
+        "error": f"Module '{module_name}' not found in available modules.",
+        "available_modules": list(self.module_list.keys())
+      }
+    
+    try:
+      # Read the config file
+      config_path = '/data/config.yml'
+      with open(config_path, 'r') as file:
+        config = yaml.safe_load(file)
+      
+      # Find the user in the config
+      user_found = False
+      for user in config.get('users', []):
+        if user.get('username', '').lower() == username:
+          user_found = True
+          
+          # Initialize services if not present
+          if 'services' not in user:
+            user['services'] = {}
+          
+          # Initialize module config if not present
+          if module_name not in user['services']:
+            user['services'][module_name] = {}
+          
+          # Set the enable status
+          if isinstance(user['services'][module_name], dict):
+            user['services'][module_name]['enable'] = enable
+          else:
+            # If it's not a dict, convert it to dict with enable
+            user['services'][module_name] = {'enable': enable}
+          
+          break
+      
+      if not user_found:
+        return {
+          "error": f"User '{username}' not found in configuration."
+        }
+      
+      # Write the updated config back to file
+      with open(config_path, 'w') as file:
+        yaml.safe_dump(config, file, default_flow_style=False, indent=2)
+      
+      action = "enabled" if enable else "disabled"
+      return {
+        "success": True,
+        "message": f"Module '{module_name}' has been {action} for user '{username}'.",
+        "username": username,
+        "module_name": module_name,
+        "enable": enable
+      }
+      
+    except FileNotFoundError:
+      return {
+        "error": f"Configuration file not found at {config_path}."
+      }
+    except yaml.YAMLError as e:
+      return {
+        "error": f"Error parsing YAML configuration: {str(e)}"
+      }
+    except Exception as e:
+      return {
+        "error": f"Error modifying module status: {str(e)}"
+      }
 
   @staticmethod
   def print_modules_status_summary(user_modules_dict):

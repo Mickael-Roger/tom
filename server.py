@@ -418,8 +418,8 @@ global_config = initConf()
 userList = {}
 module_managers = {}
 
+# First pass: create all module managers
 for user in global_config['users']:
-
   username = user['username']
   llm_instance = TomLLM(user, global_config)
   userList[username] = llm_instance
@@ -427,16 +427,20 @@ for user in global_config['users']:
   # Set admin status (default: False if not specified)
   userList[username].admin = user.get('admin', False)
   
-  # Load modules using TomCoreModules
+  # Load modules using TomCoreModules (without module_managers reference initially)
   module_manager = TomCoreModules(global_config, user, llm_instance)
   userList[username].services = module_manager.services
   userList[username].functions = module_manager.functions
   module_managers[username] = module_manager
+
+# Second pass: add module_managers reference to each module manager and register services
+for username, module_manager in module_managers.items():
+  module_manager.module_managers = module_managers
   
   # Register tomcoremodules as a service for user queries
   userList[username].services['modules'] = {
     "obj": module_manager,
-    "description": "This module manages the status and loading of extension modules. Use this when the user asks about module status, available modules, or wants to know what modules are currently active.",
+    "description": "This module manages the status and loading of of Tom's extension modules. Use this when the user asks about it's own or someone else Tom's module status, available modules, or wants to know what modules are currently active.",
     "systemContext": module_manager.systemContext,
     "tools": module_manager.tools,
     "complexity": module_manager.complexity,
