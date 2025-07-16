@@ -19,7 +19,8 @@ tom_config = {
   "module_name": "calendar",
   "class_name": "TomCalendar",
   "description": "This module is used to manage my personal and familial calendar events, meetings and appointments.",
-  "type": "personal"
+  "type": "personal",
+  "complexity": 0
 }
 
 class TomCalendar:
@@ -105,7 +106,7 @@ class TomCalendar:
     ]
 
     self.systemContext = ""
-    self.complexity = 0
+    self.complexity = tom_config.get("complexity", 0)
 
     self.functions = {
       "calendar_search": {

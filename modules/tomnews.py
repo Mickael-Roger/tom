@@ -19,7 +19,8 @@ tom_config = {
   "module_name": "news",
   "class_name": "TomNews",
   "description": "This module is used for for any question about the news.",
-  "type": "global"
+  "type": "global",
+  "complexity": 1
 }
 
 class TomNews:
@@ -138,7 +139,7 @@ class TomNews:
        - When the user said he is interrested about an article
        - When the user ask to mark an article to be read later
     """
-    self.complexity = 1
+    self.complexity = tom_config.get("complexity", 0)
     self.functions = {
       "get_all_news": {
         "function": functools.partial(self.list_unread)

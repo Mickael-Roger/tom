@@ -17,7 +17,8 @@ tom_config = {
   "module_name": "youtube",
   "class_name": "TomYoutube",
   "description": "This module is used for for any question about the youtube videos and youtube channels.",
-  "type": "personal"
+  "type": "personal",
+  "complexity": 1
 }
 
 class TomYoutube:
@@ -93,7 +94,7 @@ class TomYoutube:
        - When the user ask to mark as seen a video
        - When the user is not interested in watching this video and does not plan to watch it, but still wants to mark it as seen to declutter the non viewed video list.
     '''
-    self.complexity = 1
+    self.complexity = tom_config.get("complexity", 0)
     self.functions = {
       "get_all_new_videos": {
         "function": functools.partial(self.list_unviewed_videos)

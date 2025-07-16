@@ -345,9 +345,10 @@ for user in global_config['users']:
   userList[username].services = module_manager.services
   userList[username].functions = module_manager.functions
     
+  behavior_obj = TomBehavior(global_config, username)
   userList[username].services['behavior'] = {
-    "obj": TomBehavior(global_config, username),
-    "description": "This module is used to manage your instructions and behaviors. It can be used to add or remove an instruction, modify your behaviors, or list your current instructions and behaviors. Use this module only if the user explicitly requests it, such as with phrases like: 'What instructions have I given you?', 'Remove this instruction' or 'From now on, I want you to'",
+    "obj": behavior_obj,
+    "description": behavior_obj.tom_config["description"],
     "systemContext": "",
     "tools": [],
     "complexity": 0,
@@ -358,18 +359,10 @@ for user in global_config['users']:
   userList[username].services['behavior']['systemContext'] = userList[username].services['behavior']['obj'].systemContext
   userList[username].functions = userList[username].functions | userList[username].services['behavior']['obj'].functions
 
+  memory_obj = TomMemory(global_config, username)
   userList[username].services['memory'] = {
-    "obj": TomMemory(global_config, username),
-    "description": """This module is used to manage everything related to your memory. Memory can take several forms:
-
-     - Permanent information: Permanent information is data provided by the user that might be useful to you or to them later. This information is relevant and needs to be stored indefinitely. It is unique to each user, so you cannot know it without being explicitly told. For example: "My PIN code is 1234," "X's date of birth is [date]," or "Mr. X is 45 years old." Typically, this information is shared voluntarily by the user, indicating they expect you to keep it in memory.
-
-     - Temporary information: Temporary information is data that is only useful for a short time, either until a specific event occurs or within a short timeframe. This is helpful for storing temporary details, such as when a user says, "I left my keys on the table," or "I parked in this spot." Such information is meant to help the user retrieve their keys or locate their car but loses relevance once the task is completed. Examples include: "I just parked," "I put the keys under the flowerpot," etc.
-
-     If the user's request is to remember where the car is parked, you must save the GPS location along with additional information such as the parking spot number, street name, a point of interest (POI), etc. If the user does not provide any additional information, ask if they have any.
-
-     This module must absolutely be used when the user ask explicit you to search in your memory.
-    """, 
+    "obj": memory_obj,
+    "description": memory_obj.tom_config["description"], 
     "systemContext": "",
     "tools": [],
     "complexity": 0,
@@ -381,9 +374,10 @@ for user in global_config['users']:
   userList[username].functions = userList[username].functions | userList[username].services['memory']['obj'].functions
   userList[username].services['memory']['obj'].llm = userList[username].llm
 
+  reminder_obj = TomReminder(global_config, username)
   userList[username].services['reminder'] = {
-    "obj": TomReminder(global_config, username),
-    "description": """This module is used to manage reminders. A reminder is an element, task, or action the user asks you to remind them about. It has a temporal aspect and will result in a notification being sent to the user at the appropriate time. For example, the user might say: "Remind me in 2 hours to take out the laundry," or "Remind me tomorrow morning at 9 a.m. to buy bread." A reminder is always associated with a specific deadline.""", 
+    "obj": reminder_obj,
+    "description": reminder_obj.tom_config["description"], 
     "systemContext": "",
     "tools": [],
     "complexity": 0,

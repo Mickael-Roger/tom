@@ -21,7 +21,8 @@ tom_config = {
   "module_name": "cafetaria",
   "class_name": "TomCafetaria",
   "description": "This module is used to manage the use of the school cafeteria, such as reserving or canceling a cafeteria meal or checking the remaining credit.",
-  "type": "global"
+  "type": "global",
+  "complexity": 0
 }
 
 class TomCafetaria:
@@ -118,7 +119,7 @@ class TomCafetaria:
     ]
 
     self.systemContext = ""
-    self.complexity = 0
+    self.complexity = tom_config.get("complexity", 0)
 
     self.functions = {
       "get_cafetaria_credit": {

@@ -16,7 +16,8 @@ tom_config = {
   "module_name": "idfm",
   "class_name": "TomIdfm",
   "description": "This module is used for getting public transportation information.",
-  "type": "global"
+  "type": "global",
+  "complexity": 1
 }
 
 class TomIdfm:
@@ -226,7 +227,7 @@ class TomIdfm:
 
 
     self.systemContext = ""
-    self.complexity = 1
+    self.complexity = tom_config.get("complexity", 0)
 
     self.functions = {
       "search_station": {

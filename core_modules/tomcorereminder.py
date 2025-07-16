@@ -12,11 +12,21 @@ import json
 #                               Notification capability                                        #
 #                                                                                              #
 ################################################################################################
+
+tom_config = {
+  "module_name": "reminder",
+  "class_name": "TomReminder",
+  "description": """This module is used to manage reminders. A reminder is an element, task, or action the user asks you to remind them about. It has a temporal aspect and will result in a notification being sent to the user at the appropriate time. For example, the user might say: "Remind me in 2 hours to take out the laundry," or "Remind me tomorrow morning at 9 a.m. to buy bread." A reminder is always associated with a specific deadline.""",
+  "type": "core",
+  "complexity": 0
+}
+
 class TomReminder:
 
   _update_thread_started = False
 
   def __init__(self, global_config, username) -> None:
+    self.tom_config = tom_config
 
     db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], "all")
     os.makedirs(db_path, exist_ok=True)
@@ -115,7 +125,7 @@ class TomReminder:
 
     self.systemContext = """A reminder is an element, task, or action the user asks you to remind them about. It has a temporal aspect and will result in a notification being sent to the user at the appropriate time. For example, the user might say: "Remind me in 2 hours to take out the laundry," or "Remind me tomorrow morning at 9 a.m. to buy bread." A reminder is always associated with a specific deadline.
     """
-    self.complexity = 0
+    self.complexity = tom_config.get("complexity", 0)
 
     self.functions = {
       "tom_list_reminders": {

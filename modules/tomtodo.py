@@ -18,7 +18,8 @@ tom_config = {
   "module_name": "todo",
   "class_name": "TomTodo",
   "description": "This module is used for managing TODO list.",
-  "type": "personal"
+  "type": "personal",
+  "complexity": 0
 }
 
 class TomTodo:
@@ -117,7 +118,7 @@ class TomTodo:
     ]
 
     self.systemContext = ""
-    self.complexity = 0
+    self.complexity = tom_config.get("complexity", 0)
     self.functions = {
       "todo_list_all": {
         "function": functools.partial(self.listTasks)

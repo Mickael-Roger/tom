@@ -20,7 +20,8 @@ tom_config = {
   "module_name": "kwyk",
   "class_name": "TomKwyk",
   "description": "This module is used to get information from Kwyk. Kwyk is an online platform for math and French exercises.",
-  "type": "global"
+  "type": "global",
+  "complexity": 0
 }
 
 class TomKwyk:
@@ -84,7 +85,7 @@ class TomKwyk:
     ]
 
     self.systemContext = ""
-    self.complexity = 0
+    self.complexity = tom_config.get("complexity", 0)
     self.functions = {
       "kwyk_get": {
         "function": functools.partial(self.get)

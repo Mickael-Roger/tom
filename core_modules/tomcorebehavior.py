@@ -9,9 +9,19 @@ import json
 #                                   Behavior capability                                        #
 #                                                                                              #
 ################################################################################################
+
+tom_config = {
+  "module_name": "behavior",
+  "class_name": "TomBehavior",
+  "description": "This module is used to manage your instructions and behaviors. It can be used to add or remove an instruction, modify your behaviors, or list your current instructions and behaviors. Use this module only if the user explicitly requests it, such as with phrases like: 'What instructions have I given you?', 'Remove this instruction' or 'From now on, I want you to'",
+  "type": "core",
+  "complexity": 0
+}
+
 class TomBehavior:
 
   def __init__(self, global_config, username) -> None:
+    self.tom_config = tom_config
 
     db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], username)
     os.makedirs(db_path, exist_ok=True)
@@ -83,7 +93,7 @@ class TomBehavior:
     ]
 
     self.systemContext = ""
-    self.complexity = 0
+    self.complexity = tom_config.get("complexity", 0)
 
     self.functions = {
       "tom_list_behaviors": {

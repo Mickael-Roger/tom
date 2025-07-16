@@ -19,7 +19,8 @@ tom_config = {
   "module_name": "groceries",
   "class_name": "TomGroceries",
   "description": "This module is used to manage groceries list.",
-  "type": "personal"
+  "type": "personal",
+  "complexity": 0
 }
 
 class TomGroceries:
@@ -106,7 +107,7 @@ class TomGroceries:
     ]
 
     self.systemContext = ""
-    self.complexity = 0
+    self.complexity = tom_config.get("complexity", 0)
 
     self.functions = {
       "grocery_list_content": {

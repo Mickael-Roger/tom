@@ -13,7 +13,8 @@ tom_config = {
   "module_name": "weather",
   "class_name": "TomWeather",
   "description": "This module is used for for any question about the weather forecast.",
-  "type": "global"
+  "type": "global",
+  "complexity": 0
 }
 
 class TomWeather:
@@ -108,7 +109,7 @@ class TomWeather:
     ]
 
     self.systemContext = ""
-    self.complexity = 0
+    self.complexity = tom_config.get("complexity", 0)
     self.functions = {
       "weather_get_by_gps_position": {
         "function": functools.partial(self.getGps)

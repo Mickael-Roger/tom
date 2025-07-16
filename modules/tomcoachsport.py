@@ -15,7 +15,8 @@ tom_config = {
   "module_name": "sport_coach",
   "class_name": "TomSportcoach",
   "description": "This module allows you to act as the user's personal fitness coach. Use it for any questions they might ask their sports coach.",
-  "type": "personal"
+  "type": "personal",
+  "complexity": 1
 }
 
 class TomSportcoach:
@@ -109,7 +110,7 @@ class TomSportcoach:
     """
 
 
-    self.complexity = 1
+    self.complexity = tom_config.get("complexity", 0)
     self.functions = {
       "get_sport_history": {
         "function": functools.partial(self.get_history)

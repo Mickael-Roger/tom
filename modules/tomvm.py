@@ -17,7 +17,8 @@ tom_config = {
   "module_name": "machine",
   "class_name": "TomVm",
   "description": "This module gives you access to a Linux Debian virtual machine with internet access. It allows you to execute commands as well as browse the internet, download tools, software, source code, etc. It also provides access to an environment where you can execute code if you need to develop something. This module is used asynchronously: the user asks you to do something (develop this, analyze that code, search for something on the internet, etc.). The response to the user's request will not be immediate, so this module also serves to list ongoing or past requests and access their results.",
-  "type": "personal"
+  "type": "personal",
+  "complexity": 1
 }
 
 class TomVm:
@@ -58,7 +59,7 @@ class TomVm:
 
     self.systemContext = """
     """
-    self.complexity = 1
+    self.complexity = tom_config.get("complexity", 0)
     self.functions = {
     }
 

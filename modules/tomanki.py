@@ -15,7 +15,8 @@ tom_config = {
   "module_name": "anki",
   "class_name": "TomAnki",
   "description": "This module is used to manage Anki. Anki is a flashcard program. It uses cards. It uses technics from cognitive science such as active recall testing and spaced repetition to help me in my memorization. I use Anki to train myself on memorizing and reinforcing my knowledge.",
-  "type": "personal"
+  "type": "personal",
+  "complexity": 1
 }
 
 class TomAnki:
@@ -135,7 +136,7 @@ class TomAnki:
     ]
 
     self.systemContext = ""
-    self.complexity = 1
+    self.complexity = tom_config.get("complexity", 0)
 
     self.functions = {
       "anki_list_decks": {

@@ -21,7 +21,8 @@ tom_config = {
   "module_name": "pronote",
   "class_name": "TomPronote",
   "description": "This module is used for Pronote. Pronote is an application used to manage children's school life. It is the only way to access schedules, homework, grades, grade books, and to communicate with schools, middle schools, high schools, and teachers.",
-  "type": "personal"
+  "type": "personal",
+  "complexity": 1
 }
 
 class TomPronote:
@@ -452,7 +453,7 @@ class TomPronote:
     ]
 
     self.systemContext = "If the user does not provide you information about which child the question refers to; ask him to clarify which child he is talking about."
-    self.complexity = 1
+    self.complexity = tom_config.get("complexity", 0)
 
     self.functions = {
       "list_grade_averages": {

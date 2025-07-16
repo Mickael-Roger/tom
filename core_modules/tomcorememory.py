@@ -12,9 +12,28 @@ import json
 #                                   Memory capability                                          #
 #                                                                                              #
 ################################################################################################
+
+tom_config = {
+  "module_name": "memory",
+  "class_name": "TomMemory",
+  "description": """This module is used to manage everything related to your memory. Memory can take several forms:
+
+     - Permanent information: Permanent information is data provided by the user that might be useful to you or to them later. This information is relevant and needs to be stored indefinitely. It is unique to each user, so you cannot know it without being explicitly told. For example: "My PIN code is 1234," "X's date of birth is [date]," or "Mr. X is 45 years old." Typically, this information is shared voluntarily by the user, indicating they expect you to keep it in memory.
+
+     - Temporary information: Temporary information is data that is only useful for a short time, either until a specific event occurs or within a short timeframe. This is helpful for storing temporary details, such as when a user says, "I left my keys on the table," or "I parked in this spot." Such information is meant to help the user retrieve their keys or locate their car but loses relevance once the task is completed. Examples include: "I just parked," "I put the keys under the flowerpot," etc.
+
+     If the user's request is to remember where the car is parked, you must save the GPS location along with additional information such as the parking spot number, street name, a point of interest (POI), etc. If the user does not provide any additional information, ask if they have any.
+
+     This module must absolutely be used when the user ask explicit you to search in your memory.
+    """,
+  "type": "core",
+  "complexity": 0
+}
+
 class TomMemory:
 
   def __init__(self, global_config, username) -> None:
+    self.tom_config = tom_config
 
     db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], username)
     os.makedirs(db_path, exist_ok=True)
@@ -134,7 +153,7 @@ class TomMemory:
      This only applies to temporary information. The deletion of permanent information must be explicitly requested by the user.
     """
 
-    self.complexity = 0
+    self.complexity = tom_config.get("complexity", 0)
 
     self.functions = {
       "list_stored_information": {
