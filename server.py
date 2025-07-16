@@ -432,6 +432,17 @@ for user in global_config['users']:
   userList[username].services = module_manager.services
   userList[username].functions = module_manager.functions
   module_managers[username] = module_manager
+  
+  # Register tomcoremodules as a service for user queries
+  userList[username].services['modules'] = {
+    "obj": module_manager,
+    "description": "This module manages the status and loading of extension modules. Use this when the user asks about module status, available modules, or wants to know what modules are currently active.",
+    "systemContext": module_manager.systemContext,
+    "tools": module_manager.tools,
+    "complexity": module_manager.complexity,
+    "functions": module_manager.functions
+  }
+  userList[username].functions.update(module_manager.functions)
     
   behavior_obj = TomBehavior(global_config, username)
   userList[username].services['behavior'] = {

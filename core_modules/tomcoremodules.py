@@ -1,6 +1,7 @@
 import os
 import importlib.util
 import inspect
+import functools
 
 class TomCoreModules:
   def __init__(self, global_config, user_config, llm_instance):
@@ -13,6 +14,31 @@ class TomCoreModules:
     self.module_status = {}  # Track module loading status
     self._load_module_list()
     self._load_user_modules()
+    
+    # Initialize tools and functions for module status functionality
+    self.tools = [
+      {
+        "type": "function",
+        "function": {
+          "name": "list_modules_status",
+          "description": "List the status of all available modules for the current user. Shows which modules are loaded, disabled, or have errors. Use this when the user asks about module status, available modules, or wants to know what modules are currently active.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False,
+          },
+        }
+      }
+    ]
+    
+    self.systemContext = "This module manages the loading and status of extension modules. It can provide information about which modules are currently loaded, disabled, or have errors."
+    self.complexity = 0
+    self.functions = {
+      "list_modules_status": {
+        "function": functools.partial(self.list_modules_status_for_user)
+      }
+    }
 
   def _load_module_list(self):
     mod_dir = './modules'
@@ -207,6 +233,40 @@ class TomCoreModules:
   def get_module_status(self):
     """Return the current status of all modules for this user"""
     return self.module_status.copy()
+  
+  def list_modules_status_for_user(self):
+    """List modules status for user queries"""
+    status_info = {
+      "loaded_modules": [],
+      "disabled_modules": [],
+      "error_modules": [],
+      "available_modules": list(self.module_list.keys())
+    }
+    
+    # Get current status of configured modules
+    for module_name, status in self.module_status.items():
+      module_info = {
+        "name": module_name,
+        "description": self.module_list.get(module_name, {}).get("description", "No description available"),
+        "type": self.module_list.get(module_name, {}).get("type", "unknown")
+      }
+      
+      if status == "loaded":
+        status_info["loaded_modules"].append(module_info)
+      elif status == "disabled":
+        status_info["disabled_modules"].append(module_info)
+      elif status == "error":
+        status_info["error_modules"].append(module_info)
+    
+    # Add summary
+    status_info["summary"] = {
+      "total_available": len(self.module_list),
+      "total_loaded": len(status_info["loaded_modules"]),
+      "total_disabled": len(status_info["disabled_modules"]),
+      "total_errors": len(status_info["error_modules"])
+    }
+    
+    return status_info
 
   @staticmethod
   def print_modules_status_summary(user_modules_dict):
