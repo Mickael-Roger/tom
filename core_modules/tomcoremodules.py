@@ -38,7 +38,11 @@ class TomCoreModules:
     if 'services' in self.user_config:
       for service_name in self.user_config['services'].keys():
         try:
-          if service_name in self.module_list:
+          # Check if module is enabled (default is True if not specified)
+          service_config = self.user_config['services'][service_name]
+          is_enabled = service_config.get('enable', True) if isinstance(service_config, dict) else True
+          
+          if service_name in self.module_list and is_enabled:
             module_info = self.module_list[service_name]
             module_class_name = module_info['class']
             

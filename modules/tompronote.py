@@ -42,7 +42,7 @@ class TomPronote:
 
     self.background_status = {"ts": int(time.time()), "status": None}
 
-    for child in self.config:
+    for child in self.config['children']:
 
       self.children.append(child['name'])
       self.cal[child['name']] = [] 
@@ -512,7 +512,7 @@ class TomPronote:
         print("Fail to update pronote")
 
       msg = None
-      for child in self.config:
+      for child in self.config['children']:
         childname = child['name']
 
         db = child['cache']
@@ -593,7 +593,7 @@ class TomPronote:
 
     if datetime.now() > (self.lastUpdate + timedelta(hours=1)):
 
-      for child in self.config:
+      for child in self.config['children']:
 
         childname = child['name']
 
@@ -909,7 +909,7 @@ class TomPronote:
     self.update()
 
     db = None
-    for child in self.config:
+    for child in self.config['children']:
       if child['name'] == child_name:
         db = child['cache']
 
@@ -929,7 +929,7 @@ class TomPronote:
   def execUpdate(self, child_name, req):
 
     db = None
-    for child in self.config:
+    for child in self.config['children']:
       if child['name'] == child_name:
         db = child['cache']
 
@@ -1175,7 +1175,7 @@ class TomPronote:
   def mark_seen(self, child_name, object_type, object_id):
 
     token = None
-    for child in self.config:
+    for child in self.config['children']:
       if child['name'] == child_name:
         token = child['token']
 
