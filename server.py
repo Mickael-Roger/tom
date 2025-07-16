@@ -330,6 +330,7 @@ global_config = initConf()
 
 
 userList = {}
+module_managers = {}
 
 for user in global_config['users']:
 
@@ -344,6 +345,7 @@ for user in global_config['users']:
   module_manager = TomCoreModules(global_config, user, llm_instance)
   userList[username].services = module_manager.services
   userList[username].functions = module_manager.functions
+  module_managers[username] = module_manager
     
   behavior_obj = TomBehavior(global_config, username)
   userList[username].services['behavior'] = {
@@ -414,6 +416,9 @@ for user in global_config['users']:
   #userList[username].services['morningroutine']['complexity'] = userList[username].services['morningroutine']['obj'].complexity
   #userList[username].services['morningroutine']['description'] = userList[username].services['morningroutine']['obj'].systemContext
   #userList[username].functions = userList[username].functions | userList[username].services['morningroutine']['obj'].functions
+
+# Print module loading status summary
+TomCoreModules.print_modules_status_summary(module_managers)
 
 
 
