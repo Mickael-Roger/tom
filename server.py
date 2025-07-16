@@ -8,6 +8,9 @@ import importlib.util
 import inspect
 import functools
 import sqlite3
+import time
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
 # Import core modules
 core_module_dir = './core_modules'
@@ -33,7 +36,7 @@ config = {}
 
 def initConf():
   # Load config
-  with open('config.yml', 'r') as file:
+  with open('/data/config.yml', 'r') as file:
     try:
       conf = yaml.safe_load(file)
     except yaml.YAMLError as exc:
@@ -41,6 +44,89 @@ def initConf():
       exit(1)
 
   return conf
+
+
+################################################################################################
+#                                                                                              #
+#                                Configuration File Watcher                                   #
+#                                                                                              #
+################################################################################################
+
+class ConfigFileHandler(FileSystemEventHandler):
+  """Handler for config file changes"""
+  def __init__(self, config_path, user_modules_dict, global_config, userList):
+    self.config_path = config_path
+    self.user_modules_dict = user_modules_dict
+    self.global_config = global_config
+    self.userList = userList
+    self.last_modified = 0
+    
+  def on_modified(self, event):
+    if event.src_path == self.config_path:
+      # Debounce: ignore rapid successive events
+      current_time = time.time()
+      if current_time - self.last_modified < 1:
+        return
+      self.last_modified = current_time
+      
+      print(f"\n📝 Configuration file changed: {self.config_path}")
+      self._reload_config()
+  
+  def _reload_config(self):
+    """Reload configuration and update modules"""
+    try:
+      with open(self.config_path, 'r') as file:
+        new_config = yaml.safe_load(file)
+      
+      # Update global config
+      self.global_config.clear()
+      self.global_config.update(new_config)
+      
+      # Update user modules
+      new_users = {user['username']: user for user in new_config.get('users', [])}
+      
+      for username, module_manager in self.user_modules_dict.items():
+        if username in new_users:
+          module_manager.update_modules_config(new_users[username])
+        else:
+          print(f"⚠️  User {username} removed from configuration")
+      
+      # Handle new users (not implemented in this version)
+      for username in new_users:
+        if username not in self.user_modules_dict:
+          print(f"⚠️  New user {username} found in configuration (restart required)")
+      
+      print("✅ Configuration reload completed")
+      
+    except Exception as e:
+      print(f"❌ Error reloading configuration: {e}")
+
+
+class ConfigWatcher:
+  """Watches config file for changes"""
+  def __init__(self, config_path, user_modules_dict, global_config, userList):
+    self.config_path = os.path.abspath(config_path)
+    self.config_dir = os.path.dirname(self.config_path)
+    self.user_modules_dict = user_modules_dict
+    self.global_config = global_config
+    self.userList = userList
+    self.observer = None
+    self.handler = None
+    
+  def start(self):
+    """Start watching the config file"""
+    self.handler = ConfigFileHandler(self.config_path, self.user_modules_dict, self.global_config, self.userList)
+    self.observer = Observer()
+    self.observer.schedule(self.handler, self.config_dir, recursive=False)
+    self.observer.start()
+    print(f"📁 Watching config file: {self.config_path}")
+    
+  def stop(self):
+    """Stop watching the config file"""
+    if self.observer:
+      self.observer.stop()
+      self.observer.join()
+      print("⏹️  Stopped watching config file")
 
 
 
@@ -420,6 +506,10 @@ for user in global_config['users']:
 # Print module loading status summary
 TomCoreModules.print_modules_status_summary(module_managers)
 
+# Start config file watcher
+config_watcher = ConfigWatcher('/data/config.yml', module_managers, global_config, userList)
+config_watcher.start()
+
 
 
 
@@ -437,10 +527,14 @@ if __name__ == "__main__":
     'tools.sessions.storage_type': 'file',
     'tools.sessions.storage_path': global_config['global']['sessions'] 
   })
-  cherrypy.quickstart(TomWebService(), '/', config={
-      '/static': {
-          'tools.staticdir.on': True,
-          'tools.staticdir.dir': os.path.abspath('static')
-      }
-  })
+  try:
+    cherrypy.quickstart(TomWebService(), '/', config={
+        '/static': {
+            'tools.staticdir.on': True,
+            'tools.staticdir.dir': os.path.abspath('static')
+        }
+    })
+  except KeyboardInterrupt:
+    print("\n🛑 Shutting down...")
+    config_watcher.stop()
 
