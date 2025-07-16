@@ -29,7 +29,7 @@ class TomCoreModules:
             "properties": {
               "username": {
                 "type": "string",
-                "description": "Optional: specific username to get status for"
+                "description": "Optional: specific username to get status for. Th user itself by default. Must not be used unless another user is explicitly specified by the user."
               }
             },
             "required": [],
@@ -62,19 +62,42 @@ class TomCoreModules:
             "additionalProperties": False,
           },
         }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "restart_module",
+          "description": "Restart a module that is in error state.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "module_name": {
+                "type": "string",
+                "description": "Name of the module to restart"
+              }
+            },
+            "required": ["module_name"],
+            "additionalProperties": False,
+          },
+        }
       }
     ]
     
     self.systemContext = "This module manages the loading and status of extension modules. It can provide information about which modules are currently loaded, disabled, or have errors."
     self.complexity = 0
-    self.functions = {
+    
+    # Add core module functions AFTER user modules are loaded
+    self.functions.update({
       "list_modules_status": {
         "function": functools.partial(self.list_modules_status)
       },
       "toggle_module_status": {
         "function": functools.partial(self.toggle_module_status)
+      },
+      "restart_module": {
+        "function": functools.partial(self.restart_module)
       }
-    }
+    })
 
   def _load_module_list(self):
     mod_dir = './modules'
@@ -427,6 +450,57 @@ class TomCoreModules:
     except Exception as e:
       return {
         "error": f"Error modifying module status: {str(e)}"
+      }
+
+  def restart_module(self, module_name):
+    """Restart a module that is in error state. Users can only restart their own modules."""
+    current_user = self.user_config['username']
+    
+    # Check if the module exists in available modules
+    if module_name not in self.module_list:
+      return {
+        "error": f"Module '{module_name}' not found in available modules.",
+        "available_modules": list(self.module_list.keys())
+      }
+    
+    # Check if the module is configured for the current user
+    if 'services' not in self.user_config or module_name not in self.user_config['services']:
+      return {
+        "error": f"Module '{module_name}' is not configured for user '{current_user}'."
+      }
+    
+    # Check if the module is in error state
+    current_status = self.module_status.get(module_name, None)
+    if current_status != 'error':
+      return {
+        "error": f"Module '{module_name}' is not in error state. Current status: {current_status}. Only modules in error state can be restarted."
+      }
+    
+    try:
+      # First unload the module if it's loaded
+      self._unload_single_module(module_name)
+      
+      # Then try to load it again
+      success = self._load_single_module(module_name)
+      
+      if success:
+        return {
+          "success": True,
+          "message": f"Module '{module_name}' has been successfully restarted for user '{current_user}'.",
+          "module_name": module_name,
+          "new_status": self.module_status.get(module_name, 'unknown')
+        }
+      else:
+        return {
+          "error": f"Failed to restart module '{module_name}'. The module is still in error state.",
+          "module_name": module_name,
+          "status": self.module_status.get(module_name, 'unknown')
+        }
+    
+    except Exception as e:
+      return {
+        "error": f"Error restarting module '{module_name}': {str(e)}",
+        "module_name": module_name
       }
 
   @staticmethod

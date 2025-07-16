@@ -178,16 +178,40 @@ class TomKwyk:
   def get(self, period_from, period_to):
 
     self.update()
-    data = {"math": []}
 
+
+    
     dbconn = sqlite3.connect(self.db)
     entries = dbconn.execute('SELECT date, daycorrect, daymcq, dayincorrect, daytotal FROM autonomous WHERE date BETWEEN ? AND ? ORDER BY date ASC', (period_from, period_to))
 
-    for entry in entries:
-      data['math'].append({"date": entry[0], "correct_exercices": entry[1], "mcq_exercices": entry[2], "incorrect_exercices": entry[3], "total_exercices": entry[4]})
+    # Initialize sums for each exercise type
+    total_correct = 0
+    total_mcq = 0
+    total_incorrect = 0
+    total_exercises = 0
 
-    print(data)
+    for entry in entries:
+      total_correct += entry[1]
+      total_mcq += entry[2] 
+      total_incorrect += entry[3]
+      total_exercises += entry[4]
 
     dbconn.close()
+
+    # Create aggregated response
+    data = {
+      "period": {
+        "start_date": period_from,
+        "end_date": period_to,
+      },
+      "math": {
+        "correct_exercises": total_correct,
+        "mcq_exercises": total_mcq,
+        "incorrect_exercises": total_incorrect,
+        "total_exercises": total_exercises
+      }
+    }
+
+    print(data)
 
     return data

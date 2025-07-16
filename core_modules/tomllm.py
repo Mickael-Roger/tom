@@ -303,16 +303,19 @@ class TomLLM():
 
 
             for mod in set(load_modules):
-              tools = tools + self.services[mod]['tools']
+              if mod in self.services:
+                tools = tools + self.services[mod]['tools']
 
-              conversation.append({"role": "system", "content": self.services[mod]["systemContext"]})
+                conversation.append({"role": "system", "content": self.services[mod]["systemContext"]})
 
-              try:
-                if self.services[mod]["complexity"] > complexity:
-                  complexity = self.services[mod]["complexity"]
-                  print(f"Complexity increased to {complexity}")
-              except:
-                pass
+                try:
+                  if self.services[mod]["complexity"] > complexity:
+                    complexity = self.services[mod]["complexity"]
+                    print(f"Complexity increased to {complexity}")
+                except:
+                  pass
+              else:
+                print(f"Warning: Module '{mod}' not loaded in services, skipping...")
 
 
             llm = None
@@ -333,7 +336,12 @@ class TomLLM():
     
               print("Call: " + str(function_name) + " with " + str(function_params))
     
-              function_result = self.functions[function_name]['function'](**function_params)
+              if function_name in self.functions:
+                function_result = self.functions[function_name]['function'](**function_params)
+              else:
+                print(f"Error: Function '{function_name}' not found in available functions.")
+                print(f"Available functions: {list(self.functions.keys())}")
+                function_result = {"error": f"Function '{function_name}' not available. This might be due to a module loading error."}
     
               if function_result is False:
                 self.history.append({"role": 'assistant', "content": "Error while executing the function call"})
