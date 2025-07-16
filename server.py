@@ -199,7 +199,8 @@ class TomWebService:
   @cherrypy.tools.allow(methods=['POST'])
   @cherrypy.tools.json_out()
   def reset(self):
-    if userList[cherrypy.session['username']].reset():
+    session_instance = self.get_session_instance()
+    if session_instance.reset():
       return {"success": True}
     else:
       raise cherrypy.HTTPError(500, "Could not reset and save the session")
@@ -228,8 +229,8 @@ class TomWebService:
     client_type = input_json.get('client_type', 'pwa')
     username = cherrypy.session['username']
 
-
-    response = userList[username].processRequest(input=user_input, lang=lang, position=position, client_type=client_type)
+    session_instance = self.get_session_instance()
+    response = session_instance.processRequest(input=user_input, lang=lang, position=position, client_type=client_type)
 
 
     print(response)
@@ -255,9 +256,10 @@ class TomWebService:
        raise cherrypy.HTTPRedirect("/auth")
 
 
-    response = userList[cherrypy.session['username']].tasks.tasks
-    message = userList[cherrypy.session['username']].tasks.msg
-    id = userList[cherrypy.session['username']].tasks.status_id
+    username = cherrypy.session['username']
+    response = userList[username].tasks.tasks
+    message = userList[username].tasks.msg
+    id = userList[username].tasks.status_id
 
     print(response)
 
@@ -293,7 +295,9 @@ class TomWebService:
       if user['username'] == username and user['password'] == password:
         cherrypy.session['username'] = username
         print(f"History cleaning for user {username}")
-        userList[cherrypy.session['username']].reset()
+        # Clean session-specific history, not user-wide history
+        session_instance = self.get_session_instance()
+        session_instance.reset()
 
         raise cherrypy.HTTPRedirect("/index")
 
@@ -306,6 +310,47 @@ class TomWebService:
       return True
       
     raise cherrypy.HTTPRedirect("/auth")
+  
+  def get_session_instance(self):
+    """Get or create a session-specific TomLLM instance"""
+    username = cherrypy.session['username']
+    session_id = cherrypy.session.id
+    
+    # Create unique key for this session
+    session_key = f"{username}_{session_id}"
+    
+    if session_key not in session_instances:
+      # Create a new instance based on the user's base configuration
+      base_instance = userList[username]
+      
+      # Create user config from global config
+      user_config = None
+      for user in global_config['users']:
+        if user['username'] == username:
+          user_config = user
+          break
+      
+      # Create new session-specific instance
+      session_instance = TomLLM(user_config, global_config)
+      session_instance.admin = base_instance.admin
+      session_instance.services = base_instance.services
+      session_instance.functions = base_instance.functions
+      session_instance.tasks = base_instance.tasks
+      
+      session_instances[session_key] = session_instance
+    
+    return session_instances[session_key]
+  
+  def cleanup_session_on_logout(self):
+    """Clean up session-specific instance when user logs out"""
+    username = cherrypy.session.get('username')
+    session_id = cherrypy.session.id
+    
+    if username:
+      session_key = f"{username}_{session_id}"
+      if session_key in session_instances:
+        del session_instances[session_key]
+        print(f"Cleaned up session instance for {session_key}")
 
   ####
   #
@@ -417,6 +462,8 @@ global_config = initConf()
 
 userList = {}
 module_managers = {}
+# Session-specific user instances
+session_instances = {}
 
 # First pass: create all module managers
 for user in global_config['users']:
