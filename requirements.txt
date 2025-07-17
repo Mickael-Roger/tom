@@ -15,3 +15,5 @@ feedparser
 litellm
 paramiko
 watchdog
+deebot-client
+aiohttp #==3.10.0

@@ -19,12 +19,56 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let lastDisplayedId = 0;
 
+    // Auto-reset session history on page load
+    fetch("/reset", { method: "POST" })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log("Session history reset automatically on page load");
+            } else {
+                console.error("Failed to reset session history:", data.message);
+            }
+        })
+        .catch(error => {
+            console.error("Error during auto-reset:", error);
+        });
+
     let userPosition = null;
     let currentAudio = null; // Reference to the currently playing audio
     let isSpeaking = false; // Flag for TTS state
     let autoSubmitEnabled = false; // Auto-submit state
     let selectedLanguage = "fr"; // Default language
     let soundEnabled = true; // Sound state (default: enabled)
+
+    // Settings persistence functions
+    function saveSettings() {
+        const settings = {
+            autoSubmitEnabled,
+            selectedLanguage,
+            soundEnabled
+        };
+        localStorage.setItem('tomAppSettings', JSON.stringify(settings));
+    }
+
+    function loadSettings() {
+        const saved = localStorage.getItem('tomAppSettings');
+        if (saved) {
+            try {
+                const settings = JSON.parse(saved);
+                autoSubmitEnabled = settings.autoSubmitEnabled !== undefined ? settings.autoSubmitEnabled : false;
+                selectedLanguage = settings.selectedLanguage || "fr";
+                soundEnabled = settings.soundEnabled !== undefined ? settings.soundEnabled : true;
+                
+                // Update UI to reflect loaded settings
+                autoSubmitConfig.classList.toggle("active", autoSubmitEnabled);
+                soundConfig.classList.toggle("active", soundEnabled);
+                soundConfig.textContent = soundEnabled ? "🔊 Sound" : "🔇 Mute";
+                updateLanguageConfig();
+            } catch (e) {
+                console.error("Error loading settings:", e);
+            }
+        }
+    }
 
     // Toggle configuration box visibility
     gearIcon.addEventListener("click", () => {
@@ -35,6 +79,7 @@ document.addEventListener("DOMContentLoaded", () => {
     autoSubmitConfig.addEventListener("click", () => {
         autoSubmitEnabled = !autoSubmitEnabled;
         autoSubmitConfig.classList.toggle("active", autoSubmitEnabled);
+        saveSettings();
     });
 
     // Handle sound configuration
@@ -42,17 +87,20 @@ document.addEventListener("DOMContentLoaded", () => {
         soundEnabled = !soundEnabled;
         soundConfig.classList.toggle("active", soundEnabled);
         soundConfig.textContent = soundEnabled ? "🔊 Sound" : "🔇 Mute";
+        saveSettings();
     });
 
     // Handle language configuration
     languageConfigEn.addEventListener("click", () => {
         selectedLanguage = "en";
         updateLanguageConfig();
+        saveSettings();
     });
 
     languageConfigFr.addEventListener("click", () => {
         selectedLanguage = "fr";
         updateLanguageConfig();
+        saveSettings();
     });
 
     // Update language configuration appearance
@@ -61,6 +109,9 @@ document.addEventListener("DOMContentLoaded", () => {
         languageConfigFr.classList.toggle("active", selectedLanguage === "fr");
     }
 
+    // Load saved settings and update UI
+    loadSettings();
+    
     // Initial updates
     updateLanguageConfig();
 
