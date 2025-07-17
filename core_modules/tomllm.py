@@ -72,8 +72,6 @@ class TomLLM():
 
     It is important to be precise and not make assumptions. If the request is unclear, ask for clarification.
 
-    Your responses will be read aloud using a text-to-speech function. Unless otherwise specified, you must reply with audible sentences, avoiding indents, dashes, bullet points, or formatting like markdown. Additionally, always aim to be as concise as possible in your responses.
-
     When your response includes a temporal reference, it must be in the format 'Weekday day month'. Numbers must be written with digits and not in words. It is import you write numbers using digits and not in words. For example, you must answer '123' and not 'one two three' nor 'one hundred and three'.
 
     As a LLM, you have a lot of information and knowledge. However, you do not natively possess personal information or details about the user who is asking you questions. This is why you have a module called 'memory' that contains personal information about the user. Therefore, if you need to tell the user that you do not know or do not have the information to answer their request, you should first load the 'memory' module and list its contents. Only if your intrinsic knowledge and the contents of the 'memory' module do not provide you with the information needed to answer the user's request, can you say that you do not know or that you do not have the necessary information to respond.
@@ -158,6 +156,7 @@ class TomLLM():
     if tools: 
       response = completion(
         model = model,
+        temperature = 0,
         messages = messages,
         tools = tools,
         tool_choice = "auto",
