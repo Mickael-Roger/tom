@@ -7,6 +7,12 @@ from caldav.elements import dav
 import json
 from datetime import datetime, timedelta
 import functools
+import os
+import sys
+
+# Logging
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+from tomlogger import logger
 
 
 ################################################################################################
@@ -164,6 +170,6 @@ class TomGroceries:
         productName = task.icalendar_component.get('SUMMARY')
 
         task.delete()
-        print(f"Task with UID '{task_uid}: {productName}' has been deleted.")
+        logger.info(f"Task with UID '{task_uid}: {productName}' has been deleted.")
 
     return {"status": "success", "message": "product removed."}

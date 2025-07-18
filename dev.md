@@ -8,7 +8,13 @@ Each module resides in its own Python file (`.py`) within the `modules/` directo
 
 ```python
 import functools
+import os
+import sys
 # Import any other necessary libraries
+
+# Logging
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+from tomlogger import logger
 
 # Module configuration - REQUIRED
 tom_config = {
@@ -162,6 +168,12 @@ Here's a minimal example of a new module:
 
 ```python
 import functools
+import os
+import sys
+
+# Logging
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+from tomlogger import logger
 
 tom_config = {
   "module_name": "example",
@@ -174,6 +186,8 @@ class TomExample:
   def __init__(self, config, llm) -> None:
     self.greeting_message = config.get('greeting', 'Hello from Example Module!')
     self.llm = llm # In case you need to interact with the LLM from your module
+    
+    logger.info("Example module initialized successfully")
 
     self.tools = [
       {
@@ -223,24 +237,73 @@ class TomExample:
 
   def get_greeting(self):
     """Returns the configured greeting message."""
+    logger.debug("Getting greeting message")
     return self.greeting_message
 
   def echo(self, message):
     """Echoes back the provided message."""
+    logger.debug(f"Echoing message: {message}")
     return f"You said: {message}"
+```
+
+## Logging Guidelines
+
+All modules must use the centralized logging system for consistent and properly formatted output. The logging system provides structured logs with timestamps, log levels, usernames, and client types.
+
+### Required Logging Setup
+
+All modules must include the following import at the top of the file:
+
+```python
+# Logging
+import os
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+from tomlogger import logger
+```
+
+### Logging Methods
+
+Use the appropriate logging level for different types of messages:
+
+- `logger.debug("Debug message")` - Detailed information for debugging
+- `logger.info("Information message")` - General information about operations
+- `logger.warning("Warning message")` - Warning messages
+- `logger.error("Error message")` - Error messages
+- `logger.critical("Critical message")` - Critical error messages
+
+### Important Rules
+
+1. **NEVER use `print()` statements** - All output must use the logging system
+2. **Choose appropriate log levels** - Use debug for detailed info, info for general operations, error for issues
+3. **Log format is automatic** - The logger automatically adds timestamps, usernames, and client types
+4. **Context is preserved** - The logging system maintains user context across function calls
+
+### Example Usage
+
+```python
+# Good - Using logger
+logger.info("Module initialized successfully")
+logger.debug(f"Processing data: {data}")
+logger.error(f"Failed to connect to service: {error}")
+
+# Bad - Using print
+print("Module initialized successfully")  # Don't do this!
 ```
 
 ## Development Workflow
 
 1.  **Create your module file**: Place your new `.py` file in the `modules/` directory.
 2.  **Define `tom_config`**: Ensure `module_name`, `class_name`, and `description` are correctly set.
-3.  **Implement your module class**:
+3.  **Add logging import**: Include the required logging import at the top of your file.
+4.  **Implement your module class**:
     *   Define the `__init__` method to handle configuration and LLM instance.
     *   Populate `self.tools` with the functions your module exposes to the LLM.
     *   Set `self.systemContext` and `self.complexity`.
     *   Map your tool names to their Python implementations in `self.functions`.
-4.  **Implement your functions**: Write the Python methods that perform the actual work for each tool.
-5.  **Update `config.yml`**: Add your module to the `services` section for the desired users, including any module-specific configuration.
-6.  **Restart the server**: For changes to take effect, you will need to restart the `server.py` application.
+5.  **Implement your functions**: Write the Python methods that perform the actual work for each tool.
+6.  **Use proper logging**: Replace any debug output with appropriate logger calls.
+7.  **Update `config.yml`**: Add your module to the `services` section for the desired users, including any module-specific configuration.
+8.  **Restart the server**: For changes to take effect, you will need to restart the `server.py` application.
 
 By following these guidelines, you can effectively extend Tom's capabilities with new, custom modules.

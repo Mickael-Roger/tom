@@ -4,6 +4,12 @@ import threading
 import time
 from datetime import datetime, timedelta, date
 import functools
+import os
+import sys
+
+# Logging
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+from tomlogger import logger
 
 ################################################################################################
 #                                                                                              #
@@ -163,7 +169,7 @@ class TomAnki:
 
   def run_update(self):
     while True:
-      print("Anki: Run auto update")
+      logger.info("Anki: Run auto update")
       time_diff = datetime.now() - self.lastUpdate
       if time_diff > timedelta(minutes=15):
         self.update()
@@ -199,7 +205,7 @@ class TomAnki:
     if response.status_code == 200:
         return response.json().get("result")
     else:
-        print(f"Anki sync error {response.status_code}: {response.text}")
+        logger.error(f"Anki sync error {response.status_code}: {response.text}")
         return None
 
 
@@ -261,16 +267,16 @@ class TomAnki:
     cards_list = []
 
     cards_ids = self.anki_request("findCards", {"query": f"deck:{deck_name}"})
-    print("==================")
-    print(cards_ids)
-    print("==================")
+    logger.debug("==================")
+    logger.debug(cards_ids)
+    logger.debug("==================")
     if not cards_ids:
         return cards_list
     
     cards_info = self.anki_request("cardsInfo", {"cards": cards_ids})
-    print("==================")
-    print(cards_info)
-    print("==================")
+    logger.debug("==================")
+    logger.debug(cards_info)
+    logger.debug("==================")
     
     if cards_info:
       for card in cards_info:

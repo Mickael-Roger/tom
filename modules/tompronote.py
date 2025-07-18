@@ -10,6 +10,12 @@ import threading
 
 import functools
 
+# Logging
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+from tomlogger import logger
+
 
 ################################################################################################
 #                                                                                              #
@@ -506,10 +512,10 @@ class TomPronote:
     while True:
       try:
         if datetime.now() > (self.lastUpdate + timedelta(hours=4)):
-          print("Update pronote ...")
+          logger.info("Update pronote ...", self.username)
           self.update()
       except:
-        print("Fail to update pronote")
+        logger.error("Fail to update pronote", self.username)
 
       msg = None
       for child in self.config['children']:
@@ -580,7 +586,7 @@ class TomPronote:
       self.connexion[child_name] = client
 
       name = client.info.name
-      print(f'Logged in as {name} for {child_name}')
+      logger.info(f'Logged in as {name} for {child_name}')
 
       return True
 
@@ -618,7 +624,7 @@ class TomPronote:
                 dbconn.execute('INSERT INTO averages (period, name, student, class_min, class_max, class_avg) VALUES (?, ?, ?, ?, ?, ?)', (period_name, average.subject.name, str(average.student), str(average.min), str(average.max), str(average.class_average)))
                 dbconn.commit()
           except:
-            print(f'Error: Could not update averages for {childname}')
+            logger.error(f'Could not update averages for {childname}')
 
 
 
@@ -642,7 +648,7 @@ class TomPronote:
                   dbconn.execute('INSERT INTO grades (subject, date, grade, out_of, min, max, average, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (grade.subject.name, grade.date.strftime('%Y-%m-%d'), str(grade.grade), str(grade.out_of), str(grade.min), str(grade.max), str(grade.average), grade.comment))
                   dbconn.commit()
           except:
-            print(f'Error: Could not update grades for {childname}')
+            logger.error(f'Could not update grades for {childname}')
 
 
 
@@ -673,7 +679,7 @@ class TomPronote:
                 dbconn.execute('INSERT INTO absences (date_from, date_to, duration, reasons, justified) VALUES (?, ?, ?, ?, ?)', (absence.from_date.strftime('%Y-%m-%d %H:%M:%S'), absence.to_date.strftime('%Y-%m-%d %H:%M:%S'), absence.hours, reasonTxt, absence.justified))
                 dbconn.commit()
           except:
-            print(f'Error: Could not update absences for {childname}')
+            logger.error(f'Could not update absences for {childname}')
 
 
           # Update the Delays DB content
@@ -694,7 +700,7 @@ class TomPronote:
                 dbconn.execute('INSERT INTO delays (datetime, minutes, justification, reasons, justified) VALUES (?, ?, ?, ?, ?)', (delay.datetime.strftime('%Y-%m-%d %H:%M:%S'), str(delay.minutes), delay.justification, reasonTxt, delay.justified))
                 dbconn.commit()
           except:
-            print(f'Error: Could not update delays for {childname}')
+            logger.error(f'Could not update delays for {childname}')
 
 
           # Update the Evaluations DB content
@@ -723,7 +729,7 @@ class TomPronote:
                   dbconn.execute('INSERT INTO evaluations (datetime, name, subject, description, acquisitions) VALUES (?, ?, ?, ?, ?)', (evaluation.date.strftime('%Y-%m-%d'), evaluation.name, evaluation.subject.name, evaluation.description, acquisitionTxt))
                   dbconn.commit()
           except:
-            print(f'Error: Could not update evaluations for {childname}')
+            logger.error(f'Could not update evaluations for {childname}')
 
 
           # Update the Punishment DB content
@@ -743,7 +749,7 @@ class TomPronote:
                 dbconn.execute('INSERT INTO punishments (datetime, circumstances, nature, reasons, giver) VALUES (?, ?, ?, ?, ?)', (punishment.date.strftime('%Y-%m-%d %H:%M:%S'), punishment.circumstances, punishment.nature, reasonTxt, punishment.giver))
                 dbconn.commit()
           except:
-            print(f'Error: Could not update punishment for {childname}')
+            logger.error(f'Could not update punishment for {childname}')
 
 
 
@@ -757,7 +763,7 @@ class TomPronote:
             dbconn.commit()
 
           except:
-            print(f'Error: Could not update teachers for {childname}')
+            logger.error(f'Could not update teachers for {childname}')
 
 
           # Update the Information DB content
@@ -775,7 +781,7 @@ class TomPronote:
                 dbconn.execute('INSERT INTO informations (creation_date, date, title, author, content, is_read) VALUES (?, ?, ?, ?, ?, ?)', (information.creation_date, information.start_date.strftime('%Y-%m-%d'), information.title, information.author, information.content, information.read))
                 dbconn.commit()
           except:
-            print(f'Error: Could not update teachers for {childname}')
+            logger.error(f'Could not update teachers for {childname}')
 
 
 
@@ -828,7 +834,7 @@ class TomPronote:
 
                   dbconn.commit()
           except:
-            print(f'Error: Could not update observations for {childname}')
+            logger.error(f'Could not update observations for {childname}')
 
             dbconn.commit()
             dbconn.close()
@@ -896,12 +902,12 @@ class TomPronote:
                 self.cal[childname].append({"subject": subject, "start": start, "end": end, "status": status, "is_canceled": is_canceled})
                 
           except:
-            print(f'Error: Could not update calendar for {childname}')
+            logger.error(f'Could not update calendar for {childname}')
 
         self.lastUpdate = datetime.now()
 
       else:
-        print("Update too recent, use cache")
+        logger.debug("Update too recent, use cache")
 
 
   def execSelect(self, child_name, req):

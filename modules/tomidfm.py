@@ -5,6 +5,12 @@ import sqlite3
 from datetime import datetime, timedelta, date
 import functools
 import copy
+import os
+import sys
+
+# Logging
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+from tomlogger import logger
 
 ################################################################################################
 #                                                                                              #
@@ -473,7 +479,7 @@ class TomIdfm:
       self.routes.append({"route_id": i, "departure_datetime": departure_date_time, "arrival_datetime": arrival_date_time, "duration_in_seconds": duration, "nb_transfers": nb_transfers, "sections": sections})
       i = i+1
 
-    print(self.routes)
+    logger.debug(self.routes)
 
     return self.routes
 
@@ -481,7 +487,7 @@ class TomIdfm:
 
   def keep_route(self, route_id):
     self.route = copy.deepcopy(self.routes[route_id])
-    print(self.route)
+    logger.debug(self.route)
     return {"status": "success", "message": "Route kept"}
 
 
@@ -500,8 +506,8 @@ class TomIdfm:
     if resp.status_code == 200:
       return resp.json()
     else:
-      print(resp.status_code)
-      print(resp.text)
+      logger.debug(resp.status_code)
+      logger.debug(resp.text)
       return False
 
 
@@ -525,10 +531,10 @@ class TomIdfm:
     val = self.apiCall(f"/lines/line:IDFM:{trainid}")
 
     if val:
-      print(val['disruptions'])
+      logger.debug(val['disruptions'])
       return val['disruptions']
     else:
-      print("Error while calling line info: " + str(val))
+      logger.error("Error while calling line info: " + str(val))
       return False
 
 
@@ -619,6 +625,6 @@ class TomIdfm:
   #            
   #      schedules.append({"line_id": line_id, "line_name": line_name, "departure_datetime": departure_datetime, "stops": stops})
 
-  #  print(schedules)
+  #  logger.debug(schedules)
 
   #  return schedules

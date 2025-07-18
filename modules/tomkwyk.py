@@ -10,6 +10,11 @@ import time
 from datetime import datetime, timedelta, date
 import functools
 
+# Logging
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+from tomlogger import logger
+
 ################################################################################################
 #                                                                                              #
 #                                           Kwyk                                               #
@@ -104,7 +109,7 @@ class TomKwyk:
   def run_update(self):
     while True:
       time.sleep(random.randint(3, 10) * 3600)
-      print("Kwyk: Run auto update")
+      logger.info("Kwyk: Run auto update")
       self.update()
 
 
@@ -170,7 +175,7 @@ class TomKwyk:
           dbconn.commit()
 
           self.lastUpdate = datetime.now()
-          print("Kwyk DB Updated")
+          logger.info("Kwyk DB Updated")
 
           dbconn.close()
 
@@ -212,6 +217,6 @@ class TomKwyk:
       }
     }
 
-    print(data)
+    logger.debug(data)
 
     return data

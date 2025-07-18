@@ -7,6 +7,12 @@ import threading
 import time
 from bs4 import BeautifulSoup
 import time
+import os
+import sys
+
+# Logging
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+from tomlogger import logger
 
 
 ################################################################################################
@@ -170,7 +176,7 @@ class TomNews:
       if response.status_code == 200:
         return response.json()
       else:
-        print(f"Error: {response.status_code}")
+        logger.error(f"Error: {response.status_code}")
         return False
 
     elif method == 'post':
@@ -178,11 +184,11 @@ class TomNews:
       if response.status_code == 200:
         return response.json()
       else:
-        print(f"Error: {response.status_code}")
+        logger.error(f"Error: {response.status_code}")
         return False
 
     else:
-      print(f"Method {method} unknown")
+      logger.error(f"Method {method} unknown")
       return False
 
 
@@ -227,7 +233,7 @@ class TomNews:
 
     response = self.llm.callLLM(llm_consign, llm='deepseek')
 
-    print(response.choices[0].message.content)
+    logger.debug(response.choices[0].message.content)
 
     return response.choices[0].message.content
 
@@ -297,10 +303,10 @@ class TomNews:
     self.news_update()
     while True:
       try:
-        print("Update news ...")
+        logger.info("Update news ...")
         self.news_update()
       except:
-        print("Fail to update RSS")
+        logger.error("Fail to update RSS")
 
       time.sleep(300)
 
@@ -326,7 +332,7 @@ class TomNews:
         folder_id = folder['id']
         folders[folder_id] = folder['name']
     else:
-      print("Could not list RSS folders")
+      logger.error("Could not list RSS folders")
       return False
 
     # Get all feeds
@@ -363,7 +369,7 @@ class TomNews:
               dbconn.close()
 
     else:
-      print("Could not list RSS folders")
+      logger.error("Could not list RSS folders")
       return False
 
 
@@ -413,7 +419,7 @@ class TomNews:
               dbconn.close()
 
       else:
-        print(f"Erreur when scrapping Kyutai: {response.status_code}")
+        logger.error(f"Erreur when scrapping Kyutai: {response.status_code}")
 
 
     ##########################################################
@@ -467,7 +473,7 @@ class TomNews:
                 dbconn.close()
 
       else:
-        print(f"Erreur when scrapping mistral: {response.status_code}")
+        logger.error(f"Erreur when scrapping mistral: {response.status_code}")
 
 
     # Update the background status
@@ -515,9 +521,9 @@ class TomNews:
 
       unread_news['category'][category].append({"news_id": id, "author": author, "title": title, "url": url})
 
-    print("-------------------")
-    print(unread_news)
-    print("-------------------")
+    logger.debug("-------------------")
+    logger.debug(unread_news)
+    logger.debug("-------------------")
     
     if unread_news['category']:
       return unread_news

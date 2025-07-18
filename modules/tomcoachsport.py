@@ -3,6 +3,12 @@ import sqlite3
 import threading
 import time
 import functools
+import os
+import sys
+
+# Logging
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+from tomlogger import logger
 
 
 ################################################################################################
@@ -141,7 +147,7 @@ class TomSportcoach:
       for val in values:
         history.append({"date": val[0], "role": val[1], "message": val[2]})
 
-    print(history)
+    logger.debug(history)
 
     return {"sport_history": history}
 
@@ -153,10 +159,10 @@ class TomSportcoach:
   #  self.news_update()
   #  while True:
   #  #    try:
-  #  #      print("Update news ...")
+  #  #      logger.info("Update news ...")
   #  #      self.news_update()
   #  #    except:
-  #  #      print("Fail to update RSS")
+  #  #      logger.error("Fail to update RSS")
 
   #    time.sleep(300)
 

@@ -9,6 +9,12 @@ import threading
 import time
 
 from datetime import datetime, timedelta, date
+import os
+import sys
+
+# Logging
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+from tomlogger import logger
 
 
 ################################################################################################
@@ -147,7 +153,7 @@ class TomCafetaria:
   def run_update(self):
     while True:
       time.sleep(3600)
-      print("Cafetaria: Run auto update")
+      logger.info("Cafetaria: Run auto update")
       time_diff = datetime.now() - self.lastUpdate
       if time_diff > timedelta(hours=48):
         self.update()
@@ -196,7 +202,7 @@ class TomCafetaria:
           self.background_status['status'] = status
 
       else:
-        print("Could not extract cafetaria credit")
+        logger.error("Could not extract cafetaria credit")
 
         
 
@@ -244,7 +250,7 @@ class TomCafetaria:
 
 
     self.lastUpdate = datetime.now()
-    print("Cafetaria updated")
+    logger.info("Cafetaria updated")
 
 
 

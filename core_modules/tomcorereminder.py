@@ -6,6 +6,7 @@ from firebase_admin import credentials, messaging
 import threading
 import time
 import json
+from tomlogger import logger
 
 ################################################################################################
 #                                                                                              #
@@ -151,7 +152,7 @@ class TomReminder:
   def notify(self):
 
     while True:
-      print("Check for notifications")
+      logger.debug("Checking for notifications", self.username)
       try:
         dbconn = sqlite3.connect(self.db)
         cursor = dbconn.cursor()
@@ -197,10 +198,10 @@ class TomReminder:
             dbconn.commit()
             dbconn.close()
   
-            print(f"Successfully sent message: {message}")
+            logger.info(f"Successfully sent notification: {message}", self.username)
   
       except Exception as e:
-        print(f"Error in notify: {e}")
+        logger.error(f"Error in notify: {e}", self.username)
 
       time.sleep(60)
 

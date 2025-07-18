@@ -4,11 +4,12 @@ from timezonefinder import TimezoneFinder
 from datetime import datetime
 import copy
 
-
-
 # LitLLM
 from litellm import completion
 import os
+
+# Logging
+from tomlogger import logger
 
 
 
@@ -41,7 +42,7 @@ class TomLLM():
 
 
     if global_config['global']['llm'] not in ["mistral", "openai", "deepseek", "xai", "gemini"]:
-      print(f"LLM {global_config['global']['llm']} not supported")
+      logger.critical(f"LLM {global_config['global']['llm']} not supported")
       exit(-1)
 
     self.llm = global_config['global']['llm']
@@ -82,7 +83,7 @@ class TomLLM():
 
 
   def reset(self):
-    print(f"{self.username}: History cleaning")
+    logger.info(f"History cleaning", self.username)
     self.history = []
 
     return True
@@ -140,11 +141,10 @@ class TomLLM():
 
     model=self.llms[self.llm][complexity]
 
-    print("---------1----------")
-    print(messages)
-    print("---------1----------")
-    print(tools)
-    print("---------1----------")
+    logger.debug("Messages to send:", self.username)
+    logger.debug(str(messages), self.username)
+    logger.debug("Tools available:", self.username)
+    logger.debug(str(tools), self.username)
 
     if llm == "deepseek":
       if tools: 
@@ -167,9 +167,8 @@ class TomLLM():
         messages = messages,
       )
 
-    print("---------2----------")
-    print(response)
-    print("---------2----------\n\n\n")
+    logger.debug("LLM Response:", self.username)
+    logger.debug(str(response), self.username)
 
 
     if not response:
@@ -292,7 +291,7 @@ class TomLLM():
 
           # Yes we are
           if load_modules:
-            print("Load: " + str(load_modules))
+            logger.debug("Load modules: " + str(load_modules), self.username)
   
             tools = []
             complexity = 0
@@ -310,11 +309,11 @@ class TomLLM():
                 try:
                   if self.services[mod]["complexity"] > complexity:
                     complexity = self.services[mod]["complexity"]
-                    print(f"Complexity increased to {complexity}")
+                    logger.debug(f"Complexity increased to {complexity}", self.username)
                 except:
                   pass
               else:
-                print(f"Warning: Module '{mod}' not loaded in services, skipping...")
+                logger.warning(f"Module '{mod}' not loaded in services, skipping", self.username)
 
 
             llm = None
@@ -333,13 +332,13 @@ class TomLLM():
               function_name = tool_call.function.name
               function_params = json.loads(tool_call.function.arguments)
     
-              print("Call: " + str(function_name) + " with " + str(function_params))
+              logger.info(f"Calling function: {function_name} with {function_params}", self.username)
     
               if function_name in self.functions:
                 function_result = self.functions[function_name]['function'](**function_params)
               else:
-                print(f"Error: Function '{function_name}' not found in available functions.")
-                print(f"Available functions: {list(self.functions.keys())}")
+                logger.error(f"Function '{function_name}' not found in available functions", self.username)
+                logger.error(f"Available functions: {list(self.functions.keys())}", self.username)
                 function_result = {"error": f"Function '{function_name}' not available. This might be due to a module loading error."}
     
               if function_result is False:

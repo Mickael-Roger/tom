@@ -6,6 +6,11 @@ import time
 import paramiko
 import threading
 import sys
+import os
+
+# Logging
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+from tomlogger import logger
 
 ################################################################################################
 #                                                                                              #
@@ -81,14 +86,14 @@ class TomVm:
 
   def create(self, request):
 
-    print("INSERT ******************************", file=sys.stdout)
+    logger.debug("INSERT ******************************")
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
     cursor.execute('INSERT INTO vmtasks (request, status) VALUES (?, ?)', (request, 'in progress'))
     dbconn.commit()
     dbconn.close()
 
-    print("Thread ******************************", file=sys.stdout)
+    logger.debug("Thread ******************************")
     # Create a thread that process the request
     self.thread = threading.Thread(target=self.process, args=(request))
     self.thread.daemon = True  # Allow the thread to exit when the main program exits
@@ -97,7 +102,7 @@ class TomVm:
 
   def process(self, request):
 
-    print("Thread 1 ******************************", file=sys.stdout)
+    logger.debug("Thread 1 ******************************")
     prompt = []
 
     tools = [
@@ -135,23 +140,23 @@ class TomVm:
 
     prompt.append({"role": "user", "content": request})
 
-    print("Thread 2 ******************************", file=sys.stdout)
+    logger.debug("Thread 2 ******************************")
     while True:
       response = self.llm.callLLM(messages=prompt, tools=tools, complexity=1, llm="deepseek")
   
-      print(response, file=sys.stdout)
+      logger.debug(response)
       if response != False:
         if response.choices[0].finish_reason == "stop":
-          print("RESULTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT", file=sys.stdout)
-          print(response.choices[0].message.content)
-          print("----------------------------------", file=sys.stdout)
+          logger.debug("RESULTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT")
+          logger.debug(response.choices[0].message.content)
+          logger.debug("----------------------------------")
           return response.choices[0].message.content
         elif response.choices[0].finish_reason == "tool_calls":
           prompt.append(response.choices[0].message.to_dict())
           for tool_call in response.choices[0].message.tool_calls:
             function_name = tool_call.function.name
             function_params = json.loads(tool_call.function.arguments)
-            print("Call: " + str(function_name) + " with " + str(function_params), file=sys.stdout)
+            logger.debug("Call: " + str(function_name) + " with " + str(function_params))
             res = functools.partial(self.execute_command)(**function_params)
             prompt.append({"role": 'tool', "content": json.dumps(res), "tool_call_id": tool_call.id})
     

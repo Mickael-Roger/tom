@@ -9,6 +9,12 @@ from deebot_client.mqtt_client import MqttClient, create_mqtt_config
 from deebot_client.device import Device
 from deebot_client.util import md5
 
+# Logging
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+from tomlogger import logger
+
 tom_config = {
     "module_name": "deebot",
     "class_name": "TomDeebot",
@@ -108,7 +114,7 @@ class TomDeebot:
                 
                 self._initialized = True
                 device_name = getattr(self.device, 'name', getattr(device_info, 'name', 'Unknown'))
-                print(f"Deebot initialized successfully: {device_name}")
+                logger.info(f"Deebot initialized successfully: {device_name}")
 
 
 
@@ -116,12 +122,12 @@ class TomDeebot:
 
                 
             else:
-                print("No MQTT devices found")
-                print(f"Available devices: {devices}")
+                logger.warning("No MQTT devices found")
+                logger.info(f"Available devices: {devices}")
                 self._initialized = False
                 
         except Exception as e:
-            print(f"Error initializing Deebot: {e}")
+            logger.error(f"Error initializing Deebot: {e}")
             self._initialized = False
     
     def get_status(self):
@@ -183,9 +189,9 @@ class TomDeebot:
             # Get events and their last values - focus on equipment status
             if hasattr(self.device, 'events'):
                 event_bus = self.device.events
-                print("##################################")
-                print(json.dumps(self.device, indent=4, cls=CustomEncoder))
-                print("##################################")
+                logger.debug("##################################")
+                logger.debug(json.dumps(self.device, indent=4, cls=CustomEncoder))
+                logger.debug("##################################")
 
                 if hasattr(event_bus, '_event_processing_data'):
                     for event_type, processing_data in event_bus._event_processing_data.items():

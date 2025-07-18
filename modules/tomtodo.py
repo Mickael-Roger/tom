@@ -7,6 +7,12 @@ from caldav.elements import dav
 import json
 from datetime import datetime, timedelta
 import functools
+import os
+import sys
+
+# Logging
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+from tomlogger import logger
 
 ################################################################################################
 #                                                                                              #
@@ -165,7 +171,7 @@ class TomTodo:
 
     self.update()
 
-    print(f"Task '{taskName}' has been closed.")
+    logger.info(f"Task '{taskName}' has been closed.")
 
     return {"status": "success", "message": "Todo task removed"}
 

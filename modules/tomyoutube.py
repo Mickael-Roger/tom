@@ -5,6 +5,12 @@ import functools
 import sqlite3
 import threading
 import time
+import os
+import sys
+
+# Logging
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+from tomlogger import logger
 
 
 ################################################################################################
@@ -126,10 +132,10 @@ class TomYoutube:
   def thread_update(self):
     while True:
       try:
-        print("Update videos ...")
+        logger.info("Update videos ...")
         self.video_update()
       except:
-        print("Fail to update videos")
+        logger.error("Fail to update videos")
 
       time.sleep(900)
 
@@ -179,7 +185,7 @@ class TomYoutube:
           dbconn.close()
 
       else:
-        print(f"Could not parse feed for channel: {name}")
+        logger.error(f"Could not parse feed for channel: {name}")
 
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
@@ -217,9 +223,9 @@ class TomYoutube:
 
       videos['videos'].append({"video_id": id, "channel": channel, "title": title, "url": uri, "viewed": False})
 
-    print("-------------------")
-    print(videos)
-    print("-------------------")
+    logger.debug("-------------------")
+    logger.debug(videos)
+    logger.debug("-------------------")
     
     if videos['videos']:
       return videos
