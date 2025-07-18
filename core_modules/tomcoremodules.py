@@ -4,8 +4,73 @@ import inspect
 import functools
 import yaml
 import shutil
+import threading
+import time
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
+class ModuleFileHandler(FileSystemEventHandler):
+  """Handler for file system events on module files"""
+  def __init__(self, module_manager):
+    self.module_manager = module_manager
+    self.last_modified = {}
+    self.debounce_time = 1  # 1 second debounce to avoid multiple reloads
+    self.sync_in_progress = False  # Flag to ignore events during sync
+    
+  def on_modified(self, event):
+    if event.is_directory:
+      return
+      
+    # Ignore events during sync operations
+    if self.sync_in_progress:
+      return
+      
+    if event.src_path.endswith('.py') and not event.src_path.endswith('__init__.py'):
+      # Debounce: ignore if file was modified recently
+      current_time = time.time()
+      if (event.src_path in self.last_modified and 
+          current_time - self.last_modified[event.src_path] < self.debounce_time):
+        return
+        
+      self.last_modified[event.src_path] = current_time
+      
+      # Extract module name from filename
+      filename = os.path.basename(event.src_path)
+      module_name = filename[:-3]  # Remove .py extension
+      
+      print(f"🔄 Module file changed: {filename}")
+      
+      # Trigger hot reload in a separate thread to avoid blocking the file watcher
+      threading.Thread(target=self._hot_reload_module, args=(module_name,), daemon=True).start()
+      
+  def _hot_reload_module(self, module_name):
+    """Reload a module for all users who have it loaded"""
+    try:
+      # First, reload the module definition in the module_list
+      self.module_manager._reload_module_definition(module_name)
+      
+      # Then reload the module for all users who have it loaded
+      if self.module_manager.module_managers:
+        for username, user_module_manager in self.module_manager.module_managers.items():
+          if module_name in user_module_manager.services:
+            print(f"🔄 Hot reloading module '{module_name}' for user '{username}'")
+            user_module_manager._hot_reload_single_module(module_name)
+      
+      # Also reload for the current module manager if it has the module loaded
+      if module_name in self.module_manager.services:
+        print(f"🔄 Hot reloading module '{module_name}' for current user")
+        self.module_manager._hot_reload_single_module(module_name)
+        
+    except Exception as e:
+      print(f"❌ Error during hot reload of module '{module_name}': {e}")
 
 class TomCoreModules:
+  # Class variables to handle global state
+  _sync_done = False
+  _file_observer = None
+  _event_handler = None
+  _module_list_global = {}  # Global module list shared across instances
+  
   def __init__(self, global_config, user_config, llm_instance, module_managers=None):
     self.global_config = global_config
     self.user_config = user_config
@@ -15,8 +80,18 @@ class TomCoreModules:
     self.functions = {}
     self.module_list = {}
     self.module_status = {}  # Track module loading status
+    
+    # Only sync once across all instances
+    if not TomCoreModules._sync_done:
+      self._sync_modules_directory()
+      TomCoreModules._sync_done = True
+    
     self._load_module_list()
     self._load_user_modules()
+    
+    # Start file watcher only once, globally
+    if TomCoreModules._file_observer is None:
+      self._start_file_watcher()
     
     # Initialize tools and functions for module status functionality
     self.tools = [
@@ -101,10 +176,12 @@ class TomCoreModules:
     })
 
   def _load_module_list(self):
-    # First, ensure /data/modules directory exists and sync with ./modules
-    self._sync_modules_directory()
+    # Use global module list if already loaded
+    if TomCoreModules._module_list_global:
+      self.module_list = TomCoreModules._module_list_global.copy()
+      return
     
-    # Load modules from /data/modules instead of ./modules
+    # Load modules from /data/modules
     mod_dir = '/data/modules'
     for filename in os.listdir(mod_dir):
       if filename.endswith('.py') and filename != '__init__.py':
@@ -124,11 +201,16 @@ class TomCoreModules:
                 "description": tom_mod_config['description'],
                 "type": tom_mod_config.get('type', 'global')
               }
+    
+    # Store in global module list
+    TomCoreModules._module_list_global = self.module_list.copy()
 
   def _sync_modules_directory(self):
     """Create /data/modules directory if it doesn't exist and sync with ./modules"""
     data_modules_dir = '/data/modules'
     source_modules_dir = './modules'
+    
+    print("📋 Starting modules synchronization...")
     
     # Create /data/modules directory if it doesn't exist
     os.makedirs(data_modules_dir, exist_ok=True)
@@ -142,11 +224,119 @@ class TomCoreModules:
           dest_file = os.path.join(data_modules_dir, filename)
           try:
             shutil.copy2(source_file, dest_file)
-            print(f"Copied module: {filename}")
+            print(f"📄 Copied module: {filename}")
           except Exception as e:
-            print(f"Error copying module {filename}: {e}")
+            print(f"❌ Error copying module {filename}: {e}")
     else:
-      print(f"Warning: Source modules directory {source_modules_dir} does not exist")
+      print(f"⚠️  Warning: Source modules directory {source_modules_dir} does not exist")
+    
+    print("✅ Modules synchronization complete!")
+
+  def _start_file_watcher(self):
+    """Start watching the /data/modules directory for file changes"""
+    try:
+      modules_dir = '/data/modules'
+      if not os.path.exists(modules_dir):
+        print(f"⚠️  Warning: Modules directory {modules_dir} does not exist, file watching disabled")
+        return
+        
+      TomCoreModules._file_observer = Observer()
+      TomCoreModules._event_handler = ModuleFileHandler(self)
+      TomCoreModules._file_observer.schedule(TomCoreModules._event_handler, modules_dir, recursive=False)
+      TomCoreModules._file_observer.start()
+      print(f"🔍 Started file watcher for {modules_dir}")
+      
+    except Exception as e:
+      print(f"❌ Error starting file watcher: {e}")
+      
+  @classmethod
+  def _stop_file_watcher(cls):
+    """Stop the file watcher"""
+    if cls._file_observer:
+      cls._file_observer.stop()
+      cls._file_observer.join()
+      cls._file_observer = None
+      cls._event_handler = None
+      print("🔍 File watcher stopped")
+      
+  def _reload_module_definition(self, module_name):
+    """Reload a module definition from file"""
+    try:
+      modules_dir = '/data/modules'
+      filename = f"{module_name}.py"
+      file_path = os.path.join(modules_dir, filename)
+      
+      if not os.path.exists(file_path):
+        print(f"❌ Module file not found: {file_path}")
+        return False
+        
+      # Clear the module from globals if it exists
+      # This is necessary to force Python to reload the module
+      if module_name in globals():
+        del globals()[module_name]
+        
+      # Load the module
+      spec = importlib.util.spec_from_file_location(module_name, file_path)
+      if spec and spec.loader:
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        
+        # Update globals with new classes
+        for name, obj in inspect.getmembers(module, inspect.isclass):
+          globals()[name] = obj
+          
+        # Update module_list if the module has tom_config
+        if hasattr(module, 'tom_config'):
+          tom_mod_config = getattr(module, 'tom_config')
+          module_info = {
+            "class": tom_mod_config['class_name'],
+            "description": tom_mod_config['description'],
+            "type": tom_mod_config.get('type', 'global')
+          }
+          self.module_list[tom_mod_config['module_name']] = module_info
+          # Update global module list
+          TomCoreModules._module_list_global[tom_mod_config['module_name']] = module_info
+          print(f"✅ Module definition reloaded: {module_name}")
+          return True
+      
+      return False
+      
+    except Exception as e:
+      print(f"❌ Error reloading module definition for {module_name}: {e}")
+      return False
+      
+  def _hot_reload_single_module(self, module_name):
+    """Hot reload a single module for this user"""
+    try:
+      if module_name not in self.services:
+        print(f"Module '{module_name}' not loaded for user {self.user_config['username']}")
+        return False
+        
+      # Get the current module config
+      service_config = self.user_config['services'][module_name]
+      
+      # Unload the current module
+      self._unload_single_module(module_name)
+      
+      # Reload the module
+      success = self._load_single_module(module_name)
+      
+      if success:
+        print(f"✅ Hot reload successful for module '{module_name}' (user: {self.user_config['username']})")
+        return True
+      else:
+        print(f"❌ Hot reload failed for module '{module_name}' (user: {self.user_config['username']})")
+        return False
+        
+    except Exception as e:
+      print(f"❌ Error during hot reload of module '{module_name}' for user {self.user_config['username']}: {e}")
+      return False
+      
+  def __del__(self):
+    """Cleanup when the object is destroyed"""
+    # Only stop file watcher if this is the last instance
+    # In practice, this should be handled by the main application
+    pass
 
   def _load_user_modules(self):
     if 'services' in self.user_config:
