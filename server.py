@@ -34,9 +34,9 @@ from tomcorebackground import TomBackground
 ################################################################################################
 config = {}
 
-def initConf():
+def initConf(config_path='./config.yml'):
   # Load config
-  with open('/data/config.yml', 'r') as file:
+  with open(config_path, 'r') as file:
     try:
       conf = yaml.safe_load(file)
     except yaml.YAMLError as exc:
@@ -456,7 +456,13 @@ class TomWebService:
 
 global_config = {}
 
-global_config = initConf()
+# Get config file path from command line argument or use default
+config_file_path = sys.argv[1] if len(sys.argv) > 1 else './config.yml'
+print(f"Using config file: {config_file_path}")
+
+global_config = initConf(config_file_path)
+# Add config file path to global config for use in modules
+global_config['config_path'] = config_file_path
 
 
 
@@ -569,7 +575,7 @@ for username, module_manager in module_managers.items():
 TomCoreModules.print_modules_status_summary(module_managers)
 
 # Start config file watcher
-config_watcher = ConfigWatcher('/data/config.yml', module_managers, global_config, userList)
+config_watcher = ConfigWatcher(config_file_path, module_managers, global_config, userList)
 config_watcher.start()
 
 

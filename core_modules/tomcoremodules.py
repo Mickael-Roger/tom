@@ -394,7 +394,7 @@ class TomCoreModules:
     
     try:
       # Read the config file
-      config_path = '/data/config.yml'
+      config_path = self.global_config.get('config_path', './config.yml')
       with open(config_path, 'r') as file:
         config = yaml.safe_load(file)
       
