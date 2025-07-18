@@ -22,6 +22,7 @@ from tomllm import TomLLM
 from tomcorebehavior import TomBehavior
 from tomcorememory import TomMemory
 from tomcorereminder import TomReminder
+from tomlogger import logger, set_log_context
 #from tomcoreremember import TomRemember
 #from tomcoremorningroutine import TomMorning
 from tomcorebackground import TomBackground
@@ -40,7 +41,7 @@ def initConf(config_path='/data/config.yml'):
     try:
       conf = yaml.safe_load(file)
     except yaml.YAMLError as exc:
-      print(f"Error reading YAML file: {exc}")
+      logger.critical(f"Error reading YAML file: {exc}")
       exit(1)
 
   return conf
@@ -69,7 +70,7 @@ class ConfigFileHandler(FileSystemEventHandler):
         return
       self.last_modified = current_time
       
-      print(f"\n📝 Configuration file changed: {self.config_path}")
+      logger.info(f"📝 Configuration file changed: {self.config_path}")
       self._reload_config()
   
   def _reload_config(self):
@@ -89,17 +90,18 @@ class ConfigFileHandler(FileSystemEventHandler):
         if username in new_users:
           module_manager.update_modules_config(new_users[username])
         else:
-          print(f"⚠️  User {username} removed from configuration")
+          logger.warning(f"⚠️  User {username} removed from configuration")
       
       # Handle new users (not implemented in this version)
       for username in new_users:
         if username not in self.user_modules_dict:
-          print(f"⚠️  New user {username} found in configuration (restart required)")
+          logger.warning(f"⚠️  New user {username} found in configuration (restart required)")
       
-      print("✅ Configuration reload completed")
+      logger.config_reload(success=True)
       
     except Exception as e:
-      print(f"❌ Error reloading configuration: {e}")
+      logger.config_reload(success=False)
+      logger.error(f"Error reloading configuration: {e}")
 
 
 class ConfigWatcher:
@@ -119,14 +121,14 @@ class ConfigWatcher:
     self.observer = Observer()
     self.observer.schedule(self.handler, self.config_dir, recursive=False)
     self.observer.start()
-    print(f"📁 Watching config file: {self.config_path}")
+    logger.file_watcher(f"📁 Watching config file: {self.config_path}")
     
   def stop(self):
     """Stop watching the config file"""
     if self.observer:
       self.observer.stop()
       self.observer.join()
-      print("⏹️  Stopped watching config file")
+      logger.file_watcher("⏹️  Stopped watching config file")
 
 
 
@@ -185,7 +187,7 @@ class TomWebService:
       for reminder in reminders:
         notifications.append({"datetime": reminder['reminder_datetime'], "message": reminder['reminder_message']})
 
-    print(notifications)
+    logger.debug(f"Notifications retrieved: {len(notifications)} items", username)
 
     return notifications
 
@@ -229,17 +231,19 @@ class TomWebService:
     client_type = input_json.get('client_type', 'pwa')
     username = cherrypy.session['username']
 
+    # Set logging context for this request
+    set_log_context(username, client_type)
+    
+    logger.user_request(user_input, username, client_type)
+
     session_instance = self.get_session_instance()
     response = session_instance.processRequest(input=user_input, lang=lang, position=position, client_type=client_type)
 
-
-    print(response)
-
     if response:
-
+      logger.user_response(response, username, client_type)
       return {"response": response} 
-
     else:
+      logger.error(f"Failed to process request: {user_input}", username, client_type)
       raise cherrypy.HTTPError(500, response)
 
   ####
@@ -261,11 +265,10 @@ class TomWebService:
     message = userList[username].tasks.msg
     id = userList[username].tasks.status_id
 
-    print(response)
+    logger.debug(f"Tasks retrieved: {len(response) if response else 0} items", username)
 
     if response:
       return {"background_tasks": response, "message": message, "id": id} 
-
     else:
       return {"background_tasks": [], "message": "", "id": 0} 
 
@@ -294,13 +297,15 @@ class TomWebService:
     for user in global_config['users']:
       if user['username'] == username and user['password'] == password:
         cherrypy.session['username'] = username
-        print(f"History cleaning for user {username}")
+        logger.auth_event("login", username, "web", success=True)
+        logger.info(f"History cleaning for user {username}", username)
         # Clean session-specific history, not user-wide history
         session_instance = self.get_session_instance()
         session_instance.reset()
 
         raise cherrypy.HTTPRedirect("/index")
 
+    logger.auth_event("login", username, "web", success=False)
     return "Invalid credentials. <a href='/auth'>Try again</a>"
 
 
@@ -350,7 +355,7 @@ class TomWebService:
       session_key = f"{username}_{session_id}"
       if session_key in session_instances:
         del session_instances[session_key]
-        print(f"Cleaned up session instance for {session_key}")
+        logger.info(f"Cleaned up session instance for {session_key}", username)
 
   ####
   #
@@ -458,7 +463,7 @@ global_config = {}
 
 # Get config file path from command line argument or use default
 config_file_path = sys.argv[1] if len(sys.argv) > 1 else '/data/config.yml'
-print(f"Using config file: {config_file_path}")
+logger.startup(f"Using config file: {config_file_path}")
 
 global_config = initConf(config_file_path)
 # Add config file path to global config for use in modules
@@ -603,6 +608,6 @@ if __name__ == "__main__":
         }
     })
   except KeyboardInterrupt:
-    print("\n🛑 Shutting down...")
+    logger.shutdown("Shutting down...")
     config_watcher.stop()
 
