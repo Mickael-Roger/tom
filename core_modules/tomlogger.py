@@ -25,14 +25,14 @@ class TomLogger:
     _instance = None
     _lock = threading.Lock()
     
-    def __new__(cls):
+    def __new__(cls, log_level: str = "INFO"):
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super(TomLogger, cls).__new__(cls)
         return cls._instance
     
-    def __init__(self):
+    def __init__(self, log_level: str = "INFO"):
         if hasattr(self, '_initialized'):
             return
         
@@ -41,7 +41,7 @@ class TomLogger:
         
         # Configure the logger
         self.logger = logging.getLogger('tom')
-        self.logger.setLevel(logging.DEBUG)
+        self.set_log_level(log_level)
         
         # Remove existing handlers to avoid duplicates
         self.logger.handlers.clear()
@@ -60,6 +60,23 @@ class TomLogger:
         
         # Prevent propagation to avoid duplicate logs
         self.logger.propagate = False
+    
+    def set_log_level(self, log_level: str):
+        """Set the log level for the logger"""
+        level_map = {
+            "DEBUG": logging.DEBUG,
+            "INFO": logging.INFO,
+            "WARNING": logging.WARNING,
+            "ERROR": logging.ERROR,
+            "CRITICAL": logging.CRITICAL
+        }
+        
+        level = level_map.get(log_level.upper(), logging.INFO)
+        self.logger.setLevel(level)
+        
+        # Also update all handlers to ensure they respect the new level
+        for handler in self.logger.handlers:
+            handler.setLevel(level)
     
     def set_context(self, username: Optional[str] = None, client_type: Optional[str] = None, module_name: Optional[str] = None):
         """Set the context for the current thread"""
@@ -189,25 +206,42 @@ class TomLogger:
         """Log file watcher events"""
         self.info(f"🔍 {message}", module_name="system")
 
-# Global logger instance
-logger = TomLogger()
+# Global logger instance - will be initialized with config in server.py
+logger = None
+
+# Function to initialize the global logger
+def init_logger(log_level: str = "INFO"):
+    """Initialize the global logger with the specified log level"""
+    global logger
+    if logger is None:
+        logger = TomLogger(log_level)
+    else:
+        # Update log level if logger already exists
+        logger.set_log_level(log_level)
+    return logger
 
 # Convenience functions for easy access
 def set_log_context(username: Optional[str] = None, client_type: Optional[str] = None, module_name: Optional[str] = None):
     """Set logging context for current thread"""
-    logger.set_context(username, client_type, module_name)
+    if logger:
+        logger.set_context(username, client_type, module_name)
 
 def debug(message: str, username: Optional[str] = None, client_type: Optional[str] = None, module_name: Optional[str] = None):
-    logger.debug(message, username, client_type, module_name)
+    if logger:
+        logger.debug(message, username, client_type, module_name)
 
 def info(message: str, username: Optional[str] = None, client_type: Optional[str] = None, module_name: Optional[str] = None):
-    logger.info(message, username, client_type, module_name)
+    if logger:
+        logger.info(message, username, client_type, module_name)
 
 def warning(message: str, username: Optional[str] = None, client_type: Optional[str] = None, module_name: Optional[str] = None):
-    logger.warning(message, username, client_type, module_name)
+    if logger:
+        logger.warning(message, username, client_type, module_name)
 
 def error(message: str, username: Optional[str] = None, client_type: Optional[str] = None, module_name: Optional[str] = None):
-    logger.error(message, username, client_type, module_name)
+    if logger:
+        logger.error(message, username, client_type, module_name)
 
 def critical(message: str, username: Optional[str] = None, client_type: Optional[str] = None, module_name: Optional[str] = None):
-    logger.critical(message, username, client_type, module_name)
+    if logger:
+        logger.critical(message, username, client_type, module_name)

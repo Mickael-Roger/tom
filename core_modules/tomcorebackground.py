@@ -4,7 +4,7 @@ import functools
 import threading
 import time
 import json
-from tomlogger import logger
+import tomlogger
 
 ################################################################################################
 #                                                                                              #
@@ -104,10 +104,10 @@ class TomBackground:
     response = self.llm.callLLM(llm_consign, llm='mistral')
 
     if response:
-      logger.debug(f"Background task response: {response.choices[0].message.content}", self.username)
+      tomlogger.debug(f"Background task response: {response.choices[0].message.content}", self.username)
       return response.choices[0].message.content
     else:
-      logger.warning("No response from background task processing", self.username)
+      tomlogger.warning("No response from background task processing", self.username)
       return ""
 
 

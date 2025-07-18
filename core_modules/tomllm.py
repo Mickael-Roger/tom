@@ -9,7 +9,8 @@ from litellm import completion
 import os
 
 # Logging
-from tomlogger import logger, set_log_context
+import tomlogger
+from tomlogger import set_log_context
 
 
 
@@ -42,7 +43,7 @@ class TomLLM():
 
 
     if global_config['global']['llm'] not in ["mistral", "openai", "deepseek", "xai", "gemini"]:
-      logger.critical(f"LLM {global_config['global']['llm']} not supported")
+      tomlogger.critical(f"LLM {global_config['global']['llm']} not supported")
       exit(-1)
 
     self.llm = global_config['global']['llm']
@@ -83,7 +84,7 @@ class TomLLM():
 
 
   def reset(self):
-    logger.info(f"History cleaning", self.username)
+    tomlogger.info(f"History cleaning", self.username)
     self.history = []
 
     return True
@@ -141,7 +142,7 @@ class TomLLM():
 
     model=self.llms[self.llm][complexity]
 
-    logger.debug(f"Messages to send: {str(messages)} | Tools available: {str(tools)}", self.username)
+    tomlogger.debug(f"Messages to send: {str(messages)} | Tools available: {str(tools)}", self.username)
 
     if llm == "deepseek":
       if tools: 
@@ -164,7 +165,7 @@ class TomLLM():
         messages = messages,
       )
 
-    logger.debug(f"LLM Response: {str(response)}", self.username)
+    tomlogger.debug(f"LLM Response: {str(response)}", self.username)
 
 
     if not response:
@@ -287,7 +288,7 @@ class TomLLM():
 
           # Yes we are
           if load_modules:
-            logger.debug(f"Load modules: {str(load_modules)}", self.username)
+            tomlogger.debug(f"Load modules: {str(load_modules)}", self.username)
   
             tools = []
             complexity = 0
@@ -305,11 +306,11 @@ class TomLLM():
                 try:
                   if self.services[mod]["complexity"] > complexity:
                     complexity = self.services[mod]["complexity"]
-                    logger.debug(f"Complexity increased to {complexity}", self.username)
+                    tomlogger.debug(f"Complexity increased to {complexity}", self.username)
                 except:
                   pass
               else:
-                logger.warning(f"Module '{mod}' not loaded in services, skipping", self.username)
+                tomlogger.warning(f"Module '{mod}' not loaded in services, skipping", self.username)
 
 
             llm = None
@@ -328,7 +329,7 @@ class TomLLM():
               function_name = tool_call.function.name
               function_params = json.loads(tool_call.function.arguments)
     
-              logger.info(f"Calling function: {function_name} with {function_params}", self.username)
+              tomlogger.info(f"Calling function: {function_name} with {function_params}", self.username)
     
               if function_name in self.functions:
                 # Set module context for logging during function execution
@@ -342,8 +343,8 @@ class TomLLM():
                   # Reset module context after function execution
                   set_log_context(module_name=None)
               else:
-                logger.error(f"Function '{function_name}' not found in available functions", self.username)
-                logger.error(f"Available functions: {list(self.functions.keys())}", self.username)
+                tomlogger.error(f"Function '{function_name}' not found in available functions", self.username)
+                tomlogger.error(f"Available functions: {list(self.functions.keys())}", self.username)
                 function_result = {"error": f"Function '{function_name}' not available. This might be due to a module loading error."}
     
               if function_result is False:

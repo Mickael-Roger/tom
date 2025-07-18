@@ -22,7 +22,7 @@ from tomllm import TomLLM
 from tomcorebehavior import TomBehavior
 from tomcorememory import TomMemory
 from tomcorereminder import TomReminder
-from tomlogger import logger, set_log_context
+from tomlogger import logger, set_log_context, init_logger
 #from tomcoreremember import TomRemember
 #from tomcoremorningroutine import TomMorning
 from tomcorebackground import TomBackground
@@ -463,11 +463,19 @@ global_config = {}
 
 # Get config file path from command line argument or use default
 config_file_path = sys.argv[1] if len(sys.argv) > 1 else '/data/config.yml'
+
+# Initialize logger with default level first for startup messages
+logger = init_logger('INFO')
 logger.startup(f"Using config file: {config_file_path}")
 
 global_config = initConf(config_file_path)
 # Add config file path to global config for use in modules
 global_config['config_path'] = config_file_path
+
+# Re-initialize logger with log_level from config (default to 'INFO' if not specified)
+log_level = global_config.get('global', {}).get('log_level', 'INFO')
+logger = init_logger(log_level)
+logger.startup(f"Log level set to: {log_level}")
 
 
 

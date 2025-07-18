@@ -8,7 +8,7 @@ import threading
 import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-from tomlogger import logger
+import tomlogger
 
 class ModuleFileHandler(FileSystemEventHandler):
   """Handler for file system events on module files"""
@@ -39,7 +39,7 @@ class ModuleFileHandler(FileSystemEventHandler):
       filename = os.path.basename(event.src_path)
       module_name = filename[:-3]  # Remove .py extension
       
-      logger.info(f"🔄 Module file changed: {filename}")
+      tomlogger.info(f"🔄 Module file changed: {filename}")
       
       # Trigger hot reload in a separate thread to avoid blocking the file watcher
       threading.Thread(target=self._hot_reload_module, args=(module_name,), daemon=True).start()
@@ -54,17 +54,17 @@ class ModuleFileHandler(FileSystemEventHandler):
       if self.module_manager.module_managers:
         for username, user_module_manager in self.module_manager.module_managers.items():
           if module_name in user_module_manager.services:
-            logger.module_reload(module_name, username, success=True)
+            (tomlogger.logger.module_reload if tomlogger.logger else lambda *args, **kwargs: None)(module_name, username, success=True)
             user_module_manager._hot_reload_single_module(module_name)
       
       # Also reload for the current module manager if it has the module loaded
       if module_name in self.module_manager.services:
-        logger.module_reload(module_name, success=True)
+        (tomlogger.logger.module_reload if tomlogger.logger else lambda *args, **kwargs: None)(module_name, success=True)
         self.module_manager._hot_reload_single_module(module_name)
         
     except Exception as e:
-      logger.module_reload(module_name, success=False)
-      logger.error(f"Error during hot reload of module '{module_name}': {e}")
+      (tomlogger.logger.module_reload if tomlogger.logger else lambda *args, **kwargs: None)(module_name, success=False)
+      tomlogger.error(f"Error during hot reload of module '{module_name}': {e}")
 
 class TomCoreModules:
   # Class variables to handle global state
@@ -212,7 +212,7 @@ class TomCoreModules:
     data_modules_dir = '/data/modules'
     source_modules_dir = './modules'
     
-    logger.info("📋 Starting modules synchronization...")
+    tomlogger.info("📋 Starting modules synchronization...")
     
     # Create /data/modules directory if it doesn't exist
     os.makedirs(data_modules_dir, exist_ok=True)
@@ -226,31 +226,31 @@ class TomCoreModules:
           dest_file = os.path.join(data_modules_dir, filename)
           try:
             shutil.copy2(source_file, dest_file)
-            logger.file_sync(filename, success=True)
+            (tomlogger.logger.file_sync if tomlogger.logger else lambda *args, **kwargs: None)(filename, success=True)
           except Exception as e:
-            logger.file_sync(filename, success=False)
-            logger.error(f"Error copying module {filename}: {e}")
+            (tomlogger.logger.file_sync if tomlogger.logger else lambda *args, **kwargs: None)(filename, success=False)
+            tomlogger.error(f"Error copying module {filename}: {e}")
     else:
-      logger.warning(f"Source modules directory {source_modules_dir} does not exist")
+      tomlogger.warning(f"Source modules directory {source_modules_dir} does not exist")
     
-    logger.info("✅ Modules synchronization complete!")
+    tomlogger.info("✅ Modules synchronization complete!")
 
   def _start_file_watcher(self):
     """Start watching the /data/modules directory for file changes"""
     try:
       modules_dir = '/data/modules'
       if not os.path.exists(modules_dir):
-        logger.warning(f"Modules directory {modules_dir} does not exist, file watching disabled")
+        tomlogger.warning(f"Modules directory {modules_dir} does not exist, file watching disabled")
         return
         
       TomCoreModules._file_observer = Observer()
       TomCoreModules._event_handler = ModuleFileHandler(self)
       TomCoreModules._file_observer.schedule(TomCoreModules._event_handler, modules_dir, recursive=False)
       TomCoreModules._file_observer.start()
-      logger.file_watcher(f"Started file watcher for {modules_dir}")
+      tomlogger.logger.file_watcher(f"Started file watcher for {modules_dir}")
       
     except Exception as e:
-      logger.error(f"Error starting file watcher: {e}")
+      tomlogger.error(f"Error starting file watcher: {e}")
       
   @classmethod
   def _stop_file_watcher(cls):
@@ -260,7 +260,7 @@ class TomCoreModules:
       cls._file_observer.join()
       cls._file_observer = None
       cls._event_handler = None
-      logger.file_watcher("File watcher stopped")
+      tomlogger.logger.file_watcher("File watcher stopped")
       
   def _reload_module_definition(self, module_name):
     """Reload a module definition from file"""
@@ -270,7 +270,7 @@ class TomCoreModules:
       file_path = os.path.join(modules_dir, filename)
       
       if not os.path.exists(file_path):
-        logger.error(f"Module file not found: {file_path}")
+        tomlogger.error(f"Module file not found: {file_path}")
         return False
         
       # Clear the module from globals if it exists
@@ -299,20 +299,20 @@ class TomCoreModules:
           self.module_list[tom_mod_config['module_name']] = module_info
           # Update global module list
           TomCoreModules._module_list_global[tom_mod_config['module_name']] = module_info
-          logger.info(f"✅ Module definition reloaded: {module_name}")
+          tomlogger.info(f"✅ Module definition reloaded: {module_name}")
           return True
       
       return False
       
     except Exception as e:
-      logger.error(f"Error reloading module definition for {module_name}: {e}")
+      tomlogger.error(f"Error reloading module definition for {module_name}: {e}")
       return False
       
   def _hot_reload_single_module(self, module_name):
     """Hot reload a single module for this user"""
     try:
       if module_name not in self.services:
-        logger.debug(f"Module '{module_name}' not loaded for user {self.user_config['username']}", self.user_config['username'])
+        tomlogger.logger.debug(f"Module '{module_name}' not loaded for user {self.user_config['username']}", self.user_config['username'])
         return False
         
       # Get the current module config
@@ -325,14 +325,14 @@ class TomCoreModules:
       success = self._load_single_module(module_name)
       
       if success:
-        logger.info(f"✅ Hot reload successful for module '{module_name}'", self.user_config['username'])
+        tomlogger.info(f"✅ Hot reload successful for module '{module_name}'", self.user_config['username'])
         return True
       else:
-        logger.error(f"❌ Hot reload failed for module '{module_name}'", self.user_config['username'])
+        tomlogger.error(f"❌ Hot reload failed for module '{module_name}'", self.user_config['username'])
         return False
         
     except Exception as e:
-      logger.error(f"Error during hot reload of module '{module_name}': {e}", self.user_config['username'])
+      tomlogger.error(f"Error during hot reload of module '{module_name}': {e}", self.user_config['username'])
       return False
       
   def __del__(self):
@@ -355,11 +355,11 @@ class TomCoreModules:
           
           if service_name not in self.module_list:
             self.module_status[service_name] = 'error'
-            logger.error(f"Module '{service_name}' not found in available modules", self.user_config['username'])
+            tomlogger.error(f"Module '{service_name}' not found in available modules", self.user_config['username'])
             continue
           
           self.module_status[service_name] = 'loading'
-          logger.debug(f"Loading module '{service_name}'", self.user_config['username'])
+          tomlogger.logger.debug(f"Loading module '{service_name}'", self.user_config['username'])
           
           module_info = self.module_list[service_name]
           module_class_name = module_info['class']
@@ -392,23 +392,23 @@ class TomCoreModules:
                 "module_name": service_name
               }
             self.module_status[service_name] = 'loaded'
-            logger.module_load(service_name, self.user_config['username'], success=True)
+            (tomlogger.logger.module_load if tomlogger.logger else lambda *args, **kwargs: None)(service_name, self.user_config['username'], success=True)
           else:
             self.module_status[service_name] = 'error'
-            logger.module_load(service_name, self.user_config['username'], success=False)
-            logger.error(f"Class {module_class_name} not found", self.user_config['username'])
+            (tomlogger.logger.module_load if tomlogger.logger else lambda *args, **kwargs: None)(service_name, self.user_config['username'], success=False)
+            tomlogger.error(f"Class {module_class_name} not found", self.user_config['username'])
 
         except Exception as e:
           self.module_status[service_name] = 'error'
-          logger.module_load(service_name, self.user_config['username'], success=False)
-          logger.error(f"Error loading module {service_name}: {e}", self.user_config['username'])
+          (tomlogger.logger.module_load if tomlogger.logger else lambda *args, **kwargs: None)(service_name, self.user_config['username'], success=False)
+          tomlogger.error(f"Error loading module {service_name}: {e}", self.user_config['username'])
 
   def _load_single_module(self, service_name):
     """Load a single module"""
     try:
       if service_name not in self.module_list:
         self.module_status[service_name] = 'error'
-        logger.error(f"Module {service_name} not found in available modules", self.user_config['username'])
+        tomlogger.error(f"Module {service_name} not found in available modules", self.user_config['username'])
         return False
       
       service_config = self.user_config['services'][service_name]
@@ -451,18 +451,18 @@ class TomCoreModules:
             "module_name": service_name
           }
         self.module_status[service_name] = 'loaded'
-        logger.module_load(service_name, self.user_config['username'], success=True)
+        (tomlogger.logger.module_load if tomlogger.logger else lambda *args, **kwargs: None)(service_name, self.user_config['username'], success=True)
         return True
       else:
         self.module_status[service_name] = 'error'
-        logger.module_load(service_name, self.user_config['username'], success=False)
-        logger.error(f"Class {module_class_name} not found", self.user_config['username'])
+        (tomlogger.logger.module_load if tomlogger.logger else lambda *args, **kwargs: None)(service_name, self.user_config['username'], success=False)
+        tomlogger.error(f"Class {module_class_name} not found", self.user_config['username'])
         return False
 
     except Exception as e:
       self.module_status[service_name] = 'error'
-      logger.module_load(service_name, self.user_config['username'], success=False)
-      logger.error(f"Error loading module {service_name}: {e}", self.user_config['username'])
+      (tomlogger.logger.module_load if tomlogger.logger else lambda *args, **kwargs: None)(service_name, self.user_config['username'], success=False)
+      tomlogger.error(f"Error loading module {service_name}: {e}", self.user_config['username'])
       return False
 
   def _unload_single_module(self, service_name):
@@ -479,13 +479,13 @@ class TomCoreModules:
         del self.services[service_name]
         
         self.module_status[service_name] = 'disabled'
-        logger.info(f"○ Module {service_name} unloaded", self.user_config['username'])
+        tomlogger.info(f"○ Module {service_name} unloaded", self.user_config['username'])
         return True
       else:
         self.module_status[service_name] = 'disabled'
         return True
     except Exception as e:
-      logger.error(f"Error unloading module {service_name}: {e}", self.user_config['username'])
+      tomlogger.error(f"Error unloading module {service_name}: {e}", self.user_config['username'])
       return False
 
   def update_modules_config(self, new_user_config):
@@ -525,7 +525,7 @@ class TomCoreModules:
         # Module removed
         self._unload_single_module(service_name)
     
-    logger.info(f"Configuration updated for user {self.user_config['username']}", self.user_config['username'])
+    tomlogger.info(f"Configuration updated for user {self.user_config['username']}", self.user_config['username'])
 
   def get_module_status(self):
     """Return the current status of all modules for this user"""
@@ -744,7 +744,7 @@ class TomCoreModules:
   @staticmethod
   def print_modules_status_summary(user_modules_dict):
     """Print a summary of module loading status for all users"""
-    logger.info("📊 Module loading status summary:")
+    tomlogger.info("📊 Module loading status summary:")
     
     for username, module_manager in user_modules_dict.items():
       status_counts = {'loaded': 0, 'disabled': 0, 'error': 0}
@@ -754,6 +754,6 @@ class TomCoreModules:
       
       total_modules = sum(status_counts.values())
       if total_modules > 0:
-        logger.info(f"👤 {username}: {status_counts['loaded']} loaded, {status_counts['disabled']} disabled, {status_counts['error']} errors", username)
+        tomlogger.info(f"👤 {username}: {status_counts['loaded']} loaded, {status_counts['disabled']} disabled, {status_counts['error']} errors", username)
 
 

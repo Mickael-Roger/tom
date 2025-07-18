@@ -1,5 +1,6 @@
 global:
   llm: openai
+  log_level: INFO
   
   mistral:
     api: XXXXXXXXXXXXXXXXXXXXXXXX
