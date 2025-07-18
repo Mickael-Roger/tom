@@ -436,13 +436,8 @@ docker build -f Dockerfile.test-unittest -t tom-tests-unittest .
 docker run --rm tom-tests
 
 # Run specific unit test file with pytest
-docker run --rm tom-tests python -m pytest tests/test_tomweather.py -v
+docker run --rm tom-tests tests/test_tomweather.py 
 
-# Run all tests with unittest
-docker run --rm tom-tests-unittest
-
-# Run specific test file with unittest
-docker run --rm tom-tests-unittest python -m unittest tests.test_tomweather -v
 ```
 
 **Integration Tests (real API calls):**
@@ -464,13 +459,13 @@ docker run --rm \
 docker run --rm \
   -v $(pwd)/config.yml:/config.yml:ro \
   -v $(pwd)/data:/app/data \
-  tom-tests python -m pytest tests/test_*_integration.py -v
+  tom-tests tests/test_*_integration.py 
 
 # Run specific integration test
 docker run --rm \
   -v $(pwd)/config.yml:/config.yml:ro \
   -v $(pwd)/data:/app/data \
-  tom-tests python -m pytest tests/test_tomidfm_integration.py::TestTomIdfmIntegration::test_real_search_station -v
+  tom-tests tests/test_tomidfm_integration.py::TestTomIdfmIntegration::test_real_search_station 
 ```
 
 **Mixed Testing (unit tests without config, integration tests skipped):**

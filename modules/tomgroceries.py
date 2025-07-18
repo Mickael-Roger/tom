@@ -35,11 +35,16 @@ class TomGroceries:
   
     self.client = caldav.DAVClient(
       url = config['url'],
-      username = config['user'],
+      username = config.get('user', ''),  # Handle missing user field gracefully
       password = config['password'],
     )
 
     self.date_format = "%Y-%m-%d %H:%M:%S"
+
+    if tz != None:
+      self.tz = pytz.timezone(tz)
+    else:
+      self.tz = pytz.timezone('Europe/Paris')
 
 
     principal = self.client.principal()
@@ -84,7 +89,7 @@ class TomGroceries:
                 "description": f"The name of the product to add in the grocery list.",
               },
             },
-            "required": ["prodcut"],
+            "required": ["product"],
             "additionalProperties": False,
           },
         }
@@ -132,10 +137,15 @@ class TomGroceries:
 
   def update(self):
 
-    self.groceryList = []
+    try:
+        self.groceryList = []
 
-    for product in self.groceryCal.todos():
-      self.groceryList.append({"product": str(product.icalendar_component.get('summary')), "id": str(product.icalendar_component.get('uid'))})
+        for product in self.groceryCal.todos():
+            self.groceryList.append({"product": str(product.icalendar_component.get('summary')), "id": str(product.icalendar_component.get('uid'))})
+            
+    except Exception as e:
+        logger.error(f"Error updating grocery list: {str(e)}", module_name="groceries")
+        self.groceryList = []
 
 
 
@@ -146,30 +156,59 @@ class TomGroceries:
 
   def add(self, product):
 
-    # Create a new VTODO component
-    task = Todo()
-    task.add('summary', product)
+    try:
+        # Create a new VTODO component
+        task = Todo()
+        task.add('summary', product)
 
-    # Add the VTODO component to the calendar
-    cal = iCalendar()
-    cal.add_component(task)
-    self.groceryCal.save_event(cal.to_ical().decode('utf-8'))
+        # Add the VTODO component to the calendar
+        cal = iCalendar()
+        cal.add_component(task)
+        self.groceryCal.save_event(cal.to_ical().decode('utf-8'))
 
-    self.update()
+        self.update()
+        
+        logger.info(f"Product '{product}' has been added to grocery list.", module_name="groceries")
 
-    return {"status": "success", "message": "product added."}
+        return {"status": "success", "message": "product added."}
+        
+    except Exception as e:
+        logger.error(f"Error adding product '{product}': {str(e)}", module_name="groceries")
+        return {"status": "error", "message": f"Failed to add product: {str(e)}"}
 
 
   def remove(self, id):
 
-    tasks = self.groceryCal.todos()
+    try:
+        task = self.groceryCal.todo_by_uid(id)
+        if not task:
+            return False
 
-    for task in tasks:
-      task_uid = task.icalendar_component.get('UID')
-      if task_uid == id:
-        productName = task.icalendar_component.get('SUMMARY')
+        # Handle both old and new CalDAV API for getting product name
+        if hasattr(task, 'vobject_instance') and task.vobject_instance:
+            vtodo = task.vobject_instance.vtodo
+            productName = vtodo.summary.value if hasattr(vtodo, 'summary') else 'No summary'
+        elif hasattr(task, 'icalendar_instance') and task.icalendar_instance:
+            # Use icalendar API
+            productName = str(task.icalendar_component.get('summary', 'No summary'))
+        else:
+            # Fallback to legacy API with deprecation handling
+            try:
+                vtodo = task.instance.vtodo
+                productName = vtodo.contents.get('summary', ['No summary'])[0].value
+            except AttributeError:
+                # If instance.vtodo doesn't work, try to get product name
+                productName = str(task.icalendar_component.get('summary', 'No summary'))
 
         task.delete()
-        logger.info(f"Task with UID '{task_uid}: {productName}' has been deleted.")
-
-    return {"status": "success", "message": "product removed."}
+        
+        self.update()
+        
+        logger.info(f"Product '{productName}' has been removed from grocery list.", module_name="groceries")
+        
+        return {"status": "success", "message": "product removed."}
+        
+    except Exception as e:
+        # Handle CalDAV exceptions (like NotFoundError)
+        logger.error(f"Error removing product {id}: {str(e)}", module_name="groceries")
+        return False

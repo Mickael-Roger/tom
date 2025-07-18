@@ -11,6 +11,11 @@ todo:
   url: "https://your-caldav-server.com/remote.php/dav/"
   user: "YOUR_CALDAV_USERNAME"
 
+groceries:
+  list: "YOUR_GROCERY_LIST_NAME"
+  password: "YOUR_CALDAV_PASSWORD"
+  url: "https://your-caldav-server.com/remote.php/dav/"
+
 global:
   # Add other global configuration as needed
   log_level: "DEBUG"
@@ -24,3 +29,5 @@ users:
         # Any user-specific IDFM configuration if needed
       todo:
         # Any user-specific TODO configuration if needed
+      groceries:
+        # Any user-specific groceries configuration if needed
