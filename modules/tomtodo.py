@@ -171,7 +171,7 @@ class TomTodo:
 
     self.update()
 
-    logger.info(f"Task '{taskName}' has been closed.")
+    logger.info(f"Task '{taskName}' has been closed.", module_name="todo")
 
     return {"status": "success", "message": "Todo task removed"}
 

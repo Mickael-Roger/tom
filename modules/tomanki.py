@@ -169,7 +169,7 @@ class TomAnki:
 
   def run_update(self):
     while True:
-      logger.info("Anki: Run auto update")
+      logger.info("Anki: Run auto update", module_name="anki")
       time_diff = datetime.now() - self.lastUpdate
       if time_diff > timedelta(minutes=15):
         self.update()
@@ -205,7 +205,7 @@ class TomAnki:
     if response.status_code == 200:
         return response.json().get("result")
     else:
-        logger.error(f"Anki sync error {response.status_code}: {response.text}")
+        logger.error(f"Anki sync error {response.status_code}: {response.text}", module_name="anki")
         return None
 
 
@@ -267,16 +267,16 @@ class TomAnki:
     cards_list = []
 
     cards_ids = self.anki_request("findCards", {"query": f"deck:{deck_name}"})
-    logger.debug("==================")
-    logger.debug(cards_ids)
-    logger.debug("==================")
+    logger.debug("==================", module_name="anki")
+    logger.debug(cards_ids, module_name="anki")
+    logger.debug("==================", module_name="anki")
     if not cards_ids:
         return cards_list
     
     cards_info = self.anki_request("cardsInfo", {"cards": cards_ids})
-    logger.debug("==================")
-    logger.debug(cards_info)
-    logger.debug("==================")
+    logger.debug("==================", module_name="anki")
+    logger.debug(cards_info, module_name="anki")
+    logger.debug("==================", module_name="anki")
     
     if cards_info:
       for card in cards_info:

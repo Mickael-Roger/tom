@@ -504,7 +504,16 @@ for username, module_manager in module_managers.items():
     "complexity": module_manager.complexity,
     "functions": module_manager.functions
   }
-  userList[username].functions.update(module_manager.functions)
+  # Update functions with module metadata for extension modules
+  for func_name, func_data in module_manager.functions.items():
+    if isinstance(func_data, dict) and 'module_name' in func_data:
+      userList[username].functions[func_name] = func_data
+    else:
+      # Handle legacy format - add module metadata
+      userList[username].functions[func_name] = {
+        "function": func_data['function'] if isinstance(func_data, dict) else func_data,
+        "module_name": "modules" if isinstance(func_data, dict) else "modules"
+      }
     
   behavior_obj = TomBehavior(global_config, username)
   userList[username].services['behavior'] = {
@@ -518,7 +527,12 @@ for username, module_manager in module_managers.items():
   userList[username].services['behavior']['tools'] = userList[username].services['behavior']['obj'].tools
   userList[username].services['behavior']['complexity'] = userList[username].services['behavior']['obj'].complexity
   userList[username].services['behavior']['systemContext'] = userList[username].services['behavior']['obj'].systemContext
-  userList[username].functions = userList[username].functions | userList[username].services['behavior']['obj'].functions
+  # Update functions with module metadata for behavior module
+  for func_name, func_data in userList[username].services['behavior']['obj'].functions.items():
+    userList[username].functions[func_name] = {
+      "function": func_data['function'] if isinstance(func_data, dict) else func_data,
+      "module_name": "behavior"
+    }
 
   memory_obj = TomMemory(global_config, username)
   userList[username].services['memory'] = {
@@ -532,7 +546,12 @@ for username, module_manager in module_managers.items():
   userList[username].services['memory']['tools'] = userList[username].services['memory']['obj'].tools
   userList[username].services['memory']['complexity'] = userList[username].services['memory']['obj'].complexity
   userList[username].services['memory']['systemContext'] = userList[username].services['memory']['obj'].systemContext
-  userList[username].functions = userList[username].functions | userList[username].services['memory']['obj'].functions
+  # Update functions with module metadata for memory module
+  for func_name, func_data in userList[username].services['memory']['obj'].functions.items():
+    userList[username].functions[func_name] = {
+      "function": func_data['function'] if isinstance(func_data, dict) else func_data,
+      "module_name": "memory"
+    }
   userList[username].services['memory']['obj'].llm = userList[username].llm
 
   reminder_obj = TomReminder(global_config, username)
@@ -547,7 +566,12 @@ for username, module_manager in module_managers.items():
   userList[username].services['reminder']['tools'] = userList[username].services['reminder']['obj'].tools
   userList[username].services['reminder']['complexity'] = userList[username].services['reminder']['obj'].complexity
   userList[username].services['reminder']['systemContext'] = userList[username].services['memory']['obj'].systemContext
-  userList[username].functions = userList[username].functions | userList[username].services['reminder']['obj'].functions
+  # Update functions with module metadata for reminder module
+  for func_name, func_data in userList[username].services['reminder']['obj'].functions.items():
+    userList[username].functions[func_name] = {
+      "function": func_data['function'] if isinstance(func_data, dict) else func_data,
+      "module_name": "reminder"
+    }
 
   userList[username].tasks = TomBackground(global_config, username, userList[username].services, userList[username])
 #  userList[username].services['remember'] = {

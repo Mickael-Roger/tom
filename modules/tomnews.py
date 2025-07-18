@@ -521,9 +521,7 @@ class TomNews:
 
       unread_news['category'][category].append({"news_id": id, "author": author, "title": title, "url": url})
 
-    logger.debug("-------------------")
     logger.debug(unread_news)
-    logger.debug("-------------------")
     
     if unread_news['category']:
       return unread_news

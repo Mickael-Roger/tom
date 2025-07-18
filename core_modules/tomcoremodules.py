@@ -385,7 +385,12 @@ class TomCoreModules:
               "functions": getattr(module_instance, 'functions', {}),
               "type": module_info['type']
             }
-            self.functions.update(module_instance.functions)
+            # Update functions with module metadata
+            for func_name, func_data in module_instance.functions.items():
+              self.functions[func_name] = {
+                **func_data,
+                "module_name": service_name
+              }
             self.module_status[service_name] = 'loaded'
             logger.module_load(service_name, self.user_config['username'], success=True)
           else:
@@ -439,7 +444,12 @@ class TomCoreModules:
           "functions": getattr(module_instance, 'functions', {}),
           "type": module_info['type']
         }
-        self.functions.update(module_instance.functions)
+        # Update functions with module metadata
+        for func_name, func_data in module_instance.functions.items():
+          self.functions[func_name] = {
+            **func_data,
+            "module_name": service_name
+          }
         self.module_status[service_name] = 'loaded'
         logger.module_load(service_name, self.user_config['username'], success=True)
         return True

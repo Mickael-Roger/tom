@@ -223,9 +223,7 @@ class TomYoutube:
 
       videos['videos'].append({"video_id": id, "channel": channel, "title": title, "url": uri, "viewed": False})
 
-    logger.debug("-------------------")
     logger.debug(videos)
-    logger.debug("-------------------")
     
     if videos['videos']:
       return videos

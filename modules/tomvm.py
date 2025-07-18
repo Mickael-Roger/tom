@@ -86,14 +86,12 @@ class TomVm:
 
   def create(self, request):
 
-    logger.debug("INSERT ******************************")
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
     cursor.execute('INSERT INTO vmtasks (request, status) VALUES (?, ?)', (request, 'in progress'))
     dbconn.commit()
     dbconn.close()
 
-    logger.debug("Thread ******************************")
     # Create a thread that process the request
     self.thread = threading.Thread(target=self.process, args=(request))
     self.thread.daemon = True  # Allow the thread to exit when the main program exits
@@ -102,7 +100,6 @@ class TomVm:
 
   def process(self, request):
 
-    logger.debug("Thread 1 ******************************")
     prompt = []
 
     tools = [
@@ -140,16 +137,13 @@ class TomVm:
 
     prompt.append({"role": "user", "content": request})
 
-    logger.debug("Thread 2 ******************************")
     while True:
       response = self.llm.callLLM(messages=prompt, tools=tools, complexity=1, llm="deepseek")
   
       logger.debug(response)
       if response != False:
         if response.choices[0].finish_reason == "stop":
-          logger.debug("RESULTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT")
           logger.debug(response.choices[0].message.content)
-          logger.debug("----------------------------------")
           return response.choices[0].message.content
         elif response.choices[0].finish_reason == "tool_calls":
           prompt.append(response.choices[0].message.to_dict())

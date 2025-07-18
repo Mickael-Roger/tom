@@ -153,7 +153,7 @@ class TomCafetaria:
   def run_update(self):
     while True:
       time.sleep(3600)
-      logger.info("Cafetaria: Run auto update")
+      logger.info("Cafetaria: Run auto update", module_name="cafetaria")
       time_diff = datetime.now() - self.lastUpdate
       if time_diff > timedelta(hours=48):
         self.update()
@@ -202,7 +202,7 @@ class TomCafetaria:
           self.background_status['status'] = status
 
       else:
-        logger.error("Could not extract cafetaria credit")
+        logger.error("Could not extract cafetaria credit", module_name="cafetaria")
 
         
 
@@ -250,7 +250,7 @@ class TomCafetaria:
 
 
     self.lastUpdate = datetime.now()
-    logger.info("Cafetaria updated")
+    logger.info("Cafetaria updated", module_name="cafetaria")
 
 
 

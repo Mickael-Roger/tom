@@ -9,7 +9,7 @@ from litellm import completion
 import os
 
 # Logging
-from tomlogger import logger
+from tomlogger import logger, set_log_context
 
 
 
@@ -141,10 +141,7 @@ class TomLLM():
 
     model=self.llms[self.llm][complexity]
 
-    logger.debug("Messages to send:", self.username)
-    logger.debug(str(messages), self.username)
-    logger.debug("Tools available:", self.username)
-    logger.debug(str(tools), self.username)
+    logger.debug(f"Messages to send: {str(messages)} | Tools available: {str(tools)}", self.username)
 
     if llm == "deepseek":
       if tools: 
@@ -167,8 +164,7 @@ class TomLLM():
         messages = messages,
       )
 
-    logger.debug("LLM Response:", self.username)
-    logger.debug(str(response), self.username)
+    logger.debug(f"LLM Response: {str(response)}", self.username)
 
 
     if not response:
@@ -291,7 +287,7 @@ class TomLLM():
 
           # Yes we are
           if load_modules:
-            logger.debug("Load modules: " + str(load_modules), self.username)
+            logger.debug(f"Load modules: {str(load_modules)}", self.username)
   
             tools = []
             complexity = 0
@@ -335,7 +331,16 @@ class TomLLM():
               logger.info(f"Calling function: {function_name} with {function_params}", self.username)
     
               if function_name in self.functions:
-                function_result = self.functions[function_name]['function'](**function_params)
+                # Set module context for logging during function execution
+                function_data = self.functions[function_name]
+                module_name = function_data.get('module_name', 'system')
+                set_log_context(module_name=module_name)
+                
+                try:
+                  function_result = function_data['function'](**function_params)
+                finally:
+                  # Reset module context after function execution
+                  set_log_context(module_name=None)
               else:
                 logger.error(f"Function '{function_name}' not found in available functions", self.username)
                 logger.error(f"Available functions: {list(self.functions.keys())}", self.username)
