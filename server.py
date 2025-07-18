@@ -34,7 +34,7 @@ from tomcorebackground import TomBackground
 ################################################################################################
 config = {}
 
-def initConf(config_path='./config.yml'):
+def initConf(config_path='/data/config.yml'):
   # Load config
   with open(config_path, 'r') as file:
     try:
@@ -457,7 +457,7 @@ class TomWebService:
 global_config = {}
 
 # Get config file path from command line argument or use default
-config_file_path = sys.argv[1] if len(sys.argv) > 1 else './config.yml'
+config_file_path = sys.argv[1] if len(sys.argv) > 1 else '/data/config.yml'
 print(f"Using config file: {config_file_path}")
 
 global_config = initConf(config_file_path)

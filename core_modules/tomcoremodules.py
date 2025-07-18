@@ -3,6 +3,7 @@ import importlib.util
 import inspect
 import functools
 import yaml
+import shutil
 
 class TomCoreModules:
   def __init__(self, global_config, user_config, llm_instance, module_managers=None):
@@ -100,7 +101,11 @@ class TomCoreModules:
     })
 
   def _load_module_list(self):
-    mod_dir = './modules'
+    # First, ensure /data/modules directory exists and sync with ./modules
+    self._sync_modules_directory()
+    
+    # Load modules from /data/modules instead of ./modules
+    mod_dir = '/data/modules'
     for filename in os.listdir(mod_dir):
       if filename.endswith('.py') and filename != '__init__.py':
         module_name = filename[:-3]
@@ -119,6 +124,29 @@ class TomCoreModules:
                 "description": tom_mod_config['description'],
                 "type": tom_mod_config.get('type', 'global')
               }
+
+  def _sync_modules_directory(self):
+    """Create /data/modules directory if it doesn't exist and sync with ./modules"""
+    data_modules_dir = '/data/modules'
+    source_modules_dir = './modules'
+    
+    # Create /data/modules directory if it doesn't exist
+    os.makedirs(data_modules_dir, exist_ok=True)
+    
+    # Copy all files from ./modules to /data/modules
+    # This will overwrite existing files but preserve files that don't exist in ./modules
+    if os.path.exists(source_modules_dir):
+      for filename in os.listdir(source_modules_dir):
+        if filename.endswith('.py'):
+          source_file = os.path.join(source_modules_dir, filename)
+          dest_file = os.path.join(data_modules_dir, filename)
+          try:
+            shutil.copy2(source_file, dest_file)
+            print(f"Copied module: {filename}")
+          except Exception as e:
+            print(f"Error copying module {filename}: {e}")
+    else:
+      print(f"Warning: Source modules directory {source_modules_dir} does not exist")
 
   def _load_user_modules(self):
     if 'services' in self.user_config:
@@ -394,7 +422,7 @@ class TomCoreModules:
     
     try:
       # Read the config file
-      config_path = self.global_config.get('config_path', './config.yml')
+      config_path = self.global_config.get('config_path', '/data/config.yml')
       with open(config_path, 'r') as file:
         config = yaml.safe_load(file)
       
