@@ -1,0 +1,12 @@
+FROM python:3.13.5-slim
+
+WORKDIR /app
+
+COPY requirements.txt /app
+
+RUN pip install -r requirements.txt
+
+COPY . /app
+
+# Run unit tests with unittest
+ENTRYPOINT ["python", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py", "-v"]

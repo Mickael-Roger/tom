@@ -307,3 +307,188 @@ print("Module initialized successfully")  # Don't do this!
 8.  **Restart the server**: For changes to take effect, you will need to restart the `server.py` application.
 
 By following these guidelines, you can effectively extend Tom's capabilities with new, custom modules.
+
+## Testing
+
+### Unit Testing Framework
+
+The project uses Python's built-in `unittest` framework for unit testing, with optional `pytest` support. All tests are located in the `tests/` directory.
+
+### Test Structure
+
+Each module should have a corresponding test file following the naming convention `test_<module_name>.py`. For example:
+- `modules/tomweather.py` → `tests/test_tomweather.py`
+- `modules/tomidfm.py` → `tests/test_tomidfm.py`
+
+### Writing Tests
+
+When creating unit tests for modules, follow these guidelines:
+
+1. **Mock external dependencies**: Use `unittest.mock` to mock API calls, database connections, and file operations
+2. **Mock the logger**: Since modules use the centralized logging system, mock the logger to avoid initialization issues:
+   ```python
+   from unittest.mock import patch
+   
+   # Mock logger during import
+   with patch('tomweather.logger') as mock_logger:
+       from tomweather import TomWeather
+   
+   # Or use decorator for specific tests
+   @patch('tomweather.logger')
+   def test_function(self, mock_logger):
+       # test code here
+   ```
+
+3. **Test all public methods**: Include tests for all functions exposed in `self.functions`
+4. **Use temporary files for databases**: Use `tempfile` for SQLite databases in tests
+5. **Test error conditions**: Include tests for API failures, invalid inputs, and edge cases
+6. **Verify tool structure**: Test that `self.tools` and `self.functions` are properly structured
+
+### Example Test Structure
+
+```python
+import unittest
+from unittest.mock import patch, MagicMock
+import sys
+import os
+import tempfile
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'modules'))
+
+# Mock logger before import
+with patch('tomweather.logger') as mock_logger:
+    from tomweather import TomWeather
+
+class TestTomWeather(unittest.TestCase):
+    
+    def setUp(self):
+        self.config = {'api_key': 'test_key'}
+        self.llm = MagicMock()
+        self.weather = TomWeather(self.config, self.llm)
+    
+    @patch('tomweather.requests.get')
+    def test_api_call_success(self, mock_get):
+        # Mock successful API response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {'data': 'test'}
+        mock_get.return_value = mock_response
+        
+        result = self.weather.some_function()
+        
+        self.assertEqual(result, expected_result)
+    
+    def test_tools_structure(self):
+        # Test that tools are properly structured
+        self.assertIsInstance(self.weather.tools, list)
+        for tool in self.weather.tools:
+            self.assertIn('type', tool)
+            self.assertEqual(tool['type'], 'function')
+```
+
+### Running Tests
+
+#### Local Testing
+
+Run tests using `unittest`:
+```bash
+# Run all tests
+python -m unittest discover -s tests -p "test_*.py" -v
+
+# Run specific test file
+python -m unittest tests.test_tomweather -v
+
+# Run specific test method
+python -m unittest tests.test_tomweather.TestTomWeather.test_convertWMO_valid_codes -v
+```
+
+Run tests using `pytest` (if available):
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run specific test file
+python -m pytest tests/test_tomweather.py -v
+
+# Run with coverage
+python -m pytest tests/ --cov=modules --cov-report=html
+```
+
+#### Docker Testing
+
+The project includes Docker configurations for running tests in isolated environments.
+
+##### Build Test Images
+
+```bash
+# Build test image with pytest
+docker build -f Dockerfile.test -t tom-tests .
+
+# Build test image with unittest
+docker build -f Dockerfile.test-unittest -t tom-tests-unittest .
+```
+
+##### Run Tests with Docker
+
+```bash
+# Run all tests with pytest
+docker run --rm tom-tests
+
+# Run specific test file with pytest
+docker run --rm tom-tests python -m pytest tests/test_tomweather.py -v
+
+# Run all tests with unittest
+docker run --rm tom-tests-unittest
+
+# Run specific test file with unittest
+docker run --rm tom-tests-unittest python -m unittest tests.test_tomweather -v
+```
+
+##### Docker Test Files
+
+- `Dockerfile.test`: Uses pytest for running tests
+- `Dockerfile.test-unittest`: Uses unittest for running tests
+
+Both images are based on the same Python environment as the main application and include all necessary dependencies.
+
+### Test Coverage
+
+Aim for comprehensive test coverage including:
+
+- **Success cases**: Normal operation with valid inputs
+- **Error cases**: API failures, network issues, invalid responses
+- **Edge cases**: Empty data, boundary values, malformed inputs
+- **Configuration**: Different config values and missing configs
+- **Integration**: How functions work together within the module
+
+### Continuous Integration
+
+When setting up CI/CD pipelines, use the Docker test images for consistent testing environments:
+
+```yaml
+# Example GitHub Actions workflow
+- name: Run tests
+  run: |
+    docker build -f Dockerfile.test -t tom-tests .
+    docker run --rm tom-tests
+```
+
+### Test Dependencies
+
+The following packages are available for testing:
+- `unittest` (built-in)
+- `pytest` (optional, added to requirements.txt)
+- `unittest.mock` (built-in)
+- `tempfile` (built-in)
+
+### Best Practices
+
+1. **Keep tests independent**: Each test should be able to run in isolation
+2. **Use descriptive test names**: Test names should clearly indicate what is being tested
+3. **Mock external services**: Never make real API calls or database connections in tests
+4. **Test both positive and negative cases**: Include tests for expected failures
+5. **Use setUp and tearDown**: Clean up resources (like temporary files) after tests
+6. **Mock the logger**: Always mock the logger to avoid dependency issues
+7. **Test tool definitions**: Verify that `self.tools` and `self.functions` are properly structured
+
+By following these testing guidelines, you can ensure that your modules are robust, reliable, and maintainable.

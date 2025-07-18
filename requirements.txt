@@ -6,6 +6,7 @@ openai
 pronotepy==2.14.2
 beautifulsoup4
 pytz
+requests
 
 anki
 timezonefinder
@@ -17,3 +18,7 @@ paramiko
 watchdog
 deebot-client
 aiohttp #==3.10.0
+
+
+# For unittest
+pytest
