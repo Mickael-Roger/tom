@@ -68,6 +68,52 @@ body {
     margin-right: auto;
 }
 
+/* Markdown styles for bot messages */
+.message.bot h1, .message.bot h2, .message.bot h3, .message.bot h4, .message.bot h5, .message.bot h6 {
+    margin: 0.5em 0;
+    font-weight: bold;
+}
+
+.message.bot p {
+    margin: 0.5em 0;
+}
+
+.message.bot ul, .message.bot ol {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+}
+
+.message.bot li {
+    margin: 0.2em 0;
+}
+
+.message.bot blockquote {
+    border-left: 3px solid rgba(255, 255, 255, 0.3);
+    padding-left: 1em;
+    margin: 0.5em 0;
+    font-style: italic;
+}
+
+.message.bot code {
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+}
+
+.message.bot pre {
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 1em;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin: 0.5em 0;
+}
+
+.message.bot pre code {
+    background-color: transparent;
+    padding: 0;
+}
+
 /* Input Container */
 .input-container {
     display: flex;

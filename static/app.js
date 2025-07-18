@@ -228,6 +228,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     }
 
+    function renderMarkdown(text) {
+        // Parse markdown and sanitize the result
+        const htmlContent = marked.parse(text);
+        return DOMPurify.sanitize(htmlContent);
+    }
+
     // Function to add a message to the chat
     function addMessageToChat(sender, text) {
         const messageDiv = document.createElement("div");
@@ -237,13 +243,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const openPattern = /\[open:(.+)\]/;
         const matchopen = text.match(openPattern);
 
-        sanitizedText = text;
+        let processedText = text;
         if (matchopen && matchopen[1]) {
             const url = matchopen[1];
-
-            //displayText = text.replace(openPattern, "").trim();
-            //sanitizedText = DOMPurify.sanitize(displayText);
-            sanitizedText = sanitizeText(text);
+            processedText = text.replace(openPattern, "").trim();
+            
             // Validate the URL
             if (isValidUrl(url)) {
                 window.open(url, "_blank");
@@ -251,7 +255,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 console.warn("Invalid URL:", url);
             }
         }
-        messageDiv.innerHTML = sanitizedText;
+
+        // Render markdown for bot messages, plain text for user messages
+        if (sender === "bot") {
+            messageDiv.innerHTML = renderMarkdown(processedText);
+        } else {
+            messageDiv.innerHTML = DOMPurify.sanitize(processedText);
+        }
 
         chatBox.appendChild(messageDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
