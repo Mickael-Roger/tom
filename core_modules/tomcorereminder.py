@@ -152,7 +152,7 @@ class TomReminder:
   def notify(self):
 
     while True:
-      tomlogger.debug("Checking for notifications", self.username)
+      tomlogger.debug("Checking for notifications", self.username, module_name="reminder")
       try:
         dbconn = sqlite3.connect(self.db)
         cursor = dbconn.cursor()

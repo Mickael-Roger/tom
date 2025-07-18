@@ -303,7 +303,7 @@ class TomNews:
     self.news_update()
     while True:
       try:
-        logger.info("Update news ...")
+        logger.info("Update news ...", module_name="news")
         self.news_update()
       except:
         logger.error("Fail to update RSS")
