@@ -16,6 +16,12 @@ groceries:
   password: "YOUR_CALDAV_PASSWORD"
   url: "https://your-caldav-server.com/remote.php/dav/"
 
+calendar:
+  calendar_name: "YOUR_CALENDAR_NAME"
+  password: "YOUR_CALDAV_PASSWORD"
+  url: "https://your-caldav-server.com/remote.php/dav/"
+  user: "YOUR_CALDAV_USERNAME"
+
 global:
   # Add other global configuration as needed
   log_level: "DEBUG"
@@ -31,3 +37,5 @@ users:
         # Any user-specific TODO configuration if needed
       groceries:
         # Any user-specific groceries configuration if needed
+      calendar:
+        # Any user-specific calendar configuration if needed
