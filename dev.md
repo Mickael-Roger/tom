@@ -421,20 +421,21 @@ The project includes Docker configurations for running tests in isolated environ
 ##### Build Test Images
 
 ```bash
-# Build test image with pytest
+# Build test image with pytest (supports both unit and integration tests)
 docker build -f Dockerfile.test -t tom-tests .
 
-# Build test image with unittest
+# Build test image with unittest (unit tests only)
 docker build -f Dockerfile.test-unittest -t tom-tests-unittest .
 ```
 
 ##### Run Tests with Docker
 
+**Unit Tests (mocked dependencies):**
 ```bash
-# Run all tests with pytest
+# Run all unit tests with pytest
 docker run --rm tom-tests
 
-# Run specific test file with pytest
+# Run specific unit test file with pytest
 docker run --rm tom-tests python -m pytest tests/test_tomweather.py -v
 
 # Run all tests with unittest
@@ -444,12 +445,48 @@ docker run --rm tom-tests-unittest
 docker run --rm tom-tests-unittest python -m unittest tests.test_tomweather -v
 ```
 
+**Integration Tests (real API calls):**
+```bash
+# Copy and configure the test config file
+cp config.yml.test-example config.yml
+# Edit config.yml with your real API tokens and database paths
+
+# Create data directory for cache databases
+mkdir -p data
+
+# Run all tests (unit + integration) with mounted config and data
+docker run --rm \
+  -v $(pwd)/config.yml:/config.yml:ro \
+  -v $(pwd)/data:/app/data \
+  tom-tests
+
+# Run only integration tests
+docker run --rm \
+  -v $(pwd)/config.yml:/config.yml:ro \
+  -v $(pwd)/data:/app/data \
+  tom-tests python -m pytest tests/test_*_integration.py -v
+
+# Run specific integration test
+docker run --rm \
+  -v $(pwd)/config.yml:/config.yml:ro \
+  -v $(pwd)/data:/app/data \
+  tom-tests python -m pytest tests/test_tomidfm_integration.py::TestTomIdfmIntegration::test_real_search_station -v
+```
+
+**Mixed Testing (unit tests without config, integration tests skipped):**
+```bash
+# Run all tests without config (integration tests will be skipped)
+docker run --rm tom-tests
+
+# This will run unit tests normally and skip integration tests that require config
+```
+
 ##### Docker Test Files
 
-- `Dockerfile.test`: Uses pytest for running tests
-- `Dockerfile.test-unittest`: Uses unittest for running tests
+- `Dockerfile.test`: Uses pytest for running all tests (unit and integration)
+- `Dockerfile.test-unittest`: Uses unittest for running unit tests only
 
-Both images are based on the same Python environment as the main application and include all necessary dependencies.
+The main test image is based on the same Python environment as the main application and includes all necessary dependencies. It can run both unit tests (with mocked dependencies) and integration tests (with real API calls) depending on whether configuration is mounted.
 
 ### Test Coverage
 
@@ -460,6 +497,73 @@ Aim for comprehensive test coverage including:
 - **Edge cases**: Empty data, boundary values, malformed inputs
 - **Configuration**: Different config values and missing configs
 - **Integration**: How functions work together within the module
+
+### Integration Tests
+
+Some modules (like IDFM) require real API calls and configuration. For these modules, create separate integration test files following the pattern `test_<module_name>_integration.py`.
+
+#### Integration Test Requirements
+
+1. **Configuration**: Integration tests require a real `config.yml` file with valid API tokens
+2. **External Dependencies**: Tests make real API calls and may require internet connectivity
+3. **Database Access**: Tests may require read/write access to cache databases
+4. **Slower Execution**: Integration tests are slower than unit tests due to network calls
+
+#### Example Integration Test Structure
+
+```python
+class TestTomIdfmIntegration(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """Load real configuration once for all tests"""
+        try:
+            with open('/config.yml', 'r') as file:
+                config = yaml.safe_load(file)
+                cls.idfm_config = config['idfm']
+                cls.config_loaded = True
+        except:
+            cls.config_loaded = False
+    
+    def setUp(self):
+        if not self.config_loaded:
+            self.skipTest("Config file not available")
+        self.idfm = TomIdfm(self.idfm_config, None)
+    
+    def test_real_api_call(self):
+        """Test with real API call"""
+        result = self.idfm.search_station("Châtelet")
+        if result is not False:  # API might fail, that's OK
+            self.assertIsInstance(result, list)
+```
+
+#### Running Integration Tests
+
+Integration tests require additional setup:
+
+1. **Create configuration file**: Copy `config.yml.test-example` to `config.yml` and add real API tokens and service credentials
+2. **Mount volumes**: When running in Docker, mount the config file and data directories  
+3. **Handle API failures**: Integration tests should gracefully handle API failures and network issues
+4. **External service dependencies**: Some modules require external services:
+   - **IDFM module**: Requires IDFM API token and internet connectivity
+   - **TODO module**: Requires CalDAV server access (e.g., Nextcloud, ownCloud)
+
+#### Configuration Examples
+
+**IDFM Module:**
+```yaml
+idfm:
+  token: "your_idfm_api_token"
+  cache_db: "/app/data/idfm_cache.db"
+```
+
+**TODO Module:**
+```yaml
+todo:
+  list: "Todo"  # Name of your CalDAV todo list
+  password: "your_caldav_password"  
+  url: "https://your-server.com/remote.php/dav/"
+  user: "your_caldav_username"
+```
 
 ### Continuous Integration
 

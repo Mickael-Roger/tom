@@ -159,21 +159,44 @@ class TomTodo:
 
   def close(self, id):
 
-    task = self.todoCal.todo_by_uid(id)
-    if not task:
+    try:
+        task = self.todoCal.todo_by_uid(id)
+        if not task:
+            return False
+
+        # Handle both old and new CalDAV API
+        if hasattr(task, 'vobject_instance') and task.vobject_instance:
+            vtodo = task.vobject_instance.vtodo
+            taskName = vtodo.summary.value if hasattr(vtodo, 'summary') else 'No summary'
+            vtodo.add('status').value = 'COMPLETED'
+        elif hasattr(task, 'icalendar_instance') and task.icalendar_instance:
+            # Use icalendar API
+            taskName = str(task.icalendar_component.get('summary', 'No summary'))
+            # Modify the component to mark as completed
+            task.icalendar_component['status'] = 'COMPLETED'
+        else:
+            # Fallback to legacy API with deprecation handling
+            try:
+                vtodo = task.instance.vtodo
+                taskName = vtodo.contents.get('summary', ['No summary'])[0].value
+                vtodo.add('status').value = 'COMPLETED'
+            except AttributeError:
+                # If instance.vtodo doesn't work, try to get task name and mark as completed
+                taskName = str(task.icalendar_component.get('summary', 'No summary'))
+                task.icalendar_component['status'] = 'COMPLETED'
+
+        task.save()
+
+        self.update()
+
+        logger.info(f"Task '{taskName}' has been closed.", module_name="todo")
+
+        return {"status": "success", "message": "Todo task removed"}
+        
+    except Exception as e:
+        # Handle CalDAV exceptions (like NotFoundError)
+        logger.error(f"Error closing task {id}: {str(e)}", module_name="todo")
         return False
-
-    vtodo = task.instance.vtodo
-    taskName = vtodo.contents.get('summary', ['No summary'])[0].value
-    vtodo.add('status').value = 'COMPLETED'
-
-    task.save()
-
-    self.update()
-
-    logger.info(f"Task '{taskName}' has been closed.", module_name="todo")
-
-    return {"status": "success", "message": "Todo task removed"}
 
 
 

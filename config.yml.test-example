@@ -1,0 +1,26 @@
+# Example configuration file for integration tests
+# Copy this to config.yml and fill in your real values
+
+idfm:
+  token: "YOUR_IDFM_API_TOKEN_HERE"
+  cache_db: "/app/data/idfm_cache.db"
+
+todo:
+  list: "YOUR_TODO_LIST_NAME"
+  password: "YOUR_CALDAV_PASSWORD"
+  url: "https://your-caldav-server.com/remote.php/dav/"
+  user: "YOUR_CALDAV_USERNAME"
+
+global:
+  # Add other global configuration as needed
+  log_level: "DEBUG"
+  user_datadir: "/app/data"
+
+users:
+  - username: testuser
+    password: testpass
+    services:
+      idfm:
+        # Any user-specific IDFM configuration if needed
+      todo:
+        # Any user-specific TODO configuration if needed
