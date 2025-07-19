@@ -10,30 +10,25 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
 from tomlogger import logger
 
-# Check for required dependencies
-try:
-    import aiohttp
-    AIOHTTP_AVAILABLE = True
-except ImportError:
-    AIOHTTP_AVAILABLE = False
+# Required dependencies
+import aiohttp
 
 # Deebot client imports
-try:
-    from deebot_client.api_client import ApiClient
-    from deebot_client.authentication import Authenticator, create_rest_config
-    from deebot_client.commands.json.clean import Clean, CleanAction
-    from deebot_client.commands.json.charge import Charge
-    from deebot_client.events import BatteryEvent, StateEvent, CleanLogEvent, ErrorEvent, StatsEvent
-    from deebot_client.mqtt_client import MqttClient, create_mqtt_config
-    from deebot_client.util import md5
-    from deebot_client.device import Device
-    DEEBOT_AVAILABLE = True
-except ImportError as e:
-    logger.error(f"Deebot client not available: {e}")
-    DEEBOT_AVAILABLE = False
-
-# Check if all dependencies are available
-DEPENDENCIES_AVAILABLE = DEEBOT_AVAILABLE and AIOHTTP_AVAILABLE
+from deebot_client.api_client import ApiClient
+from deebot_client.authentication import Authenticator, create_rest_config
+from deebot_client.commands.json.clean import Clean, CleanAction
+from deebot_client.commands.json.charge import Charge
+from deebot_client.commands.json.battery import GetBattery
+from deebot_client.commands.json.stats import GetStats
+from deebot_client.commands.json.clean_logs import GetCleanLogs
+from deebot_client.commands.json.charge_state import GetChargeState
+from deebot_client.commands.json.pos import GetPos
+from deebot_client.commands.json.network import GetNetInfo
+from deebot_client.commands.json.error import GetError
+from deebot_client.events import BatteryEvent, StateEvent, CleanLogEvent, ErrorEvent, StatsEvent, RoomsEvent, LifeSpanEvent, VolumeEvent, AvailabilityEvent
+from deebot_client.mqtt_client import MqttClient, create_mqtt_config
+from deebot_client.util import md5
+from deebot_client.device import Device
 
 tom_config = {
     "module_name": "deebot",
@@ -49,16 +44,6 @@ class TomDeebot:
         self.config = config
         self.llm = llm
         
-        if not DEPENDENCIES_AVAILABLE:
-            if not AIOHTTP_AVAILABLE:
-                logger.error("aiohttp library not available - required for Deebot module")
-            if not DEEBOT_AVAILABLE:
-                logger.error("Deebot client library not available")
-            self.tools = []
-            self.functions = {}
-            self.systemContext = "Deebot module unavailable - missing dependencies (deebot-client and/or aiohttp)."
-            self.complexity = 0
-            return
         
         # Authentication configuration
         self.username = config.get('username')
@@ -96,63 +81,21 @@ class TomDeebot:
             "battery_level": None,
             "status": None,
             "cleaning_mode": None,
-            "position": None
+            "position": None,
+            "rooms": None,
+            "component_lifespan": None,
+            "volume": None,
+            "availability": None,
+            "last_error": None,
+            "error_history": []
         }
         
         self.tools = [
             {
                 "type": "function",
                 "function": {
-                    "name": "start_cleaning",
-                    "description": "Start cleaning the house with the Deebot robot vacuum.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": [],
-                    },
-                },
-            },
-            {
-                "type": "function", 
-                "function": {
-                    "name": "stop_cleaning",
-                    "description": "Stop the current cleaning operation and pause the Deebot robot.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": [],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "return_to_base",
-                    "description": "Send the Deebot robot back to its charging base.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": [],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_robot_status",
-                    "description": "Get the current status of the Deebot robot including battery level and cleaning state.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": [],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
                     "name": "get_deebot_status",
-                    "description": "Get real-time status data from the Deebot robot including battery level, status, cleaning mode and position.",
+                    "description": "Get comprehensive status of the Deebot robot combining real-time MQTT data with detailed REST API information including battery, position, cleaning status, errors, and device information.",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -162,14 +105,10 @@ class TomDeebot:
             },
         ]
         
-        self.systemContext = "This module allows control of a Deebot robot vacuum. It can get status, start/stop cleaning and return the robot to its base. The robot sends real-time status updates via MQTT."
+        self.systemContext = "This module provides comprehensive status monitoring of a Deebot robot vacuum. It combines real-time MQTT data with detailed REST API information to give complete device status including battery, position, cleaning state, errors, and component information."
         self.complexity = 0
         
         self.functions = {
-            "start_cleaning": {"function": functools.partial(self.start_cleaning)},
-            "stop_cleaning": {"function": functools.partial(self.stop_cleaning)},
-            "return_to_base": {"function": functools.partial(self.return_to_base)},
-            "get_robot_status": {"function": functools.partial(self.get_robot_status)},
             "get_deebot_status": {"function": functools.partial(self.get_deebot_status)},
         }
         
@@ -203,6 +142,28 @@ class TomDeebot:
                 return status_code  # Return as-is if not numeric
         
         return status_map.get(status_code, f"status_{status_code}")
+    
+    def _format_timestamp(self, timestamp):
+        """Format timestamp to human readable string"""
+        import datetime
+        return datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+    
+    def _make_json_serializable(self, obj):
+        """Convert objects to JSON serializable format"""
+        if obj is None:
+            return None
+        elif isinstance(obj, (str, int, float, bool)):
+            return obj
+        elif isinstance(obj, dict):
+            return {k: self._make_json_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [self._make_json_serializable(item) for item in obj]
+        elif hasattr(obj, '__dict__'):
+            # Convert object to dict representation
+            return self._make_json_serializable(obj.__dict__)
+        else:
+            # Fallback to string representation
+            return str(obj)
         
     def _start_mqtt_background_task(self):
         """Start the MQTT background task in a separate thread"""
@@ -271,6 +232,10 @@ class TomDeebot:
             self.bot.events.subscribe(CleanLogEvent, self._on_clean_log_event)
             self.bot.events.subscribe(ErrorEvent, self._on_error_event)
             self.bot.events.subscribe(StatsEvent, self._on_stats_event)
+            self.bot.events.subscribe(RoomsEvent, self._on_rooms_event)
+            self.bot.events.subscribe(LifeSpanEvent, self._on_lifespan_event)
+            self.bot.events.subscribe(VolumeEvent, self._on_volume_event)
+            self.bot.events.subscribe(AvailabilityEvent, self._on_availability_event)
             
             # Get device name safely
             device_name = "Unknown"
@@ -322,16 +287,54 @@ class TomDeebot:
         """Handle robot error events"""
         # Try different possible attributes for error events
         error_info = "Unknown error"
+        error_code = None
+        error_message = None
+        
         if hasattr(event, 'error'):
             error_info = event.error
         elif hasattr(event, 'value'):
             error_info = event.value
         elif hasattr(event, 'code'):
-            error_info = event.code
+            error_code = event.code
+            error_info = f"Error code: {event.code}"
         elif hasattr(event, 'message'):
+            error_message = event.message
             error_info = event.message
         else:
             error_info = str(event)
+        
+        # Try to get both code and message if available
+        if hasattr(event, 'code') and hasattr(event, 'message'):
+            error_code = event.code
+            error_message = event.message
+            error_info = f"Code {event.code}: {event.message}"
+        elif hasattr(event, 'error_code') and hasattr(event, 'error_message'):
+            error_code = event.error_code
+            error_message = event.error_message
+            error_info = f"Code {event.error_code}: {event.error_message}"
+        
+        # Create error object with timestamp
+        import time
+        error_object = {
+            "timestamp": time.time(),
+            "error": error_info,
+            "code": error_code,
+            "message": error_message,
+            "raw_event": str(event)
+        }
+        
+        # Update robot data
+        self.robot_data["last_error"] = error_object
+        
+        # Add to error history (keep last 10 errors)
+        if self.robot_data["error_history"] is None:
+            self.robot_data["error_history"] = []
+        
+        self.robot_data["error_history"].append(error_object)
+        
+        # Keep only last 10 errors
+        if len(self.robot_data["error_history"]) > 10:
+            self.robot_data["error_history"] = self.robot_data["error_history"][-10:]
         
         logger.warning(f"Robot error: {error_info}")
         
@@ -363,49 +366,117 @@ class TomDeebot:
             
         logger.debug(f"Stats event: {event}")
     
-    def _execute_command_sync(self, command):
-        """Execute a command synchronously"""
+    async def _on_rooms_event(self, event):
+        """Handle rooms information updates"""
+        # Try to extract rooms information
+        if hasattr(event, 'rooms'):
+            self.robot_data["rooms"] = event.rooms
+        elif hasattr(event, 'value'):
+            self.robot_data["rooms"] = event.value
+        elif hasattr(event, 'data'):
+            self.robot_data["rooms"] = event.data
+        else:
+            self.robot_data["rooms"] = str(event)
+            
+        logger.debug(f"Rooms event: {event}")
+    
+    async def _on_lifespan_event(self, event):
+        """Handle component lifespan updates"""
+        # Try to extract lifespan information
+        lifespan_data = {}
+        
+        if hasattr(event, 'component') and hasattr(event, 'lifespan'):
+            lifespan_data[event.component] = event.lifespan
+        elif hasattr(event, 'value'):
+            lifespan_data = event.value
+        elif hasattr(event, 'data'):
+            lifespan_data = event.data
+        else:
+            lifespan_data = str(event)
+        
+        # Update or create lifespan dict
+        if self.robot_data["component_lifespan"] is None:
+            self.robot_data["component_lifespan"] = {}
+        
+        if isinstance(lifespan_data, dict):
+            self.robot_data["component_lifespan"].update(lifespan_data)
+        else:
+            self.robot_data["component_lifespan"] = lifespan_data
+            
+        logger.debug(f"Lifespan event: {event}")
+    
+    async def _on_volume_event(self, event):
+        """Handle volume level updates"""
+        # Try to extract volume information
+        if hasattr(event, 'volume'):
+            self.robot_data["volume"] = event.volume
+        elif hasattr(event, 'value'):
+            self.robot_data["volume"] = event.value
+        elif hasattr(event, 'level'):
+            self.robot_data["volume"] = event.level
+        else:
+            self.robot_data["volume"] = str(event)
+            
+        logger.debug(f"Volume event: {event}")
+    
+    async def _on_availability_event(self, event):
+        """Handle robot availability updates"""
+        # Try to extract availability information
+        if hasattr(event, 'available'):
+            self.robot_data["availability"] = event.available
+        elif hasattr(event, 'value'):
+            self.robot_data["availability"] = event.value
+        elif hasattr(event, 'online'):
+            self.robot_data["availability"] = event.online
+        else:
+            self.robot_data["availability"] = str(event)
+            
+        logger.debug(f"Availability event: {event}")
+    
+    def get_deebot_status(self):
+        """Get comprehensive status combining MQTT real-time data with REST API detailed information"""
+        logger.info("Getting comprehensive Deebot status (MQTT + REST)")
+        
         if not self.bot:
             return "Robot not connected. Please wait for initialization."
         
         if not self.mqtt_loop or self.mqtt_loop.is_closed():
             return "MQTT connection not available"
         
-        try:
-            future = asyncio.run_coroutine_threadsafe(
-                self.bot.execute_command(command), 
-                self.mqtt_loop
-            )
-            result = future.result(timeout=15)
-            return "Command executed successfully"
-        except asyncio.TimeoutError:
-            logger.error("Command execution timeout")
-            return "Command execution timeout - robot may be offline"
-        except Exception as e:
-            logger.error(f"Command execution error: {e}")
-            if "Session is closed" in str(e):
-                return "Connection lost to robot. Please restart the module."
-            return f"Error executing command: {e}"
-    
-    def start_cleaning(self):
-        """Start cleaning the house"""
-        logger.info("Starting Deebot cleaning")
-        return self._execute_command_sync(Clean(CleanAction.START))
-    
-    def stop_cleaning(self):
-        """Stop current cleaning operation"""
-        logger.info("Stopping Deebot cleaning")
-        return self._execute_command_sync(Clean(CleanAction.STOP))
-    
-    def return_to_base(self):
-        """Return robot to charging base"""
-        logger.info("Returning Deebot to base")
-        return self._execute_command_sync(Charge())
-    
-    def get_robot_status(self):
-        """Get current robot status"""
-        if not self.bot:
-            return "Robot not connected. Please wait for initialization."
+        # Create list of REST commands to execute
+        rest_commands = [
+            ("battery", GetBattery()),
+            ("stats", GetStats()),
+            ("clean_logs", GetCleanLogs()),
+            ("charge_state", GetChargeState()),
+        ]
+        
+        # Add additional commands
+        rest_commands.extend([
+            ("position", GetPos()),
+            ("network_info", GetNetInfo()),
+            ("error_info", GetError()),
+        ])
+        
+        # Execute all REST commands
+        rest_results = {}
+        
+        for command_name, command in rest_commands:
+            try:
+                logger.debug(f"Executing REST command: {command_name}")
+                future = asyncio.run_coroutine_threadsafe(
+                    self.bot.execute_command(command), 
+                    self.mqtt_loop
+                )
+                result = future.result(timeout=10)
+                rest_results[command_name] = result
+                logger.debug(f"REST command {command_name} completed successfully")
+            except asyncio.TimeoutError:
+                logger.warning(f"REST command {command_name} timeout")
+                rest_results[command_name] = {"error": "timeout"}
+            except Exception as e:
+                logger.error(f"REST command {command_name} error: {e}")
+                rest_results[command_name] = {"error": str(e)}
         
         # Get device name safely
         device_name = "Unknown"
@@ -415,19 +486,22 @@ class TomDeebot:
             elif isinstance(self.bot.device_info, dict) and 'name' in self.bot.device_info:
                 device_name = self.bot.device_info['name']
         
-        status_info = {
-            "device_name": device_name,
-            "battery_level": self.battery_level,
-            "status": self.robot_status,
-            "connected": self.bot is not None
-        }
+        # Combine MQTT data with REST results
+        complete_status = self.robot_data.copy()
         
-        return json.dumps(status_info, indent=2)
-    
-    def get_deebot_status(self):
-        """Get real-time robot status from robot_data dict"""
-        logger.debug("Getting Deebot real-time status")
-        return json.dumps(self.robot_data, indent=2)
+        # Add REST data to the main status
+        complete_status.update({
+            "timestamp": time.time(),
+            "formatted_time": self._format_timestamp(time.time()),
+            "device_name": device_name,
+            "connected": self.bot is not None,
+            "rest_data": rest_results
+        })
+        
+        # Make everything JSON serializable
+        serializable_status = self._make_json_serializable(complete_status)
+        
+        return json.dumps(serializable_status, indent=2)
     
     
 
