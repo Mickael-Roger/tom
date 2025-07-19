@@ -325,6 +325,9 @@ class TomCoreModules:
       success = self._load_single_module(module_name)
       
       if success:
+        # Synchronize functions to the main user instance in userList
+        self._sync_functions_to_user_instance()
+        
         tomlogger.info(f"✅ Hot reload successful for module '{module_name}'", self.user_config['username'])
         return True
       else:
@@ -335,6 +338,22 @@ class TomCoreModules:
       tomlogger.error(f"Error during hot reload of module '{module_name}': {e}", self.user_config['username'])
       return False
       
+  def _sync_functions_to_user_instance(self):
+    """Sync functions to the main user instance in userList"""
+    try:
+      # We need to access the global userList to update the functions
+      # This is a bit of a hack, but necessary for the current architecture
+      import __main__
+      if hasattr(__main__, 'userList'):
+        username = self.user_config['username']
+        if username in __main__.userList:
+          # Update the userList functions with our current functions
+          __main__.userList[username].functions.clear()
+          __main__.userList[username].functions.update(self.functions)
+          tomlogger.logger.debug(f"Functions synchronized for user {username}", username)
+    except Exception as e:
+      tomlogger.error(f"Error synchronizing functions to user instance: {e}", self.user_config['username'])
+
   def __del__(self):
     """Cleanup when the object is destroyed"""
     # Only stop file watcher if this is the last instance
@@ -524,6 +543,9 @@ class TomCoreModules:
       elif service_name in old_services and service_name not in new_services:
         # Module removed
         self._unload_single_module(service_name)
+    
+    # Synchronize functions to the main user instance after config update
+    self._sync_functions_to_user_instance()
     
     tomlogger.info(f"Configuration updated for user {self.user_config['username']}", self.user_config['username'])
 
