@@ -466,6 +466,354 @@ class TestTomCalendarRobustness(unittest.TestCase):
         
         # Should log error for the failed calendar
         mock_logger.error.assert_called()
+    
+    @patch('tomcalendar.caldav.DAVClient')
+    @patch('tomcalendar.logger')
+    def test_delete_event_with_search_error(self, mock_logger, mock_dav_client):
+        """Test deleteEvent when calendar search fails"""
+        # Setup mocks
+        mock_client = MagicMock()
+        mock_principal = MagicMock()
+        mock_calendar = MagicMock()
+        
+        mock_calendar.get_properties.return_value = {'{DAV:}displayname': 'Personal'}
+        mock_calendar.search.side_effect = Exception("Search failed")
+        
+        mock_client.principal.return_value = mock_principal
+        mock_principal.calendars.return_value = [mock_calendar]
+        mock_dav_client.return_value = mock_client
+        
+        calendar = TomCalendar(self.config, None)
+        
+        result = calendar.deleteEvent('event-123')
+        
+        # Should return error and log error
+        self.assertEqual(result['status'], 'error')
+        self.assertIn('Failed to delete event', result['message'])
+        mock_logger.error.assert_called()
+    
+    @patch('tomcalendar.caldav.DAVClient')
+    @patch('tomcalendar.logger')
+    def test_delete_event_with_delete_operation_error(self, mock_logger, mock_dav_client):
+        """Test deleteEvent when delete operation fails"""
+        # Setup mocks
+        mock_client = MagicMock()
+        mock_principal = MagicMock()
+        mock_calendar = MagicMock()
+        
+        mock_calendar.get_properties.return_value = {'{DAV:}displayname': 'Personal'}
+        
+        # Mock event that raises exception on delete
+        mock_event = MagicMock()
+        mock_component = MagicMock()
+        mock_component.name = "VEVENT"
+        mock_component.get.side_effect = lambda key, default=None: {
+            'uid': 'event-to-delete-123'
+        }.get(key, default)
+        mock_component.subcomponents = []
+        
+        mock_event.icalendar_instance.walk.return_value = [mock_component]
+        mock_event.delete.side_effect = Exception("Delete failed")
+        mock_calendar.search.return_value = [mock_event]
+        
+        mock_client.principal.return_value = mock_principal
+        mock_principal.calendars.return_value = [mock_calendar]
+        mock_dav_client.return_value = mock_client
+        
+        calendar = TomCalendar(self.config, None)
+        
+        result = calendar.deleteEvent('event-to-delete-123')
+        
+        # Should return error and log error
+        self.assertEqual(result['status'], 'error')
+        self.assertIn('Failed to delete event', result['message'])
+        mock_logger.error.assert_called()
+    
+    @patch('tomcalendar.caldav.DAVClient')
+    @patch('tomcalendar.logger')
+    def test_delete_event_with_malformed_events(self, mock_logger, mock_dav_client):
+        """Test deleteEvent when searching through malformed events"""
+        # Setup mocks
+        mock_client = MagicMock()
+        mock_principal = MagicMock()
+        mock_calendar = MagicMock()
+        
+        mock_calendar.get_properties.return_value = {'{DAV:}displayname': 'Personal'}
+        
+        # Mock events - one malformed, one valid
+        mock_bad_event = MagicMock()
+        mock_bad_event.icalendar_instance.walk.side_effect = Exception("Bad event")
+        
+        mock_good_event = MagicMock()
+        mock_component = MagicMock()
+        mock_component.name = "VEVENT"
+        mock_component.get.side_effect = lambda key, default=None: {
+            'uid': 'event-to-delete-123'
+        }.get(key, default)
+        mock_good_event.icalendar_instance.walk.return_value = [mock_component]
+        
+        mock_calendar.search.return_value = [mock_bad_event, mock_good_event]
+        
+        mock_client.principal.return_value = mock_principal
+        mock_principal.calendars.return_value = [mock_calendar]
+        mock_dav_client.return_value = mock_client
+        
+        calendar = TomCalendar(self.config, None)
+        
+        result = calendar.deleteEvent('event-to-delete-123')
+        
+        # Should find and delete the good event despite malformed event
+        self.assertEqual(result['status'], 'success')
+        mock_good_event.delete.assert_called_once()
+        # Should log error for malformed event
+        mock_logger.error.assert_called()
+    
+    @patch('tomcalendar.caldav.DAVClient')
+    @patch('tomcalendar.logger')
+    def test_update_event_with_search_error(self, mock_logger, mock_dav_client):
+        """Test updateEvent when calendar search fails"""
+        # Setup mocks
+        mock_client = MagicMock()
+        mock_principal = MagicMock()
+        mock_calendar = MagicMock()
+        
+        mock_calendar.get_properties.return_value = {'{DAV:}displayname': 'Personal'}
+        mock_calendar.search.side_effect = Exception("Search failed")
+        
+        mock_client.principal.return_value = mock_principal
+        mock_principal.calendars.return_value = [mock_calendar]
+        mock_dav_client.return_value = mock_client
+        
+        calendar = TomCalendar(self.config, None)
+        
+        result = calendar.updateEvent('event-123', title='New Title')
+        
+        # Should return error and log error
+        self.assertEqual(result['status'], 'error')
+        self.assertIn('Failed to update event', result['message'])
+        mock_logger.error.assert_called()
+    
+    @patch('tomcalendar.caldav.DAVClient')
+    @patch('tomcalendar.logger')
+    def test_update_event_with_save_error(self, mock_logger, mock_dav_client):
+        """Test updateEvent when save operation fails"""
+        # Setup mocks
+        mock_client = MagicMock()
+        mock_principal = MagicMock()
+        mock_calendar = MagicMock()
+        
+        mock_calendar.get_properties.return_value = {'{DAV:}displayname': 'Personal'}
+        
+        # Mock event that raises exception on save
+        mock_event = MagicMock()
+        mock_component = MagicMock()
+        mock_component.name = "VEVENT"
+        mock_component.get.side_effect = lambda key, default=None: {
+            'uid': 'event-to-update-123',
+            'summary': 'Original Title',
+            'description': 'Original Description',
+            'dtstart': MagicMock(dt=datetime(2024, 3, 15, 10, 0)),
+            'dtend': MagicMock(dt=datetime(2024, 3, 15, 11, 0))
+        }.get(key, default)
+        mock_component.subcomponents = []
+        
+        mock_event.icalendar_instance.walk.return_value = [mock_component]
+        mock_calendar.save_event.side_effect = Exception("Save failed")
+        mock_calendar.search.return_value = [mock_event]
+        
+        mock_client.principal.return_value = mock_principal
+        mock_principal.calendars.return_value = [mock_calendar]
+        mock_dav_client.return_value = mock_client
+        
+        calendar = TomCalendar(self.config, None)
+        
+        result = calendar.updateEvent('event-to-update-123', title='New Title')
+        
+        # Should return error and log error
+        self.assertEqual(result['status'], 'error')
+        self.assertIn('Failed to update event', result['message'])
+        mock_logger.error.assert_called()
+    
+    @patch('tomcalendar.caldav.DAVClient')
+    @patch('tomcalendar.logger')
+    def test_update_event_with_malformed_events(self, mock_logger, mock_dav_client):
+        """Test updateEvent when searching through malformed events"""
+        # Setup mocks
+        mock_client = MagicMock()
+        mock_principal = MagicMock()
+        mock_calendar = MagicMock()
+        
+        mock_calendar.get_properties.return_value = {'{DAV:}displayname': 'Personal'}
+        
+        # Mock events - one malformed, one valid
+        mock_bad_event = MagicMock()
+        mock_bad_event.icalendar_instance.walk.side_effect = Exception("Bad event")
+        
+        mock_good_event = MagicMock()
+        mock_component = MagicMock()
+        mock_component.name = "VEVENT"
+        mock_component.get.side_effect = lambda key, default=None: {
+            'uid': 'event-to-update-123',
+            'summary': 'Original Title',
+            'description': 'Original Description',
+            'dtstart': MagicMock(dt=datetime(2024, 3, 15, 10, 0)),
+            'dtend': MagicMock(dt=datetime(2024, 3, 15, 11, 0))
+        }.get(key, default)
+        mock_good_event.icalendar_instance.walk.return_value = [mock_component]
+        
+        mock_calendar.search.return_value = [mock_bad_event, mock_good_event]
+        
+        mock_client.principal.return_value = mock_principal
+        mock_principal.calendars.return_value = [mock_calendar]
+        mock_dav_client.return_value = mock_client
+        
+        calendar = TomCalendar(self.config, None)
+        
+        result = calendar.updateEvent('event-to-update-123', title='New Title')
+        
+        # Should find and update the good event despite malformed event
+        self.assertEqual(result['status'], 'success')
+        mock_good_event.delete.assert_called_once()
+        mock_calendar.save_event.assert_called_once()
+        # Should log error for malformed event
+        mock_logger.error.assert_called()
+    
+    @patch('tomcalendar.caldav.DAVClient')
+    @patch('tomcalendar.logger')
+    def test_update_event_timezone_error(self, mock_logger, mock_dav_client):
+        """Test updateEvent when timezone localization fails"""
+        # Setup mocks
+        mock_client = MagicMock()
+        mock_principal = MagicMock()
+        mock_calendar = MagicMock()
+        
+        mock_calendar.get_properties.return_value = {'{DAV:}displayname': 'Personal'}
+        
+        # Mock event to update
+        mock_event = MagicMock()
+        mock_component = MagicMock()
+        mock_component.name = "VEVENT"
+        mock_component.get.side_effect = lambda key, default=None: {
+            'uid': 'event-to-update-123',
+            'summary': 'Original Title',
+            'description': 'Original Description',
+            'dtstart': MagicMock(dt=datetime(2024, 3, 15, 10, 0)),
+            'dtend': MagicMock(dt=datetime(2024, 3, 15, 11, 0))
+        }.get(key, default)
+        mock_event.icalendar_instance.walk.return_value = [mock_component]
+        mock_calendar.search.return_value = [mock_event]
+        
+        mock_client.principal.return_value = mock_principal
+        mock_principal.calendars.return_value = [mock_calendar]
+        mock_dav_client.return_value = mock_client
+        
+        calendar = TomCalendar(self.config, None)
+        
+        # Mock timezone localization to fail
+        with patch.object(calendar, 'tz') as mock_tz:
+            mock_tz.localize.side_effect = Exception("Timezone error")
+            
+            result = calendar.updateEvent(
+                'event-to-update-123',
+                start='2024-03-15 10:00'
+            )
+        
+        # Should return error
+        self.assertEqual(result['status'], 'error')
+        self.assertIn('Failed to update event', result['message'])
+        mock_logger.error.assert_called()
+    
+    @patch('tomcalendar.caldav.DAVClient')
+    @patch('tomcalendar.logger')
+    def test_update_event_with_missing_datetime_components(self, mock_logger, mock_dav_client):
+        """Test updateEvent with partial time update when existing event is missing datetime components"""
+        # Setup mocks
+        mock_client = MagicMock()
+        mock_principal = MagicMock()
+        mock_calendar = MagicMock()
+        
+        mock_calendar.get_properties.return_value = {'{DAV:}displayname': 'Personal'}
+        
+        # Mock event with missing dtend
+        mock_event = MagicMock()
+        mock_component = MagicMock()
+        mock_component.name = "VEVENT"
+        mock_component.get.side_effect = lambda key, default=None: {
+            'uid': 'event-to-update-123',
+            'dtstart': None,  # Missing start time
+            'dtend': None     # Missing end time
+        }.get(key, default)
+        mock_event.icalendar_instance.walk.return_value = [mock_component]
+        mock_calendar.search.return_value = [mock_event]
+        
+        mock_client.principal.return_value = mock_principal
+        mock_principal.calendars.return_value = [mock_calendar]
+        mock_dav_client.return_value = mock_client
+        
+        calendar = TomCalendar(self.config, None)
+        
+        # Mock timezone for datetime operations
+        with patch.object(calendar, 'tz') as mock_tz:
+            mock_tz.localize.side_effect = lambda dt: dt
+            
+            # Try to update only end time when start is missing
+            result = calendar.updateEvent(
+                'event-to-update-123',
+                end='2024-03-15 15:00'
+            )
+        
+        # Should still update successfully (start will remain None)
+        self.assertEqual(result['status'], 'success')
+        mock_event.delete.assert_called_once()
+        mock_calendar.save_event.assert_called_once()
+    
+    @patch('tomcalendar.caldav.DAVClient')
+    @patch('tomcalendar.logger')
+    def test_network_timeout_during_delete_operations(self, mock_logger, mock_dav_client):
+        """Test network timeout during delete operations"""
+        # Setup basic mocks
+        mock_client = MagicMock()
+        mock_principal = MagicMock()
+        mock_calendar = MagicMock()
+        
+        mock_calendar.get_properties.return_value = {'{DAV:}displayname': 'Personal'}
+        
+        mock_client.principal.return_value = mock_principal
+        mock_principal.calendars.return_value = [mock_calendar]
+        mock_dav_client.return_value = mock_client
+        
+        calendar = TomCalendar(self.config, None)
+        
+        # Test timeout during search
+        mock_calendar.search.side_effect = Exception("Network timeout")
+        result = calendar.deleteEvent('event-123')
+        
+        self.assertEqual(result['status'], 'error')
+        mock_logger.error.assert_called()
+    
+    @patch('tomcalendar.caldav.DAVClient')
+    @patch('tomcalendar.logger')
+    def test_network_timeout_during_update_operations(self, mock_logger, mock_dav_client):
+        """Test network timeout during update operations"""
+        # Setup basic mocks
+        mock_client = MagicMock()
+        mock_principal = MagicMock()
+        mock_calendar = MagicMock()
+        
+        mock_calendar.get_properties.return_value = {'{DAV:}displayname': 'Personal'}
+        
+        mock_client.principal.return_value = mock_principal
+        mock_principal.calendars.return_value = [mock_calendar]
+        mock_dav_client.return_value = mock_client
+        
+        calendar = TomCalendar(self.config, None)
+        
+        # Test timeout during search
+        mock_calendar.search.side_effect = Exception("Network timeout")
+        result = calendar.updateEvent('event-123', title='New Title')
+        
+        self.assertEqual(result['status'], 'error')
+        mock_logger.error.assert_called()
 
 if __name__ == '__main__':
     unittest.main()
