@@ -25,7 +25,9 @@ from deebot_client.commands.json.charge_state import GetChargeState
 from deebot_client.commands.json.pos import GetPos
 from deebot_client.commands.json.network import GetNetInfo
 from deebot_client.commands.json.error import GetError
-from deebot_client.events import BatteryEvent, StateEvent, CleanLogEvent, ErrorEvent, StatsEvent, RoomsEvent, LifeSpanEvent, VolumeEvent, AvailabilityEvent
+from deebot_client.commands.json.water_info import GetWaterInfo
+from deebot_client.commands.json.station_state import GetStationState
+from deebot_client.events import BatteryEvent, StateEvent, CleanLogEvent, ErrorEvent, StatsEvent, RoomsEvent, VolumeEvent, AvailabilityEvent
 from deebot_client.mqtt_client import MqttClient, create_mqtt_config
 from deebot_client.util import md5
 from deebot_client.device import Device
@@ -83,9 +85,10 @@ class TomDeebot:
             "cleaning_mode": None,
             "position": None,
             "rooms": None,
-            "component_lifespan": None,
             "volume": None,
             "availability": None,
+            "water_info": None,
+            "station_state": None,
             "last_error": None,
             "error_history": []
         }
@@ -148,6 +151,36 @@ class TomDeebot:
         import datetime
         return datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
     
+    def _parse_lifespan_event(self, lifespan_str):
+        """Parse LifeSpanEvent string into readable format"""
+        import re
+        try:
+            # Example: LifeSpanEvent(type=<LifeSpan.FILTER: 'heap'>, percent=75.42, remaining=5430)
+            
+            # Extract component type
+            type_match = re.search(r"type=<LifeSpan\.(\w+): '(\w+)'", lifespan_str)
+            component_type = type_match.group(1).lower() if type_match else "unknown"
+            component_name = type_match.group(2) if type_match else "unknown"
+            
+            # Extract percent
+            percent_match = re.search(r"percent=([\d.]+)", lifespan_str)
+            percent = float(percent_match.group(1)) if percent_match else None
+            
+            # Extract remaining
+            remaining_match = re.search(r"remaining=(\d+)", lifespan_str)
+            remaining = int(remaining_match.group(1)) if remaining_match else None
+            
+            return {
+                "component": component_type,
+                "name": component_name,
+                "percent_remaining": percent,
+                "remaining_time": remaining,
+                "status": "good" if percent and percent > 20 else "low" if percent and percent > 5 else "replace"
+            }
+        except Exception as e:
+            logger.debug(f"Error parsing lifespan event: {e}")
+            return None
+
     def _make_json_serializable(self, obj):
         """Convert objects to JSON serializable format"""
         if obj is None:
@@ -233,7 +266,6 @@ class TomDeebot:
             self.bot.events.subscribe(ErrorEvent, self._on_error_event)
             self.bot.events.subscribe(StatsEvent, self._on_stats_event)
             self.bot.events.subscribe(RoomsEvent, self._on_rooms_event)
-            self.bot.events.subscribe(LifeSpanEvent, self._on_lifespan_event)
             self.bot.events.subscribe(VolumeEvent, self._on_volume_event)
             self.bot.events.subscribe(AvailabilityEvent, self._on_availability_event)
             
@@ -380,31 +412,6 @@ class TomDeebot:
             
         logger.debug(f"Rooms event: {event}")
     
-    async def _on_lifespan_event(self, event):
-        """Handle component lifespan updates"""
-        # Try to extract lifespan information
-        lifespan_data = {}
-        
-        if hasattr(event, 'component') and hasattr(event, 'lifespan'):
-            lifespan_data[event.component] = event.lifespan
-        elif hasattr(event, 'value'):
-            lifespan_data = event.value
-        elif hasattr(event, 'data'):
-            lifespan_data = event.data
-        else:
-            lifespan_data = str(event)
-        
-        # Update or create lifespan dict
-        if self.robot_data["component_lifespan"] is None:
-            self.robot_data["component_lifespan"] = {}
-        
-        if isinstance(lifespan_data, dict):
-            self.robot_data["component_lifespan"].update(lifespan_data)
-        else:
-            self.robot_data["component_lifespan"] = lifespan_data
-            
-        logger.debug(f"Lifespan event: {event}")
-    
     async def _on_volume_event(self, event):
         """Handle volume level updates"""
         # Try to extract volume information
@@ -456,6 +463,8 @@ class TomDeebot:
             ("position", GetPos()),
             ("network_info", GetNetInfo()),
             ("error_info", GetError()),
+            ("water_info", GetWaterInfo()),
+            ("station_state", GetStationState()),
         ])
         
         # Execute all REST commands
@@ -486,20 +495,102 @@ class TomDeebot:
             elif isinstance(self.bot.device_info, dict) and 'name' in self.bot.device_info:
                 device_name = self.bot.device_info['name']
         
-        # Combine MQTT data with REST results
-        complete_status = self.robot_data.copy()
+        # Extract and prioritize information (REST over MQTT)
         
-        # Add REST data to the main status
-        complete_status.update({
-            "timestamp": time.time(),
-            "formatted_time": self._format_timestamp(time.time()),
+        # Battery level (REST priority)
+        battery_level = None
+        if "battery" in rest_results and isinstance(rest_results["battery"], dict):
+            battery_data = rest_results["battery"].get("resp", {}).get("body", {}).get("data", {})
+            battery_level = battery_data.get("value")
+        if battery_level is None:
+            battery_level = self.robot_data.get("battery_level")
+        
+        # Robot status (MQTT)
+        robot_status = self.robot_data.get("status")
+        
+        # Position (REST priority)
+        position = None
+        if "position" in rest_results and isinstance(rest_results["position"], dict):
+            pos_data = rest_results["position"].get("resp", {}).get("body", {}).get("data", {})
+            deebot_pos = pos_data.get("deebotPos", {})
+            if deebot_pos.get("invalid") == 0:  # Valid position
+                position = {
+                    "x": deebot_pos.get("x"),
+                    "y": deebot_pos.get("y"),
+                    "angle": deebot_pos.get("a")
+                }
+        if position is None:
+            position = self.robot_data.get("position")
+        
+        # Rooms (simplified - name and id only)
+        rooms = []
+        mqtt_rooms = self.robot_data.get("rooms", [])
+        if isinstance(mqtt_rooms, list):
+            for room in mqtt_rooms:
+                if isinstance(room, dict):
+                    rooms.append({
+                        "id": room.get("id"),
+                        "name": room.get("name")
+                    })
+        
+        # Volume (MQTT)
+        volume = self.robot_data.get("volume")
+        
+        # Availability (MQTT)
+        availability = self.robot_data.get("availability")
+        
+        # Water info (REST priority)
+        water_info = None
+        if "water_info" in rest_results and isinstance(rest_results["water_info"], dict):
+            water_data = rest_results["water_info"].get("resp", {}).get("body", {}).get("data", {})
+            if water_data:
+                water_info = water_data
+        if water_info is None:
+            water_info = self.robot_data.get("water_info")
+        
+        # Station state (REST priority)
+        station_state = None
+        if "station_state" in rest_results and isinstance(rest_results["station_state"], dict):
+            station_data = rest_results["station_state"].get("resp", {}).get("body", {}).get("data", {})
+            if station_data:
+                station_state = station_data
+        if station_state is None:
+            station_state = self.robot_data.get("station_state")
+        
+        # Current errors
+        current_errors = []
+        last_error = self.robot_data.get("last_error")
+        if last_error and last_error.get("code") != 0:  # Only non-zero error codes
+            current_errors.append({
+                "code": last_error.get("code"),
+                "message": last_error.get("message"),
+                "timestamp": last_error.get("formatted_time", self._format_timestamp(last_error.get("timestamp", 0)))
+            })
+        
+        # Is charging (REST priority)
+        is_charging = None
+        if "charge_state" in rest_results and isinstance(rest_results["charge_state"], dict):
+            charge_data = rest_results["charge_state"].get("resp", {}).get("body", {}).get("data", {})
+            is_charging = bool(charge_data.get("isCharging", 0))
+        
+        # Build clean response
+        clean_status = {
+            "battery_level": battery_level,
+            "robot_status": robot_status,
+            "position": position,
+            "rooms": rooms,
+            "volume": volume,
+            "availability": availability,
+            "water_info": water_info,
+            "station_state": station_state,
+            "current_errors": current_errors,
+            "is_charging": is_charging,
             "device_name": device_name,
-            "connected": self.bot is not None,
-            "rest_data": rest_results
-        })
+            "connected": self.bot is not None
+        }
         
         # Make everything JSON serializable
-        serializable_status = self._make_json_serializable(complete_status)
+        serializable_status = self._make_json_serializable(clean_status)
         
         return json.dumps(serializable_status, indent=2)
     
