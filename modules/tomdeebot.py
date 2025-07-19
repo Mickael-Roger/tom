@@ -242,19 +242,52 @@ class TomDeebot:
             logger.debug(f"Error parsing lifespan event: {e}")
             return None
 
-    def _make_json_serializable(self, obj):
+    def _make_json_serializable(self, obj, _seen=None):
         """Convert objects to JSON serializable format"""
+        if _seen is None:
+            _seen = set()
+        
+        # Prevent infinite recursion
+        if id(obj) in _seen:
+            return str(obj)
+        
         if obj is None:
             return None
         elif isinstance(obj, (str, int, float, bool)):
             return obj
         elif isinstance(obj, dict):
-            return {k: self._make_json_serializable(v) for k, v in obj.items()}
+            _seen.add(id(obj))
+            try:
+                # Create a snapshot of dict items to avoid "dictionary changed size during iteration"
+                items = list(obj.items())
+                result = {k: self._make_json_serializable(v, _seen) for k, v in items}
+            except (RuntimeError, AttributeError):
+                # Fallback for problematic objects (like MagicMock)
+                result = str(obj)
+            _seen.remove(id(obj))
+            return result
         elif isinstance(obj, (list, tuple)):
-            return [self._make_json_serializable(item) for item in obj]
+            _seen.add(id(obj))
+            try:
+                result = [self._make_json_serializable(item, _seen) for item in obj]
+            except (RuntimeError, AttributeError):
+                result = str(obj)
+            _seen.remove(id(obj))
+            return result
         elif hasattr(obj, '__dict__'):
-            # Convert object to dict representation
-            return self._make_json_serializable(obj.__dict__)
+            _seen.add(id(obj))
+            try:
+                # Convert object to dict representation
+                obj_dict = obj.__dict__
+                if isinstance(obj_dict, dict):
+                    items = list(obj_dict.items())
+                    result = {k: self._make_json_serializable(v, _seen) for k, v in items}
+                else:
+                    result = str(obj)
+            except (RuntimeError, AttributeError):
+                result = str(obj)
+            _seen.remove(id(obj))
+            return result
         else:
             # Fallback to string representation
             return str(obj)
