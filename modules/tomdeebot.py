@@ -16,8 +16,9 @@ import aiohttp
 # Deebot client imports
 from deebot_client.api_client import ApiClient
 from deebot_client.authentication import Authenticator, create_rest_config
-from deebot_client.commands.json.clean import Clean, CleanAction
+from deebot_client.commands.json.clean import Clean, CleanAction, CleanArea
 from deebot_client.commands.json.charge import Charge
+from deebot_client.commands.json.work_mode import SetWorkMode
 from deebot_client.commands.json.battery import GetBattery
 from deebot_client.commands.json.stats import GetStats
 from deebot_client.commands.json.clean_logs import GetCleanLogs
@@ -27,7 +28,7 @@ from deebot_client.commands.json.network import GetNetInfo
 from deebot_client.commands.json.error import GetError
 from deebot_client.commands.json.water_info import GetWaterInfo
 from deebot_client.commands.json.station_state import GetStationState
-from deebot_client.events import BatteryEvent, StateEvent, CleanLogEvent, ErrorEvent, StatsEvent, RoomsEvent, VolumeEvent, AvailabilityEvent
+from deebot_client.events import BatteryEvent, StateEvent, CleanLogEvent, ErrorEvent, StatsEvent, RoomsEvent, VolumeEvent, AvailabilityEvent, WorkMode
 from deebot_client.mqtt_client import MqttClient, create_mqtt_config
 from deebot_client.util import md5
 from deebot_client.device import Device
@@ -102,7 +103,6 @@ class TomDeebot:
                     "parameters": {
                         "type": "object",
                         "properties": {},
-                        "required": [],
                     },
                 },
             },
@@ -114,7 +114,6 @@ class TomDeebot:
                     "parameters": {
                         "type": "object",
                         "properties": {},
-                        "required": [],
                     },
                 },
             },
@@ -126,19 +125,55 @@ class TomDeebot:
                     "parameters": {
                         "type": "object",
                         "properties": {},
-                        "required": [],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "start_vacuum_robot_cleaning",
+                    "description": "Start a cleaning session on the vacuum robot with configurable cleaning type and optional room specification.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "cleaning_type": {
+                                "type": "string",
+                                "enum": ["vacuum_only", "mop_only", "vacuum_then_mop", "vacuum_and_mop"],
+                                "description": "Type of cleaning to perform: vacuum_only (vaccum only), mop_only (mop only), vacuum_then_mop (vaccum then mop), vacuum_and_mop (vaccum and mop at the same time)"
+                            },
+                            "room_name": {
+                                "type": "string",
+                                "enum": ["Salon", "Cuisine", "Entree"],
+                                "description": "Optional name of the specific room to clean. If not provided, will clean all rooms. Available rooms will be validated against the robot's room mapping."
+                            }
+                        },
+                        "required": ["cleaning_type"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_vacuum_robot_rooms",
+                    "description": "Get the list of available rooms that the vacuum robot can clean individually.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
                     },
                 },
             },
         ]
         
-        self.systemContext = "This module provides comprehensive status monitoring and control of a Deebot robot vacuum. It combines real-time MQTT data with detailed REST API information to give complete device status and allows basic control commands like stopping cleaning and returning to base station."
+        self.systemContext = "This module provides comprehensive status monitoring and control of a Deebot robot vacuum. It combines real-time MQTT data with detailed REST API information to give complete device status and allows control commands including starting cleaning with different modes (vacuum only, mop only, vacuum then mop, vacuum and mop simultaneously), stopping cleaning, and returning to base station. It supports both full house cleaning and room-specific cleaning."
         self.complexity = 0
         
         self.functions = {
             "get_vacuum_robot_status": {"function": functools.partial(self.get_vacuum_robot_status)},
             "stop_vacuum_robot": {"function": functools.partial(self.stop_vacuum_robot)},
             "go_to_base_station": {"function": functools.partial(self.go_to_base_station)},
+            "start_vacuum_robot_cleaning": {"function": functools.partial(self.start_vacuum_robot_cleaning)},
+            "get_vacuum_robot_rooms": {"function": functools.partial(self.get_vacuum_robot_rooms)},
         }
         
         # Start MQTT background task
@@ -223,6 +258,22 @@ class TomDeebot:
         else:
             # Fallback to string representation
             return str(obj)
+    
+    def _get_available_rooms(self):
+        """Get list of available room names"""
+        rooms = self.robot_data.get("rooms", [])
+        room_names = []
+        if isinstance(rooms, list):
+            for room in rooms:
+                if isinstance(room, dict) and room.get("name"):
+                    room_names.append(room.get("name"))
+        
+        # Return sorted list with default rooms if none are detected yet
+        if not room_names:
+            # Default room names commonly found in homes
+            return ["salon", "cuisine", "chambre", "salle_de_bain", "bureau", "entree"]
+        
+        return sorted(room_names)
         
     def _start_mqtt_background_task(self):
         """Start the MQTT background task in a separate thread"""
@@ -653,6 +704,139 @@ class TomDeebot:
         """Send the vacuum robot back to its charging base station"""
         logger.info("Sending vacuum robot back to base station")
         return self._execute_command_sync(Charge())
+    
+    def start_vacuum_robot_cleaning(self, cleaning_type, room_name=None):
+        """Start cleaning with specified type and optional room"""
+        logger.info(f"Starting vacuum robot cleaning: {cleaning_type}" + (f" in room {room_name}" if room_name else " (all rooms)"))
+        
+        if not self.bot:
+            return "Robot not connected. Please wait for initialization."
+        
+        if not self.mqtt_loop or self.mqtt_loop.is_closed():
+            return "MQTT connection not available"
+        
+        try:
+            # Find room ID if room name is specified
+            room_id = None
+            if room_name:
+                rooms = self.robot_data.get("rooms", [])
+                available_room_names = []
+                
+                if isinstance(rooms, list):
+                    for room in rooms:
+                        if isinstance(room, dict) and room.get("name"):
+                            available_room_names.append(room.get("name"))
+                            # Check for exact match (case insensitive)
+                            if room.get("name").lower() == room_name.lower():
+                                room_id = room.get("id")
+                                break
+                    
+                    # If no exact match found, try fuzzy matching
+                    if room_id is None:
+                        for room in rooms:
+                            if isinstance(room, dict) and room.get("name"):
+                                # Check if room_name is contained in the detected room name or vice versa
+                                detected_name = room.get("name").lower()
+                                search_name = room_name.lower()
+                                if search_name in detected_name or detected_name in search_name:
+                                    room_id = room.get("id")
+                                    logger.info(f"Fuzzy match found: '{room_name}' matched with '{room.get('name')}'")
+                                    break
+                
+                if room_id is None:
+                    if available_room_names:
+                        return f"Room '{room_name}' not found. Available rooms from robot: {available_room_names}"
+                    else:
+                        return f"Room '{room_name}' specified but no rooms detected by robot yet. Try using room names from predefined list or wait for room detection."
+            
+            # Configure cleaning based on type using WorkMode
+            commands_to_execute = []
+            logger.info(f"Requested cleaning type: {cleaning_type}")
+            
+            # Set the appropriate work mode first
+            if cleaning_type == "vacuum_only":
+                commands_to_execute.append(SetWorkMode(WorkMode.VACUUM))
+                
+            elif cleaning_type == "mop_only":
+                commands_to_execute.append(SetWorkMode(WorkMode.MOP))
+                
+            elif cleaning_type == "vacuum_then_mop":
+                commands_to_execute.append(SetWorkMode(WorkMode.MOP_AFTER_VACUUM))
+                
+            elif cleaning_type == "vacuum_and_mop":
+                commands_to_execute.append(SetWorkMode(WorkMode.VACUUM_AND_MOP))
+            
+            else:
+                return f"Invalid cleaning type: {cleaning_type}"
+            
+            # Add the cleaning command
+            if room_id:
+                # Clean specific area/room
+                commands_to_execute.append(CleanArea(area=str(room_id)))
+                logger.info(f"Starting room cleaning for room ID: {room_id}")
+            else:
+                # Clean all areas
+                commands_to_execute.append(Clean(CleanAction.START))
+                logger.info("Starting full house cleaning")
+            
+            # Execute all commands in sequence
+            results = []
+            for i, command in enumerate(commands_to_execute):
+                try:
+                    future = asyncio.run_coroutine_threadsafe(
+                        self.bot.execute_command(command), 
+                        self.mqtt_loop
+                    )
+                    result = future.result(timeout=15)
+                    results.append(f"Command {i+1} executed successfully")
+                    logger.debug(f"Cleaning command {i+1} executed: {type(command).__name__}")
+                except asyncio.TimeoutError:
+                    error_msg = f"Command {i+1} timeout"
+                    logger.error(error_msg)
+                    results.append(error_msg)
+                except Exception as e:
+                    error_msg = f"Command {i+1} error: {e}"
+                    logger.error(error_msg)
+                    results.append(error_msg)
+            
+            # Check results
+            success_count = sum(1 for r in results if "successfully" in r)
+            if success_count == len(commands_to_execute):
+                success_msg = f"Cleaning started successfully with {cleaning_type}" + (f" in room {room_name}" if room_name else " for all rooms")
+                logger.info(success_msg)
+                return success_msg
+            else:
+                return f"Cleaning started with some issues: {'; '.join(results)}"
+                
+        except Exception as e:
+            logger.error(f"Error starting cleaning: {e}")
+            return f"Error starting cleaning: {e}"
+    
+    def get_vacuum_robot_rooms(self):
+        """Get the list of available rooms for cleaning"""
+        logger.info("Getting list of available rooms for vacuum robot")
+        
+        available_rooms = self._get_available_rooms()
+        
+        # Get actual rooms detected by the robot
+        rooms = self.robot_data.get("rooms", [])
+        detected_rooms = []
+        if isinstance(rooms, list):
+            for room in rooms:
+                if isinstance(room, dict) and room.get("name"):
+                    detected_rooms.append({
+                        "id": room.get("id"),
+                        "name": room.get("name")
+                    })
+        
+        result = {
+            "predefined_rooms": available_rooms,
+            "detected_rooms": detected_rooms,
+            "total_available": len(available_rooms),
+            "total_detected": len(detected_rooms)
+        }
+        
+        return json.dumps(result, indent=2)
     
     
 

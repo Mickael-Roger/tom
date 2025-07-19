@@ -69,7 +69,6 @@ class TomTodo:
           "parameters": {
             "type": "object",
             "properties": {},
-            "required": [],
             "additionalProperties": False,
           },
         }

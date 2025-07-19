@@ -71,7 +71,6 @@ class TomGroceries:
           "parameters": {
             "type": "object",
             "properties": {},
-            "required": [],
             "additionalProperties": False,
           },
         }
