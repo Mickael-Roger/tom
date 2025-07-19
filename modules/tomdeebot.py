@@ -97,8 +97,32 @@ class TomDeebot:
             {
                 "type": "function",
                 "function": {
-                    "name": "get_deebot_status",
-                    "description": "Get comprehensive status of the Deebot robot combining real-time MQTT data with detailed REST API information including battery, position, cleaning status, errors, and device information.",
+                    "name": "get_vacuum_robot_status",
+                    "description": "Get comprehensive status of the vacuum robot combining real-time MQTT data with detailed REST API information including battery, position, cleaning status, errors, and device information.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "stop_vacuum_robot",
+                    "description": "Stop the vacuum robot from cleaning and pause its current operation.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "go_to_base_station",
+                    "description": "Send the vacuum robot back to its charging base station to recharge.",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -108,11 +132,13 @@ class TomDeebot:
             },
         ]
         
-        self.systemContext = "This module provides comprehensive status monitoring of a Deebot robot vacuum. It combines real-time MQTT data with detailed REST API information to give complete device status including battery, position, cleaning state, errors, and component information."
+        self.systemContext = "This module provides comprehensive status monitoring and control of a Deebot robot vacuum. It combines real-time MQTT data with detailed REST API information to give complete device status and allows basic control commands like stopping cleaning and returning to base station."
         self.complexity = 0
         
         self.functions = {
-            "get_deebot_status": {"function": functools.partial(self.get_deebot_status)},
+            "get_vacuum_robot_status": {"function": functools.partial(self.get_vacuum_robot_status)},
+            "stop_vacuum_robot": {"function": functools.partial(self.stop_vacuum_robot)},
+            "go_to_base_station": {"function": functools.partial(self.go_to_base_station)},
         }
         
         # Start MQTT background task
@@ -440,9 +466,9 @@ class TomDeebot:
             
         logger.debug(f"Availability event: {event}")
     
-    def get_deebot_status(self):
+    def get_vacuum_robot_status(self):
         """Get comprehensive status combining MQTT real-time data with REST API detailed information"""
-        logger.info("Getting comprehensive Deebot status (MQTT + REST)")
+        logger.info("Getting comprehensive vacuum robot status (MQTT + REST)")
         
         if not self.bot:
             return "Robot not connected. Please wait for initialization."
@@ -593,6 +619,40 @@ class TomDeebot:
         serializable_status = self._make_json_serializable(clean_status)
         
         return json.dumps(serializable_status, indent=2)
+    
+    def _execute_command_sync(self, command):
+        """Execute a command synchronously"""
+        if not self.bot:
+            return "Robot not connected. Please wait for initialization."
+        
+        if not self.mqtt_loop or self.mqtt_loop.is_closed():
+            return "MQTT connection not available"
+        
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                self.bot.execute_command(command), 
+                self.mqtt_loop
+            )
+            result = future.result(timeout=15)
+            return "Command executed successfully"
+        except asyncio.TimeoutError:
+            logger.error("Command execution timeout")
+            return "Command execution timeout - robot may be offline"
+        except Exception as e:
+            logger.error(f"Command execution error: {e}")
+            if "Session is closed" in str(e):
+                return "Connection lost to robot. Please restart the module."
+            return f"Error executing command: {e}"
+    
+    def stop_vacuum_robot(self):
+        """Stop the vacuum robot from cleaning"""
+        logger.info("Stopping vacuum robot cleaning")
+        return self._execute_command_sync(Clean(CleanAction.PAUSE))
+    
+    def go_to_base_station(self):
+        """Send the vacuum robot back to its charging base station"""
+        logger.info("Sending vacuum robot back to base station")
+        return self._execute_command_sync(Charge())
     
     
 
