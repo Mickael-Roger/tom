@@ -1,0 +1,121 @@
+# Test cases for triageModules integration tests
+# Each test case contains a prompt and the expected modules that should be identified
+
+test_cases:
+  # Calendar-related prompts
+  - prompt: "What's on my schedule for tomorrow?"
+    expected_modules: ["calendar"]
+    description: "Basic calendar query"
+
+  - prompt: "Add a meeting with John at 3pm next Tuesday"
+    expected_modules: ["calendar"]
+    description: "Calendar event creation"
+
+  - prompt: "Cancel my 2pm appointment and reschedule it for Friday"
+    expected_modules: ["calendar"]
+    description: "Calendar modification"
+
+  # Grocery-related prompts
+  - prompt: "Add milk and bread to my shopping list"
+    expected_modules: ["groceries"]
+    description: "Basic grocery list addition"
+
+  - prompt: "What's on my grocery list?"
+    expected_modules: ["groceries"]
+    description: "Grocery list query"
+
+  - prompt: "Remove tomatoes from my shopping list"
+    expected_modules: ["groceries"]
+    description: "Grocery list removal"
+
+  # IDFM (transport) related prompts
+  - prompt: "How do I get from Châtelet to République by metro?"
+    expected_modules: ["idfm"]
+    description: "Transport route planning"
+
+  - prompt: "What's the next train from Gare du Nord?"
+    expected_modules: ["idfm"]
+    description: "Transport schedule query"
+
+  - prompt: "Are there any disruptions on line 1?"
+    expected_modules: ["idfm"]
+    description: "Transport status check"
+
+  # Todo-related prompts
+  - prompt: "Add 'buy groceries' to my todo list"
+    expected_modules: ["todo"]
+    description: "Basic todo addition"
+
+  - prompt: "Mark 'call dentist' as completed"
+    expected_modules: ["todo"]
+    description: "Todo completion"
+
+  - prompt: "What tasks do I have for today?"
+    expected_modules: ["todo"]
+    description: "Todo list query"
+
+  # Deebot (robot vacuum) related prompts
+  - prompt: "Start the vacuum cleaner"
+    expected_modules: ["deebot"]
+    description: "Robot vacuum control"
+
+  - prompt: "Send the robot to clean the kitchen"
+    expected_modules: ["deebot"]
+    description: "Specific room cleaning"
+
+  - prompt: "What's the battery level of my vacuum?"
+    expected_modules: ["deebot"]
+    description: "Robot status query"
+
+  # Multiple modules needed
+  - prompt: "Add 'buy groceries' to my todo list and also add milk to my shopping list"
+    expected_modules: ["todo", "groceries"]
+    description: "Combined todo and grocery action"
+
+  - prompt: "What's my schedule for tomorrow and what's on my shopping list?"
+    expected_modules: ["calendar", "groceries"]
+    description: "Multiple information queries"
+
+  - prompt: "Schedule a meeting for 2pm and start the vacuum cleaner"
+    expected_modules: ["calendar", "deebot"]
+    description: "Calendar and device control"
+
+  - prompt: "How do I get to my 3pm meeting at République and add the travel time to my calendar?"
+    expected_modules: ["idfm", "calendar"]
+    description: "Transport planning with calendar integration"
+
+  # Complex multi-module scenarios
+  - prompt: "Plan my day: check my schedule, review my todo list, and see what groceries I need"
+    expected_modules: ["calendar", "todo", "groceries"]
+    description: "Daily planning with multiple modules"
+
+  # No modules needed (general conversation)
+  - prompt: "Hello, how are you?"
+    expected_modules: []
+    description: "Basic greeting - no modules needed"
+
+  - prompt: "Lance le robot dans le salon"
+    expected_modules: ["deebot"]
+    description: "Demarre l'aspiration du salon avec le robot"
+
+  # French language prompts (to test language handling)
+  - prompt: "Qu'est-ce que j'ai dans mon agenda demain ?"
+    expected_modules: ["calendar"]
+    description: "French calendar query"
+
+  - prompt: "Ajoute du lait à ma liste de courses"
+    expected_modules: ["groceries"]
+    description: "French grocery addition"
+
+  - prompt: "Comment aller de Châtelet à République ?"
+    expected_modules: ["idfm"]
+    description: "French transport query"
+
+  # Weather-like prompts (should not match any available modules)
+  - prompt: "What's the weather like today?"
+    expected_modules: ["weather"]
+    description: "Weather query - no weather module available"
+
+  - prompt: "Will it rain tomorrow?"
+    expected_modules: ["weather"]
+    description: "Weather forecast - no weather module available"
