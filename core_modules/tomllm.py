@@ -179,26 +179,176 @@ class TomLLM():
 
     return response
 
+
+
+
+
   def set_response_context(self, client_type):
     if client_type == 'tui':
       return "Your response will be displayed in a TUI terminal application. You should use markdown to format your answer for better readability. You can use titles, lists, bold text, etc."
     else: # web and pwa
       return "Your response will be displayed in a web browser or in an mobile app, so it must be concise and free of any markdown formatting, lists, or complex layouts. Use simple text and line breaks for readability. Do not forget in most case, your response will be play using a text to speech feature. Unless the user explicitly ask for it, you must never directly write URL or stuff like that. Instead, you must use the tag [open:PLACE URL HERE]"
 
+
+
+
+
+  def triageModules(self, conversation, available_tools, modules_name_list, client_type):
+    tools = [
+      {
+        "type": "function",
+        "function": {
+          "name": "modules_needed_to_answer_user_prompt",
+          "description": "This function is used to execute the appropriate module to get the required data to answer the user's request",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "modules_name": {
+                "type": "string",
+                "enum": modules_name_list,
+                "description": f"List of module names",
+              },
+            },
+            "required": ["modules_name"],
+            "additionalProperties": False,
+          },
+        },
+      },
+    ]
+
+    triage_conversation = copy.deepcopy(conversation) 
+  
+    tooling = json.dumps(available_tools)
+    prompt = f'''As an AI assistant, you have access to a wide range of functions, far more than your API allows. These functions are grouped into modules. A module is a logical grouping of functions for a specific theme.
+
+    For each new user request, you have access to the conversation history.
+
+    If you need a function that is not in your list of tools to respond to the user's request, you should call the 'modules_needed_to_answer_user_prompt' function with the necessary modules. You can call the 'modules_needed_to_answer_user_prompt' function as many times as needed.
+
+    It is very important that you do not invent module names—only the modules provided in the list exist.
+
+    Once you call the 'modules_needed_to_answer_user_prompt' function, the user's request will be sent back to you with the functions from the requested modules added to your tools. At that point, you can choose the appropriate function(s) to respond to the user's request.
+    
+    ```json
+    {tooling}
+    ```
+    '''
+    triage_conversation.append({"role": "system", "content": prompt})
+
+    complexity = 1
+    llm = self.llm
+
+    response_context = self.set_response_context(client_type)
+    triage_conversation.append({"role": 'system', "content": response_context})
+
+    response = self.callLLM(messages=triage_conversation, tools=tools, complexity=complexity, llm=llm)
+    
+    load_modules = []
+    if response != False and response.choices[0].finish_reason == "tool_calls":
+      for tool_call in response.choices[0].message.tool_calls:
+        if tool_call.function.name.find("modules_needed_to_answer_user_prompt") != -1:
+          mod = json.loads(tool_call.function.arguments)
+          mod_name = mod['modules_name']
+          load_modules.append(mod_name)
+        if tool_call.function.name in modules_name_list:
+          mod_name = tool_call.function.name
+          load_modules.append(mod_name)
+    
+    return load_modules
+
+  def executeRequest(self, conversation, modules, client_type):
+    tools = []
+    complexity = 0
+
+    for mod in set(modules):
+      if mod in self.services:
+        tools = tools + self.services[mod]['tools']
+        conversation.append({"role": "system", "content": self.services[mod]["systemContext"]})
+        try:
+          if self.services[mod]["complexity"] > complexity:
+            complexity = self.services[mod]["complexity"]
+            tomlogger.debug(f"Complexity increased to {complexity}", self.username)
+        except:
+          pass
+      else:
+        tomlogger.warning(f"Module '{mod}' not loaded in services, skipping", self.username)
+
+    while True:
+      response = self.callLLM(messages=conversation, tools=tools, complexity=complexity)
+      
+      if response != False:
+        if response.choices[0].finish_reason == "stop":
+          self.history.append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
+          return response.choices[0].message.content
+
+        elif response.choices[0].finish_reason == "tool_calls":
+          conversation.append(response.choices[0].message.to_dict())
+
+          for tool_call in response.choices[0].message.tool_calls:
+            function_name = tool_call.function.name
+            function_params = json.loads(tool_call.function.arguments)
+
+            tomlogger.info(f"Calling function: {function_name} with {function_params}", self.username)
+
+            if function_name in self.functions:
+              function_data = self.functions[function_name]
+              module_name = function_data.get('module_name', 'system')
+              set_log_context(module_name=module_name)
+              
+              try:
+                function_result = function_data['function'](**function_params)
+              finally:
+                set_log_context(module_name=None)
+            else:
+              tomlogger.error(f"Function '{function_name}' not found in available functions", self.username)
+              tomlogger.error(f"Available functions: {list(self.functions.keys())}", self.username)
+              function_result = {"error": f"Function '{function_name}' not available. This might be due to a module loading error."}
+
+            if function_result is False:
+              self.history.append({"role": 'assistant', "content": "Error while executing the function call"})
+              return False
+
+            self.history.append({"role": 'system', "content": json.dumps(function_result)})
+            conversation.append({"role": 'tool', "content": json.dumps(function_result), "tool_call_id": tool_call.id})
+        else:
+          return False
+      else: 
+        return False
+
   def processRequest(self, input, lang, position, client_type):
   
     self.generateContextPrompt(input, lang, position, client_type)
 
-
     available_tools = []
     modules_name_list = []
-
 
     for module in self.services:
       available_tools.append({"module_name": module, "module_description": self.services[module]['description']})
       modules_name_list.append(module)
 
+    conversation = copy.deepcopy(self.history)
 
+    # Phase 1: Triage to identify needed modules
+    required_modules = self.triageModules(conversation, available_tools, modules_name_list, client_type)
+    
+    if required_modules:
+      tomlogger.debug(f"Load modules: {str(required_modules)}", self.username)
+      # Phase 2: Execute request with identified modules
+      return self.executeRequest(conversation, required_modules, client_type)
+    else:
+      # If no modules identified, try to answer directly
+      response_context = self.set_response_context(client_type)
+      conversation.append({"role": 'system', "content": response_context})
+      
+      response = self.callLLM(messages=conversation)
+      if response != False and response.choices[0].finish_reason == "stop":
+        self.history.append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
+        return response.choices[0].message.content
+      
+      return False
+
+  def old_processRequest_backup(self, input, lang, position, client_type):
     tools = [
       {
         "type": "function",
@@ -250,12 +400,12 @@ class TomLLM():
 
     complexity = 1
 
-    llm = "openai"
-    #llm = self.llm
+    #llm = "openai"
+    llm = self.llm
 
     response_context = self.set_response_context(client_type)
     conversation.append({"role": 'system', "content": response_context})
-    self.history.append({"role": 'system', "content": response_context})
+    #self.history.append({"role": 'system', "content": response_context})
 
     while True:
 
