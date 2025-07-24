@@ -199,10 +199,16 @@ class TomCoreModules:
     })
 
   def _load_module_list(self):
-    # Use global module list if already loaded
+    # Use global module list if already loaded and contains filename info
     if TomCoreModules._module_list_global:
-      self.module_list = TomCoreModules._module_list_global.copy()
-      return
+      # Check if the first module has filename info, if not, force reload
+      first_module_key = next(iter(TomCoreModules._module_list_global), None)
+      if first_module_key and 'filename' in TomCoreModules._module_list_global[first_module_key]:
+        self.module_list = TomCoreModules._module_list_global.copy()
+        return
+      else:
+        # Force reload to add filename information
+        TomCoreModules._module_list_global = {}
     
     # Load modules from /data/modules
     mod_dir = '/data/modules'
@@ -222,7 +228,8 @@ class TomCoreModules:
               self.module_list[tom_mod_config['module_name']] = {
                 "class": tom_mod_config['class_name'],
                 "description": tom_mod_config['description'],
-                "type": tom_mod_config.get('type', 'global')
+                "type": tom_mod_config.get('type', 'global'),
+                "filename": filename  # Store the actual filename
               }
     
     # Store in global module list
@@ -315,7 +322,8 @@ class TomCoreModules:
           module_info = {
             "class": tom_mod_config['class_name'],
             "description": tom_mod_config['description'],
-            "type": tom_mod_config.get('type', 'global')
+            "type": tom_mod_config.get('type', 'global'),
+            "filename": f"{module_name}.py"  # Store the actual filename
           }
           self.module_list[tom_mod_config['module_name']] = module_info
           # Update global module list
@@ -393,67 +401,132 @@ class TomCoreModules:
     # In practice, this should be handled by the main application
     pass
 
+  def _get_module_config(self, service_name):
+    """Get configuration for a module based on its type (global or personal)"""
+    if service_name not in self.module_list:
+      tomlogger.debug(f"Module {service_name} not found in module_list", self.user_config['username'])
+      return None, False
+    
+    module_type = self.module_list[service_name].get('type', 'global')
+    tomlogger.debug(f"Module {service_name} has type: {module_type}", self.user_config['username'])
+    
+    if module_type == 'global':
+      # Global modules: config from root services, enable from user services
+      tomlogger.debug(f"Looking for global module {service_name}", self.user_config['username'])
+      
+      # Check if user has enabled this global module
+      user_has_module = 'services' in self.user_config and service_name in self.user_config['services']
+      if not user_has_module:
+        tomlogger.debug(f"Global module {service_name} not enabled for user", self.user_config['username'])
+        return None, False
+        
+      # Get enable status from user config
+      user_config = self.user_config['services'][service_name]
+      is_enabled = user_config.get('enable', True) if isinstance(user_config, dict) else True
+      
+      if not is_enabled:
+        tomlogger.debug(f"Global module {service_name} disabled by user", self.user_config['username'])
+        return None, False
+      
+      # Get actual configuration from global services
+      if 'services' in self.global_config and service_name in self.global_config['services']:
+        service_config = self.global_config['services'][service_name]
+        tomlogger.debug(f"Global module {service_name} found and enabled", self.user_config['username'])
+        return service_config, is_enabled
+      else:
+        # Global module not configured globally - skip
+        global_services = self.global_config.get('services', {})
+        tomlogger.debug(f"Global module {service_name} not found in global services. Available: {list(global_services.keys())}", self.user_config['username'])
+        return None, False
+    else:
+      # Personal modules get config from user.services
+      tomlogger.debug(f"Looking for personal module {service_name} in user services", self.user_config['username'])
+      
+      if 'services' in self.user_config and service_name in self.user_config['services']:
+        service_config = self.user_config['services'][service_name]
+        is_enabled = service_config.get('enable', True) if isinstance(service_config, dict) else True
+        tomlogger.debug(f"Personal module {service_name} found, enabled: {is_enabled}", self.user_config['username'])
+        return service_config, is_enabled
+      else:
+        # Personal module not configured for this user - skip
+        user_services = self.user_config.get('services', {})
+        tomlogger.debug(f"Personal module {service_name} not found in user services. Available user services: {list(user_services.keys())}", self.user_config['username'])
+        return None, False
+
   def _load_user_modules(self):
+    # Load all available modules (both global and personal)
+    all_modules_to_load = set()
+    
+    # Add global modules from root-level services
+    if 'services' in self.global_config:
+      all_modules_to_load.update(self.global_config['services'].keys())
+    
+    # Add personal modules from user.services
     if 'services' in self.user_config:
-      for service_name in self.user_config['services'].keys():
-        try:
-          # Check if module is enabled (default is True if not specified)
-          service_config = self.user_config['services'][service_name]
-          is_enabled = service_config.get('enable', True) if isinstance(service_config, dict) else True
+      all_modules_to_load.update(self.user_config['services'].keys())
+    
+    for service_name in all_modules_to_load:
+      try:
+        # Get configuration based on module type
+        service_config, is_enabled = self._get_module_config(service_name)
+        
+        if service_config is None:
+          # Module not configured for this user/globally
+          continue
           
-          if not is_enabled:
-            self.module_status[service_name] = 'disabled'
-            continue
-          
-          if service_name not in self.module_list:
-            self.module_status[service_name] = 'error'
-            tomlogger.error(f"Module '{service_name}' not found in available modules", self.user_config['username'])
-            continue
-          
-          self.module_status[service_name] = 'loading'
-          tomlogger.logger.debug(f"Loading module '{service_name}'", self.user_config['username'])
-          
-          module_info = self.module_list[service_name]
-          module_class_name = module_info['class']
-          
-          # Find the class in the loaded modules
-          module_class = None
-          for mod_name, mod_info in self.module_list.items():
-              if mod_info['class'] == module_class_name:
-                  # The class should be in globals now
-                  if module_class_name in globals():
-                      module_class = globals()[module_class_name]
-                      break
-          
-          if module_class:
-            module_instance = module_class(self.user_config['services'][service_name], self.llm_instance)
+        if not is_enabled:
+          self.module_status[service_name] = 'disabled'
+          continue
+        
+        if service_name not in self.module_list:
+          self.module_status[service_name] = 'error'
+          tomlogger.error(f"Module '{service_name}' not found in available modules", self.user_config['username'])
+          continue
+        
+        self.module_status[service_name] = 'loading'
+        tomlogger.logger.debug(f"Loading module '{service_name}'", self.user_config['username'])
+        
+        module_info = self.module_list[service_name]
+        module_class_name = module_info['class']
+        
+        # Find the class in the loaded modules
+        module_class = None
+        for mod_name, mod_info in self.module_list.items():
+            if mod_info['class'] == module_class_name:
+                # The class should be in globals now
+                if module_class_name in globals():
+                    module_class = globals()[module_class_name]
+                    break
+        
+        if module_class:
+          module_instance = module_class(service_config, self.llm_instance)
 
-            self.services[service_name] = {
-              "obj": module_instance,
-              "description": module_info['description'],
-              "systemContext": getattr(module_instance, 'systemContext', ''),
-              "tools": getattr(module_instance, 'tools', []),
-              "complexity": getattr(module_instance, 'complexity', 0),
-              "functions": getattr(module_instance, 'functions', {}),
-              "type": module_info['type']
+          self.services[service_name] = {
+            "obj": module_instance,
+            "description": module_info['description'],
+            "systemContext": getattr(module_instance, 'systemContext', ''),
+            "tools": getattr(module_instance, 'tools', []),
+            "complexity": getattr(module_instance, 'complexity', 0),
+            "functions": getattr(module_instance, 'functions', {}),
+            "type": module_info['type']
+          }
+          # Update functions with module metadata
+          for func_name, func_data in module_instance.functions.items():
+            self.functions[func_name] = {
+              **func_data,
+              "module_name": service_name
             }
-            # Update functions with module metadata
-            for func_name, func_data in module_instance.functions.items():
-              self.functions[func_name] = {
-                **func_data,
-                "module_name": service_name
-              }
-            self.module_status[service_name] = 'loaded'
-            (tomlogger.logger.module_load if tomlogger.logger else lambda *args, **kwargs: None)(service_name, self.user_config['username'], success=True)
-          else:
-            self.module_status[service_name] = 'error'
-            (tomlogger.logger.module_load if tomlogger.logger else lambda *args, **kwargs: None)(service_name, self.user_config['username'], success=False)
-            tomlogger.error(f"Class {module_class_name} not found", self.user_config['username'])
-
-        except Exception as e:
+          self.module_status[service_name] = 'loaded'
+          (tomlogger.logger.module_load if tomlogger.logger else lambda *args, **kwargs: None)(service_name, self.user_config['username'], success=True)
+        else:
           self.module_status[service_name] = 'error'
           (tomlogger.logger.module_load if tomlogger.logger else lambda *args, **kwargs: None)(service_name, self.user_config['username'], success=False)
-          tomlogger.error(f"Error loading module {service_name}: {e}", self.user_config['username'])
+          tomlogger.error(f"Class {module_class_name} not found", self.user_config['username'])
+
+      except Exception as e:
+        self.module_status[service_name] = 'error'
+        (tomlogger.logger.module_load if tomlogger.logger else lambda *args, **kwargs: None)(service_name, self.user_config['username'], success=False)
+        tomlogger.error(f"Error loading module {service_name}: {e}", self.user_config['username'])
 
   def _load_single_module(self, service_name):
     """Load a single module"""
@@ -463,8 +536,13 @@ class TomCoreModules:
         tomlogger.error(f"Module {service_name} not found in available modules", self.user_config['username'])
         return False
       
-      service_config = self.user_config['services'][service_name]
-      is_enabled = service_config.get('enable', True) if isinstance(service_config, dict) else True
+      # Get configuration based on module type
+      service_config, is_enabled = self._get_module_config(service_name)
+      
+      if service_config is None:
+        self.module_status[service_name] = 'error'
+        tomlogger.error(f"Module {service_name} not configured for this user/globally", self.user_config['username'])
+        return False
       
       if not is_enabled:
         self.module_status[service_name] = 'disabled'
@@ -485,7 +563,7 @@ class TomCoreModules:
                   break
       
       if module_class:
-        module_instance = module_class(self.user_config['services'][service_name], self.llm_instance)
+        module_instance = module_class(service_config, self.llm_instance)
 
         self.services[service_name] = {
           "obj": module_instance,
@@ -540,27 +618,37 @@ class TomCoreModules:
       tomlogger.error(f"Error unloading module {service_name}: {e}", self.user_config['username'])
       return False
 
-  def update_modules_config(self, new_user_config):
+  def update_modules_config(self, new_user_config, new_global_config=None):
     """Reload user configuration and update modules accordingly"""
-    old_services = set(self.user_config.get('services', {}).keys()) if 'services' in self.user_config else set()
-    new_services = set(new_user_config.get('services', {}).keys()) if 'services' in new_user_config else set()
+    # Get all modules that could be affected
+    old_personal_services = set(self.user_config.get('services', {}).keys()) if 'services' in self.user_config else set()
+    new_personal_services = set(new_user_config.get('services', {}).keys()) if 'services' in new_user_config else set()
     
-    # Get old and new enabled status
+    # Update global config if provided
+    if new_global_config:
+      self.global_config = new_global_config
+    
+    # Get old and new enabled status for all modules (personal and global)
     old_enabled = {}
     new_enabled = {}
     
-    if 'services' in self.user_config:
-      for service_name, service_config in self.user_config['services'].items():
-        old_enabled[service_name] = service_config.get('enable', True) if isinstance(service_config, dict) else True
+    # Get old configuration status
+    for service_name in self.module_list.keys():
+      service_config, is_enabled = self._get_module_config(service_name)
+      old_enabled[service_name] = is_enabled if service_config is not None else False
     
-    if 'services' in new_user_config:
-      for service_name, service_config in new_user_config['services'].items():
-        new_enabled[service_name] = service_config.get('enable', True) if isinstance(service_config, dict) else True
-    
+    # Update user config
+    old_user_config = self.user_config
     self.user_config = new_user_config
     
-    # Process changes
-    for service_name in old_services | new_services:
+    # Get new configuration status
+    for service_name in self.module_list.keys():
+      service_config, is_enabled = self._get_module_config(service_name)
+      new_enabled[service_name] = is_enabled if service_config is not None else False
+    
+    # Process changes for all available modules
+    all_services = set(old_enabled.keys()) | set(new_enabled.keys())
+    for service_name in all_services:
       old_enable = old_enabled.get(service_name, False)
       new_enable = new_enabled.get(service_name, False)
       
@@ -756,10 +844,11 @@ class TomCoreModules:
         "available_modules": list(self.module_list.keys())
       }
     
-    # Check if the module is configured for the current user
-    if 'services' not in self.user_config or module_name not in self.user_config['services']:
+    # Check if the module is configured (either globally or for this user)
+    service_config, is_enabled = self._get_module_config(module_name)
+    if service_config is None:
       return {
-        "error": f"Module '{module_name}' is not configured for user '{current_user}'."
+        "error": f"Module '{module_name}' is not configured for user '{current_user}' or globally."
       }
     
     # Check if the module is in error state
@@ -800,6 +889,7 @@ class TomCoreModules:
     """Get the configuration parameters expected by a specific module"""
     # Check if module exists in available modules
     if module_name not in self.module_list:
+      tomlogger.debug(f"Module {module_name} not found in module_list. Available: {list(self.module_list.keys())}", self.user_config['username'])
       return {
         "error": f"Module '{module_name}' not found in available modules.",
         "available_modules": list(self.module_list.keys())
@@ -808,7 +898,8 @@ class TomCoreModules:
     try:
       # Load the module to access its tom_config
       modules_dir = '/data/modules'
-      filename = f"{module_name}.py"
+      # Use the actual filename from module_list
+      filename = self.module_list[module_name].get('filename', f"{module_name}.py")
       file_path = os.path.join(modules_dir, filename)
       
       if not os.path.exists(file_path):

@@ -190,19 +190,73 @@ Each function defined in `self.tools` must have a corresponding method within yo
 
 ## Module Configuration (`config.yml`)
 
-To enable your module for a specific user, you need to add it to the `config.yml` file under the `services` section for that user.
+The location of your module's configuration in `config.yml` depends on its type:
 
-Example `config.yml` entry:
+### Global Modules
+Global modules have shared configuration that applies to all users, but each user can individually enable/disable them:
+
+- **Configuration** (tokens, URLs, etc.) goes in the root-level `services` section to avoid duplication
+- **Activation** (`enable: true/false`) goes in each user's `services` section for individual control
 
 ```yaml
+global:
+  llm: openai
+  # Other global settings...
+
+# Global modules configuration (shared)
+services:
+  your_global_module_name: # This must match the 'module_name' in tom_config
+    token: shared_api_token # Shared configuration
+    api_url: https://api.example.com
+
+users:
+  - username: user1
+    services:
+      your_global_module_name: # Same module name
+        enable: true # User-specific activation
+  - username: user2
+    services:
+      your_global_module_name:
+        enable: false # This user disabled the module
+```
+
+### Personal Modules
+Personal modules have user-specific configuration. Both configuration and activation go under each user's `services` section:
+
+```yaml
+global:
+  llm: openai
+  # Other global settings...
+
 users:
   - username: your_username
     password: your_password
     services:
-      your_module_name: # This must match the 'module_name' in tom_config
-        some_setting: value # Module-specific configuration
+      your_personal_module_name: # This must match the 'module_name' in tom_config
+        enable: true # User-specific activation
+        some_setting: value # User-specific configuration
         another_setting: another_value
 ```
+
+### Module Type Examples
+
+**Global modules** (configured once, used by all users):
+- `weather` - Weather forecast service
+- `idfm` - Public transportation information
+- `deebot` - Robot vacuum control
+- `news` - News aggregation
+- `cafetaria` - School cafeteria system
+- `kwyk` - Online exercises platform
+
+**Personal modules** (configured per user):
+- `calendar` - Personal calendar management
+- `todo` - Personal TODO lists
+- `youtube` - Personal YouTube subscriptions
+- `anki` - Personal flashcard decks
+- `groceries` - Personal grocery lists
+- `vm` - Personal virtual machine access
+- `pronote` - School life (per child/family)
+- `coachsport` - Personal fitness coaching
 
 ## Example Module (`modules/tomexample.py`)
 

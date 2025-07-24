@@ -11,11 +11,37 @@ global:
   sessions: /xxxx/ # Path for the session storage directory
 
   user_datadir: ./data/users/
-  
-  
 
+# Global modules configuration (shared configuration, activation per user)
+services:
   idfm:
     token: XXXXXXXXXXXXXXXXXXXXXXXX
+    cache_db: ./data/idfm_cache.db
+  
+  weather:
+    # No configuration needed - uses free APIs
+  
+  deebot:
+    username: your_deebot_email@example.com
+    password: your_deebot_password
+    country: FR
+  
+  cafetaria:
+    username: your_cafetaria_username
+    password: your_cafetaria_password
+    cache_db: ./data/cafetaria_cache.db
+  
+  news:
+    url: https://your-news-server.com/api
+    user: news_username
+    password: news_password
+    cache_db: ./data/news_cache.db
+  
+  kwyk:
+    cache_db: ./data/kwyk_cache.db
+    username: your_kwyk_username
+    password: your_kwyk_password
+    id: "your_kwyk_id"
 
 
 users:
@@ -24,48 +50,78 @@ users:
     admin: true  # Optional: Set to true to make this user an administrator (default: false)
     memory: true
     services:
-
+      # Global modules activation (configuration is in root services section)
+      idfm:
+        enable: true
+      weather:
+        enable: true
+      deebot:
+        enable: false  # User can disable global modules
+      cafetaria:
+        enable: true
+      news:
+        enable: true
+      kwyk:
+        enable: true
+      
+      # Personal modules (user-specific configuration AND activation)
       calendar:
-        user: botname
-        password: botpassword
-        url: 'https://xxxxxx/remote.php/dav/'
+        enable: true
+        user: user1_calendar_username
+        password: user1_calendar_password  
+        url: 'https://your-caldav-server.com/remote.php/dav/'
+        calendar_name: 'Personal'
      
       todo:
-        user: botname
-        password: botname
-        url: 'https://xxxxxxxx/remote.php/dav/'
+        enable: true
+        user: user1_todo_username
+        password: user1_todo_password
+        url: 'https://your-caldav-server.com/remote.php/dav/'
+        list: 'Todo'
       
-      obsidian:
-        vault: /home/xxxxxx/Obsidian/xxxxx/
-        defaultNote: Inbox/Notes.md
-        defaultDir: Inbox
+      youtube:
+        enable: true
+        cache_db: ./data/users/user1/youtube.db
+      
+      coachsport:
+        enable: false  # User disabled this personal module
+        cache_db: ./data/users/user1/coachsport.db
       
       # Need Anki-connect HTTP add on
       anki:
+        enable: true
         url: http://localhost:8765
-        db_dir: data/user1/anki/
-        username: xxxx
-        password: xxxx
-  
-    # Pronote login documentation: https://github.com/bain3/pronotepy/blob/master/docs/source/quickstart.rst
+        profile: user1_profile
+      
+      vm:
+        enable: true
+        cache_db: ./data/users/user1/vm.db
+        host: your-vm-server.com
+        username: vm_username
+        password: vm_password
+      
+      groceries:
+        enable: true
+        url: 'https://your-caldav-server.com/remote.php/dav/'
+        user: user1_groceries_username
+        password: user1_groceries_password
+        list: 'Groceries'
+      
+      # Pronote login documentation: https://github.com/bain3/pronotepy/blob/master/docs/source/quickstart.rst
       # Procedure:
       # Generate a QR Code on the Pronote Website
-      # Screenshot it
+      # Screenshot it  
       # zbarimg Pictures/Screenshots/Screenshot.png
       # Run: python3 -m pronotepy.create_login
       # Get a json
       # Copy the content of the json in the file
-      # Run the application whitin 10 minutes
+      # Run the application within 10 minutes
       pronote:
-      - name: child1
-        token: data/child1.json
-        cache: data/child1.sqlite
-      
-      kwyk:
-        username: xxxxxxx
-        password: xxxxxxx
-        id: "aaaaa"
-        cache_db: "data/users/all/kwyk.sqlite"
+        enable: true
+        children:
+        - name: child1
+          token: data/user1/child1.json
+          cache: data/user1/child1.sqlite
 
     personalContext: |
-      bla bla bla
+      User-specific context and preferences here...
