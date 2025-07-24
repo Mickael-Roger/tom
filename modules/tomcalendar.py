@@ -60,7 +60,29 @@ tom_config = {
   "class_name": "TomCalendar",
   "description": "This module is used to manage my personal and familial calendar events, meetings and appointments.",
   "type": "personal",
-  "complexity": 0
+  "complexity": 0,
+  "configuration_parameters": {
+    "url": {
+      "type": "string",
+      "description": "CalDAV server URL for accessing the calendar service.",
+      "required": True
+    },
+    "user": {
+      "type": "string",
+      "description": "Username for CalDAV server authentication.",
+      "required": True
+    },
+    "password": {
+      "type": "string",
+      "description": "Password for CalDAV server authentication.",
+      "required": True
+    },
+    "calendar_name": {
+      "type": "string",
+      "description": "Name of the calendar to use on the CalDAV server.",
+      "required": True
+    }
+  }
 }
 
 class TomCalendar:

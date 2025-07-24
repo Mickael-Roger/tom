@@ -23,7 +23,19 @@ tom_config = {
   "class_name": "TomIdfm",
   "description": "This module is used for getting public transportation information.",
   "type": "global",
-  "complexity": 1
+  "complexity": 1,
+  "configuration_parameters": {
+    "token": {
+      "type": "string",
+      "description": "API token for Île-de-France Mobilités (IDFM) transportation service",
+      "required": True
+    },
+    "cache_db": {
+      "type": "string",
+      "description": "SQLite database file path for caching station and line information",
+      "required": True
+    }
+  }
 }
 
 class TomIdfm:

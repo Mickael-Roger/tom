@@ -26,7 +26,29 @@ tom_config = {
   "class_name": "TomNews",
   "description": "This module is used for for any question about the news.",
   "type": "global",
-  "complexity": 1
+  "complexity": 1,
+  "configuration_parameters": {
+    "url": {
+      "type": "string",
+      "description": "RSS/News server URL for accessing news feeds",
+      "required": True
+    },
+    "user": {
+      "type": "string",
+      "description": "Username for RSS/News server authentication",
+      "required": True
+    },
+    "password": {
+      "type": "string",
+      "description": "Password for RSS/News server authentication", 
+      "required": True
+    },
+    "cache_db": {
+      "type": "string",
+      "description": "SQLite database file path for caching news articles",
+      "required": True
+    }
+  }
 }
 
 class TomNews:

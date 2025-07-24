@@ -21,7 +21,43 @@ tom_config = {
   "module_name": "your_module_name",
   "class_name": "YourModuleClassName",
   "description": "A brief description of what this module does.",
-  "type": "global"  # "global" or "personal" - Optional, defaults to "global"
+  "type": "global",  # "global" or "personal" - Optional, defaults to "global"
+  "configuration_parameters": {
+    "api_key": {
+      "type": "string",
+      "description": "API key for accessing the external service",
+      "required": True
+    },
+    "cache_db": {
+      "type": "string", 
+      "description": "Path to SQLite database for caching",
+      "required": True
+    },
+    "timeout": {
+      "type": "number",
+      "description": "Request timeout in seconds",
+      "required": False,
+      "default": 30
+    },
+    "server_config": {
+      "type": "object",
+      "description": "Server connection configuration",
+      "required": True,
+      "properties": {
+        "host": {
+          "type": "string",
+          "description": "Server hostname",
+          "required": True
+        },
+        "port": {
+          "type": "number", 
+          "description": "Server port",
+          "required": False,
+          "default": 443
+        }
+      }
+    }
+  }
 }
 
 class YourModuleClassName:
@@ -102,6 +138,12 @@ This dictionary is crucial for Tom to discover and load your module. It must be 
 *   `class_name` (string): The exact name of the main class within your module file.
 *   `description` (string): A concise description of the module's purpose. This description is used by Tom to inform the LLM about the module's capabilities.
 *   `type` (string, optional): Defines the module type - either "global" or "personal". Global modules have the same configuration for all users (e.g., weather module), while personal modules have user-specific configurations (e.g., email reader). Defaults to "global" if not specified.
+*   `configuration_parameters` (dict, optional): A dictionary defining the configuration parameters that the module expects. This helps users understand what parameters need to be configured in `config.yml`. Each parameter should include:
+    *   `type` (string): The data type (string, object, boolean, number, array)
+    *   `description` (string): Clear explanation of what the parameter is used for
+    *   `required` (boolean): Whether the parameter is mandatory
+    *   `default` (any, optional): Default value if applicable
+    *   `properties` (dict, optional): For object types, details of sub-properties
 
 ### Main Module Class (`YourModuleClassName`)
 
@@ -179,7 +221,15 @@ tom_config = {
   "module_name": "example",
   "class_name": "TomExample",
   "description": "A simple example module to demonstrate module development.",
-  "type": "global"
+  "type": "global",
+  "configuration_parameters": {
+    "greeting": {
+      "type": "string",
+      "description": "Custom greeting message for the module",
+      "required": False,
+      "default": "Hello from Example Module!"
+    }
+  }
 }
 
 class TomExample:
@@ -305,6 +355,34 @@ print("Module initialized successfully")  # Don't do this!
 6.  **Use proper logging**: Replace any debug output with appropriate logger calls.
 7.  **Update `config.yml`**: Add your module to the `services` section for the desired users, including any module-specific configuration.
 8.  **Restart the server**: For changes to take effect, you will need to restart the `server.py` application.
+
+## Inspecting Module Configuration
+
+Tom provides built-in functionality to inspect module configuration parameters. You can use the LLM function `get_module_configuration_parameters` to get detailed information about what parameters a module expects.
+
+### Using the Configuration Inspector
+
+Simply ask Tom: "What configuration parameters does the [module_name] module need?" or "Show me the config parameters for [module_name]".
+
+The system will return:
+- Module description and type
+- Complete list of configuration parameters
+- Parameter types, descriptions, and requirements
+- Summary of required vs optional parameters
+
+### Example Usage
+
+```
+User: "What configuration parameters does the calendar module need?"
+
+Tom will respond with information about:
+- url (string, required): CalDAV server URL
+- user (string, required): Username for authentication
+- password (string, required): Password for authentication
+- calendar_name (string, required): Name of the calendar to use
+```
+
+This helps users understand exactly what needs to be configured in `config.yml` for each module.
 
 By following these guidelines, you can effectively extend Tom's capabilities with new, custom modules.
 

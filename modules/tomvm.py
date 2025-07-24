@@ -23,7 +23,29 @@ tom_config = {
   "class_name": "TomVm",
   "description": "This module gives you access to a Linux Debian virtual machine with internet access. It allows you to execute commands as well as browse the internet, download tools, software, source code, etc. It also provides access to an environment where you can execute code if you need to develop something. This module is used asynchronously: the user asks you to do something (develop this, analyze that code, search for something on the internet, etc.). The response to the user's request will not be immediate, so this module also serves to list ongoing or past requests and access their results.",
   "type": "personal",
-  "complexity": 1
+  "complexity": 1,
+  "configuration_parameters": {
+    "cache_db": {
+      "type": "string",
+      "description": "SQLite database file path for storing VM task requests and results",
+      "required": True
+    },
+    "host": {
+      "type": "string",
+      "description": "SSH hostname or IP address of the virtual machine",
+      "required": True
+    },
+    "username": {
+      "type": "string",
+      "description": "SSH username for connecting to the virtual machine",
+      "required": True
+    },
+    "password": {
+      "type": "string",
+      "description": "SSH password for connecting to the virtual machine",
+      "required": True
+    }
+  }
 }
 
 class TomVm:

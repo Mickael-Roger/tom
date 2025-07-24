@@ -24,7 +24,14 @@ tom_config = {
   "class_name": "TomYoutube",
   "description": "This module is used for for any question about the youtube videos and youtube channels.",
   "type": "personal",
-  "complexity": 1
+  "complexity": 1,
+  "configuration_parameters": {
+    "cache_db": {
+      "type": "string",
+      "description": "Path to the SQLite database file for caching YouTube channels and videos data.",
+      "required": True
+    }
+  }
 }
 
 class TomYoutube:

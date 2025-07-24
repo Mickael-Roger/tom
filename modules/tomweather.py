@@ -14,7 +14,8 @@ tom_config = {
   "class_name": "TomWeather",
   "description": "This module is used for for any question about the weather forecast.",
   "type": "global",
-  "complexity": 0
+  "complexity": 0,
+  "configuration_parameters": {}
 }
 
 class TomWeather:

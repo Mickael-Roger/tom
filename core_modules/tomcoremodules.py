@@ -158,6 +158,24 @@ class TomCoreModules:
             "additionalProperties": False,
           },
         }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "get_module_configuration_parameters",
+          "description": "Get the configuration parameters expected by a specific module. This shows what parameters can be configured for the module in config.yml.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "module_name": {
+                "type": "string",
+                "description": "Name of the module to get configuration parameters for"
+              }
+            },
+            "required": ["module_name"],
+            "additionalProperties": False,
+          },
+        }
       }
     ]
     
@@ -174,6 +192,9 @@ class TomCoreModules:
       },
       "restart_module": {
         "function": functools.partial(self.restart_module)
+      },
+      "get_module_configuration_parameters": {
+        "function": functools.partial(self.get_module_configuration_parameters)
       }
     })
 
@@ -773,6 +794,85 @@ class TomCoreModules:
       return {
         "error": f"Error restarting module '{module_name}': {str(e)}",
         "module_name": module_name
+      }
+
+  def get_module_configuration_parameters(self, module_name):
+    """Get the configuration parameters expected by a specific module"""
+    # Check if module exists in available modules
+    if module_name not in self.module_list:
+      return {
+        "error": f"Module '{module_name}' not found in available modules.",
+        "available_modules": list(self.module_list.keys())
+      }
+    
+    try:
+      # Load the module to access its tom_config
+      modules_dir = '/data/modules'
+      filename = f"{module_name}.py"
+      file_path = os.path.join(modules_dir, filename)
+      
+      if not os.path.exists(file_path):
+        return {
+          "error": f"Module file not found: {file_path}"
+        }
+      
+      # Load the module
+      spec = importlib.util.spec_from_file_location(module_name, file_path)
+      if not spec or not spec.loader:
+        return {
+          "error": f"Failed to load module specification for '{module_name}'"
+        }
+      
+      module = importlib.util.module_from_spec(spec)
+      spec.loader.exec_module(module)
+      
+      # Get tom_config
+      if not hasattr(module, 'tom_config'):
+        return {
+          "error": f"Module '{module_name}' does not have a tom_config definition"
+        }
+      
+      tom_config = getattr(module, 'tom_config')
+      
+      # Extract configuration parameters
+      config_params = tom_config.get('configuration_parameters', {})
+      
+      result = {
+        "module_name": module_name,
+        "description": tom_config.get('description', 'No description available'),
+        "type": tom_config.get('type', 'global'),
+        "configuration_parameters": config_params
+      }
+      
+      # Add summary information
+      if config_params:
+        required_params = []
+        optional_params = []
+        
+        for param_name, param_info in config_params.items():
+          if param_info.get('required', False):
+            required_params.append(param_name)
+          else:
+            optional_params.append(param_name)
+        
+        result["summary"] = {
+          "total_parameters": len(config_params),
+          "required_parameters": required_params,
+          "optional_parameters": optional_params
+        }
+      else:
+        result["summary"] = {
+          "total_parameters": 0,
+          "required_parameters": [],
+          "optional_parameters": []
+        }
+        result["message"] = "This module does not define any configuration parameters."
+      
+      return result
+      
+    except Exception as e:
+      return {
+        "error": f"Error loading module configuration for '{module_name}': {str(e)}"
       }
 
   @staticmethod

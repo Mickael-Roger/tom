@@ -28,7 +28,31 @@ tom_config = {
   "class_name": "TomPronote",
   "description": "This module is used for Pronote. Pronote is an application used to manage children's school life. It is the only way to access schedules, homework, grades, grade books, and to communicate with schools, middle schools, high schools, and teachers.",
   "type": "personal",
-  "complexity": 1
+  "complexity": 1,
+  "configuration_parameters": {
+    "children": {
+      "type": "array",
+      "description": "Array of child configurations for accessing their Pronote data",
+      "required": True,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Child's name identifier",
+          "required": True
+        },
+        "token": {
+          "type": "string", 
+          "description": "Authentication token file path for Pronote API access",
+          "required": True
+        },
+        "cache": {
+          "type": "string",
+          "description": "SQLite database file path for caching child's school data",
+          "required": True
+        }
+      }
+    }
+  }
 }
 
 class TomPronote:

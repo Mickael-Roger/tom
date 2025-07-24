@@ -26,7 +26,29 @@ tom_config = {
   "class_name": "TomKwyk",
   "description": "This module is used to get information from Kwyk. Kwyk is an online platform for math and French exercises.",
   "type": "global",
-  "complexity": 0
+  "complexity": 0,
+  "configuration_parameters": {
+    "cache_db": {
+      "type": "string",
+      "description": "SQLite database file path for caching Kwyk exercise statistics",
+      "required": True
+    },
+    "username": {
+      "type": "string",
+      "description": "Username for Kwyk platform authentication",
+      "required": True
+    },
+    "password": {
+      "type": "string",
+      "description": "Password for Kwyk platform authentication",
+      "required": True
+    },
+    "id": {
+      "type": "string",
+      "description": "User ID for accessing Kwyk autonomous exercise statistics",
+      "required": True
+    }
+  }
 }
 
 class TomKwyk:

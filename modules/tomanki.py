@@ -22,7 +22,19 @@ tom_config = {
   "class_name": "TomAnki",
   "description": "This module is used to manage Anki. Anki is a flashcard program. It uses cards. It uses technics from cognitive science such as active recall testing and spaced repetition to help me in my memorization. I use Anki to train myself on memorizing and reinforcing my knowledge.",
   "type": "personal",
-  "complexity": 1
+  "complexity": 1,
+  "configuration_parameters": {
+    "url": {
+      "type": "string",
+      "description": "AnkiConnect API URL for communicating with Anki application",
+      "required": True
+    },
+    "profile": {
+      "type": "string",
+      "description": "Anki profile name to load for accessing decks and cards",
+      "required": True
+    }
+  }
 }
 
 class TomAnki:

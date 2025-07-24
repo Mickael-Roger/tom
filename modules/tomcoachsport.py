@@ -22,7 +22,14 @@ tom_config = {
   "class_name": "TomSportcoach",
   "description": "This module allows you to act as the user's personal fitness coach. Use it for any questions they might ask their sports coach.",
   "type": "personal",
-  "complexity": 1
+  "complexity": 1,
+  "configuration_parameters": {
+    "cache_db": {
+      "type": "string",
+      "description": "SQLite database file path for storing sport coaching conversation history",
+      "required": True
+    }
+  }
 }
 
 class TomSportcoach:

@@ -26,7 +26,30 @@ tom_config = {
   "class_name": "TomGroceries",
   "description": "This module is used to manage groceries list.",
   "type": "personal",
-  "complexity": 0
+  "complexity": 0,
+  "configuration_parameters": {
+    "url": {
+      "type": "string",
+      "description": "CalDAV server URL for accessing the grocery list calendar",
+      "required": True
+    },
+    "user": {
+      "type": "string", 
+      "description": "Username for CalDAV server authentication",
+      "required": False,
+      "default": ""
+    },
+    "password": {
+      "type": "string",
+      "description": "Password for CalDAV server authentication",
+      "required": True
+    },
+    "list": {
+      "type": "string",
+      "description": "Name of the calendar containing the grocery list items",
+      "required": True
+    }
+  }
 }
 
 class TomGroceries:

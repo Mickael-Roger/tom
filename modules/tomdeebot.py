@@ -37,7 +37,25 @@ tom_config = {
     "module_name": "deebot",
     "class_name": "TomDeebot",
     "description": "Module to manage Deebot robot vacuum - control, status and cleaning scheduling.",
-    "type": "global"
+    "type": "global",
+    "configuration_parameters": {
+        "username": {
+            "type": "string",
+            "description": "Deebot account username/email for authentication",
+            "required": True
+        },
+        "password": {
+            "type": "string", 
+            "description": "Deebot account password for authentication",
+            "required": True
+        },
+        "country": {
+            "type": "string",
+            "description": "Country code for Deebot API region (e.g., 'FR', 'US')",
+            "required": False,
+            "default": "FR"
+        }
+    }
 }
 
 

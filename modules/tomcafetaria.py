@@ -28,7 +28,24 @@ tom_config = {
   "class_name": "TomCafetaria",
   "description": "This module is used to manage the use of the school cafeteria, such as reserving or canceling a cafeteria meal or checking the remaining credit.",
   "type": "global",
-  "complexity": 0
+  "complexity": 0,
+  "configuration_parameters": {
+    "username": {
+      "type": "string",
+      "description": "Username for school cafeteria payment system authentication",
+      "required": True
+    },
+    "password": {
+      "type": "string",
+      "description": "Password for school cafeteria payment system authentication",
+      "required": True
+    },
+    "cache_db": {
+      "type": "string",
+      "description": "SQLite database file path for caching cafeteria reservations and credit info",
+      "required": True
+    }
+  }
 }
 
 class TomCafetaria:

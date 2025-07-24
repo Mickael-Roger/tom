@@ -25,7 +25,29 @@ tom_config = {
   "class_name": "TomTodo",
   "description": "This module is used for managing TODO list.",
   "type": "personal",
-  "complexity": 0
+  "complexity": 0,
+  "configuration_parameters": {
+    "url": {
+      "type": "string",
+      "description": "CalDAV server URL for accessing the TODO service.",
+      "required": True
+    },
+    "user": {
+      "type": "string",
+      "description": "Username for CalDAV server authentication.",
+      "required": True
+    },
+    "password": {
+      "type": "string",
+      "description": "Password for CalDAV server authentication.",
+      "required": True
+    },
+    "list": {
+      "type": "string",
+      "description": "Name of the TODO list to use on the CalDAV server.",
+      "required": True
+    }
+  }
 }
 
 class TomTodo:
