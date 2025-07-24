@@ -39,11 +39,6 @@ tom_config = {
       "type": "string",
       "description": "Password for school cafeteria payment system authentication",
       "required": True
-    },
-    "cache_db": {
-      "type": "string",
-      "description": "SQLite database file path for caching cafeteria reservations and credit info",
-      "required": True
     }
   }
 }
@@ -57,7 +52,11 @@ class TomCafetaria:
     self.url = 'https://webparent.paiementdp.com/aliAuthentification.php?site=aes00152'
     self.username = config['username']
     self.password = config['password']
-    self.db = config['cache_db']
+    
+    # Generate cache database path from all_datadir + module name
+    all_datadir = config.get('all_datadir', '/data/all/')
+    os.makedirs(all_datadir, exist_ok=True)
+    self.db = os.path.join(all_datadir, 'cafetaria.sqlite')
 
     self.lastUpdate = datetime.now() - timedelta(hours=48)
 

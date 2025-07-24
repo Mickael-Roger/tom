@@ -430,7 +430,9 @@ class TomCoreModules:
       
       # Get actual configuration from global services
       if 'services' in self.global_config and service_name in self.global_config['services']:
-        service_config = self.global_config['services'][service_name]
+        service_config = self.global_config['services'][service_name].copy()
+        # Add all_datadir to global module config
+        service_config['all_datadir'] = self.global_config.get('all_datadir', '/data/all/')
         tomlogger.debug(f"Global module {service_name} found and enabled", self.user_config['username'])
         return service_config, is_enabled
       else:

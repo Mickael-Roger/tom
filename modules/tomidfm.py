@@ -29,11 +29,6 @@ tom_config = {
       "type": "string",
       "description": "API token for Île-de-France Mobilités (IDFM) transportation service",
       "required": True
-    },
-    "cache_db": {
-      "type": "string",
-      "description": "SQLite database file path for caching station and line information",
-      "required": True
     }
   }
 }
@@ -46,7 +41,11 @@ class TomIdfm:
 
     self.url = "https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia"
     self.apiKey = config['token']
-    self.db =  config['cache_db']
+    
+    # Generate cache database path from all_datadir + module name
+    all_datadir = config.get('all_datadir', '/data/all/')
+    os.makedirs(all_datadir, exist_ok=True)
+    self.db = os.path.join(all_datadir, 'idfm.sqlite')
 
     self.route = None
     self.routes = []

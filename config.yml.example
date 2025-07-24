@@ -10,13 +10,13 @@ global:
 
   sessions: /xxxx/ # Path for the session storage directory
 
-  user_datadir: ./data/users/
+  user_datadir: /data/users/
+  all_datadir: /data/all/  # Path for global modules cache files
 
 # Global modules configuration (shared configuration, activation per user)
 services:
   idfm:
     token: XXXXXXXXXXXXXXXXXXXXXXXX
-    cache_db: ./data/idfm_cache.db
   
   weather:
     # No configuration needed - uses free APIs
@@ -29,16 +29,13 @@ services:
   cafetaria:
     username: your_cafetaria_username
     password: your_cafetaria_password
-    cache_db: ./data/cafetaria_cache.db
   
   news:
     url: https://your-news-server.com/api
     user: news_username
     password: news_password
-    cache_db: ./data/news_cache.db
   
   kwyk:
-    cache_db: ./data/kwyk_cache.db
     username: your_kwyk_username
     password: your_kwyk_password
     id: "your_kwyk_id"

@@ -28,11 +28,6 @@ tom_config = {
   "type": "global",
   "complexity": 0,
   "configuration_parameters": {
-    "cache_db": {
-      "type": "string",
-      "description": "SQLite database file path for caching Kwyk exercise statistics",
-      "required": True
-    },
     "username": {
       "type": "string",
       "description": "Username for Kwyk platform authentication",
@@ -58,7 +53,11 @@ class TomKwyk:
   def __init__(self, config, llm) -> None:
     self.url = "https://www.kwyk.fr/"
 
-    self.db = config['cache_db']
+    # Generate cache database path from all_datadir + module name
+    all_datadir = config.get('all_datadir', '/data/all/')
+    os.makedirs(all_datadir, exist_ok=True)
+    self.db = os.path.join(all_datadir, 'kwyk.sqlite')
+    
     self.username = config['username']
     self.password = config['password']
     self.id = config['id']

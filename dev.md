@@ -67,6 +67,13 @@ class YourModuleClassName:
     # 'llm' is the TomLLM instance, which can be used for LLM-related operations if needed.
     self.module_setting = config.get('some_setting', 'default_value')
     self.llm = llm
+    
+    # For global modules that need cache: use all_datadir automatically
+    if hasattr(self, 'type') and self.type == 'global':
+      # Cache database path is automatically generated
+      all_datadir = config.get('all_datadir', '/data/all/')
+      os.makedirs(all_datadir, exist_ok=True)
+      self.cache_db = os.path.join(all_datadir, 'your_module_name.sqlite')
 
     # Define the tools (functions) that the LLM can call
     # These follow the OpenAI function calling schema
@@ -197,10 +204,12 @@ Global modules have shared configuration that applies to all users, but each use
 
 - **Configuration** (tokens, URLs, etc.) goes in the root-level `services` section to avoid duplication
 - **Activation** (`enable: true/false`) goes in each user's `services` section for individual control
+- **Cache files** are automatically managed using `global.all_datadir` + module name + `.sqlite`
 
 ```yaml
 global:
   llm: openai
+  all_datadir: ./data/all/  # Directory for global modules cache files
   # Other global settings...
 
 # Global modules configuration (shared)
@@ -208,6 +217,7 @@ services:
   your_global_module_name: # This must match the 'module_name' in tom_config
     token: shared_api_token # Shared configuration
     api_url: https://api.example.com
+    # Note: cache_db is NOT needed - automatically generated as all_datadir/module_name.sqlite
 
 users:
   - username: user1
@@ -241,12 +251,11 @@ users:
 ### Module Type Examples
 
 **Global modules** (configured once, used by all users):
-- `weather` - Weather forecast service
-- `idfm` - Public transportation information
-- `deebot` - Robot vacuum control
-- `news` - News aggregation
-- `cafetaria` - School cafeteria system
-- `kwyk` - Online exercises platform
+- `weather` - Weather forecast service (no cache needed)
+- `idfm` - Public transportation information (cache: all_datadir/idfm.sqlite)
+- `deebot` - Robot vacuum control (no cache needed)
+- `cafetaria` - School cafeteria system (cache: all_datadir/cafetaria.sqlite)
+- `kwyk` - Online exercises platform (cache: all_datadir/kwyk.sqlite)
 
 **Personal modules** (configured per user):
 - `calendar` - Personal calendar management
@@ -257,6 +266,7 @@ users:
 - `vm` - Personal virtual machine access
 - `pronote` - School life (per child/family)
 - `coachsport` - Personal fitness coaching
+- `news` - Personal news aggregation and management
 
 ## Example Module (`modules/tomexample.py`)
 
