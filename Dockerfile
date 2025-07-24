@@ -1,9 +1,21 @@
-FROM python:3.13.5-slim
+FROM python:3.13-alpine
 
 WORKDIR /app
 
+# Install build dependencies for Alpine
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    linux-headers \
+    g++ \
+    gfortran \
+    openblas-dev \
+    lapack-dev
+
 COPY requirements.txt /app
 
+# Upgrade pip and install packages
+RUN pip install --upgrade pip setuptools wheel
 RUN pip install -r requirements.txt
 
 

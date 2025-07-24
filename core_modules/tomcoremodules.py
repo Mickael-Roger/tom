@@ -339,9 +339,9 @@ class TomCoreModules:
       return False
       
   def _sync_functions_to_user_instance(self):
-    """Sync functions to the main user instance in userList"""
+    """Sync functions and tools to the main user instance in userList"""
     try:
-      # We need to access the global userList to update the functions
+      # We need to access the global userList to update the functions and tools
       # This is a bit of a hack, but necessary for the current architecture
       import __main__
       if hasattr(__main__, 'userList'):
@@ -350,7 +350,19 @@ class TomCoreModules:
           # Update the userList functions with our current functions
           __main__.userList[username].functions.clear()
           __main__.userList[username].functions.update(self.functions)
-          tomlogger.logger.debug(f"Functions synchronized for user {username}", username)
+          
+          # Update the userList tools with our current tools
+          # Collect all tools from all loaded services
+          all_tools = []
+          for service_name, service_info in self.services.items():
+            if 'tools' in service_info:
+              all_tools.extend(service_info['tools'])
+          
+          # Update the tools in userList
+          if hasattr(__main__.userList[username], 'tools'):
+            __main__.userList[username].tools = all_tools
+          
+          tomlogger.logger.debug(f"Functions and tools synchronized for user {username}", username)
     except Exception as e:
       tomlogger.error(f"Error synchronizing functions to user instance: {e}", self.user_config['username'])
 

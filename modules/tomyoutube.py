@@ -77,17 +77,20 @@ class TomYoutube:
         "type": "function",
         "function": {
           "name": "mark_video_as_seen",
-          "description": "Marks a specific viewed.",
+          "description": "Marks one or multiple videos as viewed.",
           "strict": True,
           "parameters": {
             "type": "object",
             "properties": {
-              "video_id": {
-                "type": "string",
-                "description": "ID of the video you want to mark as seen.",
+              "video_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Array of video IDs to mark as seen. Can contain a single ID or multiple IDs.",
               },
             },
-            "required": ["video_id"],
+            "required": ["video_ids"],
             "additionalProperties": False,
           },
         },
@@ -116,15 +119,27 @@ class TomYoutube:
     self.thread.start()
     
 
-  def mark_video_as_viewed(self, video_id):
+  def mark_video_as_viewed(self, video_ids):
+    if isinstance(video_ids, str):
+      video_ids = [video_ids]
+    
+    if not video_ids:
+      return {"status": "error", "message": "No video IDs provided"}
 
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
-    cursor.execute("UPDATE videos SET viewed=1 WHERE id = ?", (video_id,))
+    
+    placeholders = ','.join('?' * len(video_ids))
+    cursor.execute(f"UPDATE videos SET viewed=1 WHERE id IN ({placeholders})", video_ids)
+    updated_rows = cursor.rowcount
+    
     dbconn.commit()
     dbconn.close()
 
-    return {"status": "success", "message": "Video marked as viewed"}
+    if updated_rows == 1:
+      return {"status": "success", "message": "Video marked as viewed"}
+    else:
+      return {"status": "success", "message": f"{updated_rows} videos marked as viewed"}
 
 
 
