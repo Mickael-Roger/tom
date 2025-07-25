@@ -1,4 +1,3 @@
-import sqlite3
 import os
 import functools
 import firebase_admin
@@ -6,6 +5,7 @@ from firebase_admin import credentials, messaging
 import threading
 import time
 import json
+from datetime import datetime
 
 ################################################################################################
 #                                                                                              #
@@ -16,15 +16,16 @@ import json
 tom_config = {
   "module_name": "memory",
   "class_name": "TomMemory",
-  "description": """This module is used to manage everything related to your memory. Memory can take several forms:
+  "description": """This module is used to manage everything related to your memory. It stores information that the user asks you to remember, such as personal details, preferences, or situational information.
 
-     - Permanent information: Permanent information is data provided by the user that might be useful to you or to them later. This information is relevant and needs to be stored indefinitely. It is unique to each user, so you cannot know it without being explicitly told. For example: "My PIN code is 1234," "X's date of birth is [date]," or "Mr. X is 45 years old." Typically, this information is shared voluntarily by the user, indicating they expect you to keep it in memory.
+     Examples of information to remember:
+     - Personal facts: "My PIN code is 1234," "X's date of birth is [date]," "Mr. X is 45 years old"
+     - Situational details: "I left my keys on the table," "I parked in spot B12," "The Wi-Fi password is abc123"
+     - Preferences: "I prefer coffee without sugar," "I usually take the 8:15 train"
 
-     - Temporary information: Temporary information is data that is only useful for a short time, either until a specific event occurs or within a short timeframe. This is helpful for storing temporary details, such as when a user says, "I left my keys on the table," or "I parked in this spot." Such information is meant to help the user retrieve their keys or locate their car but loses relevance once the task is completed. Examples include: "I just parked," "I put the keys under the flowerpot," etc.
+     If the user asks to remember where something is parked or located, save GPS coordinates along with additional context like parking spot number, street name, or nearby landmarks.
 
-     If the user's request is to remember where the car is parked, you must save the GPS location along with additional information such as the parking spot number, street name, a point of interest (POI), etc. If the user does not provide any additional information, ask if they have any.
-
-     This module must absolutely be used when the user ask explicit you to search in your memory.
+     This module must absolutely be used when the user explicitly asks you to search in your memory.
     """,
   "type": "core",
   "complexity": 0
@@ -35,31 +36,14 @@ class TomMemory:
   def __init__(self, global_config, username) -> None:
     self.tom_config = tom_config
 
-    db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], username)
-    os.makedirs(db_path, exist_ok=True)
+    memory_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], username)
+    os.makedirs(memory_path, exist_ok=True)
 
-    self.db = os.path.join(db_path, "memory.sqlite")
-
+    self.memory_file = os.path.join(memory_path, "memory.md")
     self.username = username
 
-    dbconn = sqlite3.connect(self.db)
-    cursor = dbconn.cursor()
-    cursor.execute('''
-    create table if not exists temporary (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        datetime DATETIME default current_date,
-        information TEXT
-    )
-    ''')
-    cursor.execute('''
-    create table if not exists permanent (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        datetime DATETIME default current_date,
-        information TEXT
-    )
-    ''')
-    dbconn.commit()
-    dbconn.close()
+    # Initialize memory file if it doesn't exist
+    self._init_memory_file()
 
     self.users = []
     for user in global_config['users']:
@@ -70,18 +54,12 @@ class TomMemory:
         "type": "function",
         "function": {
           "name": "list_stored_information",
-          "description": "Function to retrieve all pieces of information that the user has previously asked the system to remember. This provides an overview of the stored facts, events, or data, helping the user recall and manage the remembered context effectively. For example: 'List everything you remember.', 'What have I told you to remember?', 'Do I ask you to remember something about my pin code?', 'Do you remember where I park my car?', 'Where are my keys?', 'What is my PIN code?', ... And more generally, any information specific to the user that you cannot know on your own. This is the way to retreive previously stored information. Must be called when you want to get previously stored information.",
+          "description": "Function to retrieve all pieces of information that the user has previously asked the system to remember. Use this when the user asks about their memory, searches for specific information, or wants to know what you remember about them. For example: 'List everything you remember.', 'What have I told you to remember?', 'Do you remember my pin code?', 'Where did I park my car?', 'Where are my keys?', 'What is my PIN code?', etc. This returns the complete memory content for you to analyze and respond to the user's query.",
           "strict": True,
           "parameters": {
             "type": "object",
-            "properties": {
-              "information_type": {
-                "type": "string",
-                "enum": ["permanent", "temporary"],
-                "description": f"Permanent information is data meant to be stored indefinitely, like birthdays or PIN codes, while temporary information is situational and only relevant for a short time, such as where the user parked their car.",
-              },
-            },
-            "required": ["information_type"],
+            "properties": {},
+            "required": [],
             "additionalProperties": False,
           },
         },
@@ -95,17 +73,12 @@ class TomMemory:
           "parameters": {
             "type": "object",
             "properties": {
-              "information_type": {
+              "information_text": {
                 "type": "string",
-                "enum": ["permanent", "temporary"],
-                "description": f"Permanent information is data meant to be stored indefinitely, like birthdays or PIN codes, while temporary information is situational and only relevant for a short time, such as where the user parked their car.",
-              },
-              "stored_information_id": {
-                "type": "string",
-                "description": f"ID of the stored information to remove. This 'stored_information_id' values must be retreived using 'tom_list_stored_information' function. Unless you already have the 'store_information_value', you must first run 'tom_list_stored_information' function to retreive this id.",
+                "description": "The text content of the information to delete. This should match exactly the information you want to remove from memory.",
               },
             },
-            "required": ["information_type", "stored_information_id"],
+            "required": ["information_text"],
             "additionalProperties": False,
           },
         },
@@ -114,43 +87,34 @@ class TomMemory:
         "type": "function",
         "function": {
           "name": "store_information",
-          "description": "A function to store user-provided information permanently or indefinitely. The purpose of this function is to retain facts, data, or context provided by the user for future reference. This is not tied to any specific time but serves as a knowledge repository. For example: 'Remember that my PIN code is 1234.' or 'Remember today I lost my keys.'",
+          "description": "A function to store user-provided information. The purpose of this function is to retain facts, data, or context provided by the user for future reference. This serves as a knowledge repository. For example: 'Remember that my PIN code is 1234.' or 'Remember I parked in spot B12.' or 'Remember I prefer coffee without sugar.'",
           "strict": True,
           "parameters": {
             "type": "object",
             "properties": {
-              "information_type": {
-                "type": "string",
-                "enum": ["permanent", "temporary"],
-                "description": f"Permanent information is data meant to be stored indefinitely, like birthdays or PIN codes, while temporary information is situational and only relevant for a short time, such as where the user parked their car.",
-              },
               "information": {
                 "type": "string",
-                "description": f"The text of the information to remember",
+                "description": "The text of the information to remember",
               },
             },
-            "required": ["information_type", "information"],
+            "required": ["information"],
             "additionalProperties": False,
           },
         },
       },
     ]
 
-    self.systemContext = """Memory can take several forms:
+    self.systemContext = """You have access to a personal memory system where you can store and retrieve information that the user asks you to remember.
 
-     - Permanent information: Permanent information is data provided by the user that might be useful to you or to them later. This information is relevant and needs to be stored indefinitely. It is unique to each user, so you cannot know it without being explicitly told. For example: "My PIN code is 1234," "X's date of birth is [date]," or "Mr. X is 45 years old." Typically, this information is shared voluntarily by the user, indicating they expect you to keep it in memory.
-
-     - Temporary information: Temporary information is data that is only useful for a short time, either until a specific event occurs or within a short timeframe. This is helpful for storing temporary details, such as when a user says, "I left my keys on the table," or "I parked in this spot." Such information is meant to help the user retrieve their keys or locate their car but loses relevance once the task is completed. Examples include: "I just parked," "I put the keys under the flowerpot," etc.
-
-     If the user's request is to remember where the car is parked, you must save the GPS location along with additional information such as the parking spot number, street name, a point of interest (POI), etc. If the user does not provide any additional information, ask if they have any.
-     GPS position must be stored in json format: `{"latitude": PLACE HERE THE GPS LATITUDE VALUE, "longitude": PLACE HERE THE GPS LONGITUDE VALUE}`
-
-     When the user asks for information about a temporary detail, remind them to let you know when the information is no longer needed so you can delete it from memory. For example, if the user asks where they parked, you should remind them to tell you once they've retrieved their car so you can erase the information from your memory.
+     When the user asks to remember location information (like where they parked), save GPS coordinates along with descriptive details like parking spot number, street name, or nearby landmarks.
+     GPS position must be stored in json format: `{"latitude": LATITUDE_VALUE, "longitude": LONGITUDE_VALUE}`
 
      Never directly provide GPS coordinates in your response. However, indicate that you have them if applicable and offer to guide the user.
-     If the user explicitly requests GPS coordinates or guidance to retrieve an object, such as their car, the response should follow this format: `[open: https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=PLACE HERE THE GPS LATITUDE,PLACE HERE THE GPS LONGITUDE&travelmode=walking]`. This tag is interpreted by the frontend application, so, in this way, the user will be guided by an external application to find its object.
+     If the user explicitly requests GPS coordinates or guidance to retrieve an object, such as their car, the response should follow this format: `[open: https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=LATITUDE,LONGITUDE&travelmode=walking]`. This tag is interpreted by the frontend application to guide the user.
 
-     This only applies to temporary information. The deletion of permanent information must be explicitly requested by the user.
+     Use the store_information function when the user explicitly asks you to remember something.
+     Use the list_stored_information function when the user asks what you remember or searches for specific information.
+     Use the delete_stored_information function when the user asks you to forget something specific.
     """
 
     self.complexity = tom_config.get("complexity", 0)
@@ -167,53 +131,106 @@ class TomMemory:
       },
     }
 
+  def _init_memory_file(self):
+    """Initialize the markdown memory file if it doesn't exist."""
+    if not os.path.exists(self.memory_file):
+      with open(self.memory_file, 'w', encoding='utf-8') as f:
+        f.write("# Mémoire personnelle\n\n")
+        f.write("Ce fichier contient toutes les informations que vous avez demandé de retenir.\n\n")
 
-  def remember_add(self, information, information_type):
 
+  def remember_add(self, information):
+    """Add information to memory with current date as heading."""
     try:
-      dbconn = sqlite3.connect(self.db)
-      cursor = dbconn.cursor()
-      query = f"INSERT INTO {information_type} (information) VALUES (?)"
-      cursor.execute(query, (information,))
-      dbconn.commit()
-      id = cursor.lastrowid
-      dbconn.close()
-
+      current_date = datetime.now().strftime("%Y-%m-%d")
+      
+      # Read existing content
+      with open(self.memory_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+      
+      # Check if today's date section already exists
+      date_header = f"# {current_date}"
+      
+      if date_header in content:
+        # Add to existing date section
+        lines = content.split('\n')
+        insert_index = -1
+        
+        for i, line in enumerate(lines):
+          if line.startswith(date_header):
+            # Find the end of this date section (next # or end of file)
+            for j in range(i + 1, len(lines)):
+              if lines[j].startswith('# ') and j != i:
+                insert_index = j
+                break
+            if insert_index == -1:
+              insert_index = len(lines)
+            break
+        
+        # Insert the new information
+        new_entry = f"- {information}"
+        lines.insert(insert_index, new_entry)
+        content = '\n'.join(lines)
+      else:
+        # Create new date section
+        new_section = f"\n{date_header}\n\n- {information}\n"
+        content += new_section
+      
+      # Write back to file
+      with open(self.memory_file, 'w', encoding='utf-8') as f:
+        f.write(content)
+      
       return {"status": "success", "message": "Added to memory"}
+    
+    except Exception as e:
+      return {"status": "error", "message": f"Failed to add to memory: {str(e)}"}
 
-    except:
-      return False
 
-
-  def remember_delete(self, stored_information_id, information_type):
+  def remember_delete(self, information_text):
+    """Delete information from memory by matching text content."""
     try:
-      dbconn = sqlite3.connect(self.db)
-      cursor = dbconn.cursor()
-      query = f"DELETE FROM {information_type} WHERE id = ?"
-      cursor.execute(query, (stored_information_id,))
-      dbconn.commit()
-      dbconn.close()
-
+      # Read existing content
+      with open(self.memory_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+      
+      lines = content.split('\n')
+      new_lines = []
+      found = False
+      
+      for line in lines:
+        # Check if this line contains the information to delete
+        if information_text.lower() in line.lower() and line.strip().startswith('- '):
+          found = True
+          continue  # Skip this line (delete it)
+        new_lines.append(line)
+      
+      if not found:
+        return {"status": "error", "message": "Information not found in memory"}
+      
+      # Write back to file
+      with open(self.memory_file, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(new_lines))
+      
       return {"status": "success", "message": "Deleted from memory"}
+    
+    except Exception as e:
+      return {"status": "error", "message": f"Failed to delete from memory: {str(e)}"}
 
-    except:
-      return False
 
 
-
-  def remember_list(self, information_type):
+  def remember_list(self):
+    """Get all stored information from memory file for LLM to analyze."""
     try:
-      dbconn = sqlite3.connect(self.db)
-      cursor = dbconn.cursor()
-      cursor.execute(f"SELECT id, datetime, information FROM {information_type}")
-      values = cursor.fetchall()
-      dbconn.close()
-
-      remembers = []
-      for val in values:
-        remembers.append({"stored_information_id": val[0], "datetime": val[1], "information": val[2]})
-
-      return remembers
-
-    except:
-      return False
+      # Read the memory file
+      with open(self.memory_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+      
+      if not content.strip():
+        return {"status": "success", "content": "", "message": "Aucune information n'est stockée en mémoire."}
+      
+      return {"status": "success", "content": content, "message": "Contenu de la mémoire récupéré avec succès."}
+    
+    except FileNotFoundError:
+      return {"status": "success", "content": "", "message": "Aucun fichier de mémoire trouvé. Aucune information n'est stockée."}
+    except Exception as e:
+      return {"status": "error", "message": f"Erreur lors de la récupération des souvenirs : {str(e)}"}
