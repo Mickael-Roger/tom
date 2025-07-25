@@ -13,7 +13,7 @@ import yaml
 tom_config = {
     "module_name": "contacts",
     "class_name": "TomContacts", 
-    "description": "This module manages a flexible contact list in YAML format with functions to add, search, and delete contacts.",
+    "description": "This module manages a contact list that can contains information like adress, phone number, email addresses.",
     "type": "global",
     "complexity": 0,
     "configuration_parameters": {}
@@ -53,7 +53,7 @@ class TomContacts:
                 "type": "function", 
                 "function": {
                     "name": "get_contacts",
-                    "description": "Get the complete list of contacts from the address book. Use this when the user asks about contacts, wants to search for someone, or needs contact information.",
+                    "description": "Get the complete list of contacts from the address book. Use this when the user asks about contacts, wants to search for someone, or needs contact information (email adress, address, phone number, ...).",
                     "strict": True,
                     "parameters": {
                         "type": "object",
