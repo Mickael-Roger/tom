@@ -210,7 +210,59 @@ Global modules have shared configuration that applies to all users, but each use
 global:
   llm: openai
   all_datadir: ./data/all/  # Directory for global modules cache files
-  # Other global settings...
+  
+  # LLM Configuration - New structure
+  llms:
+    openai:
+      api: sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      env_var: OPENAI_API_KEY  # Environment variable name for LiteLLM
+      models:
+        - "openai/gpt-4o-mini"    # complexity 0 (fast/economical)
+        - "openai/gpt-4o"         # complexity 1 (standard)
+        - "openai/gpt-4o"         # complexity 2 (advanced)
+    
+    mistral:
+      api: XXXXXXXXXXXXXXXXXXXXXXXX
+      env_var: MISTRAL_API_KEY
+      models:
+        - "mistral/mistral-large-latest"
+        - "mistral/mistral-large-latest"
+        - "mistral/mistral-large-latest"
+    
+    deepseek:
+      api: sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      env_var: DEEPSEEK_API_KEY
+      models:
+        - "deepseek/deepseek-chat"
+        - "deepseek/deepseek-chat"
+        - "deepseek/deepseek-reasoner"  # reasoning model for complexity 2
+    
+    # Example: Adding a new LLM provider (no code changes required!)
+    anthropic:
+      api: sk-ant-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      env_var: ANTHROPIC_API_KEY  # Custom environment variable name
+      models:
+        - "anthropic/claude-3-haiku-20240307"    # complexity 0
+        - "anthropic/claude-3-sonnet-20240229"   # complexity 1  
+        - "anthropic/claude-3-opus-20240229"     # complexity 2
+
+### Adding New LLM Providers
+
+Tom's LLM system is fully configurable - you can add new LLM providers without modifying any code:
+
+1. **Add LLM configuration**: Simply add a new section under `global.llms` with:
+   - `api`: The API key for the provider
+   - `env_var`: The environment variable name LiteLLM expects (optional, defaults to `PROVIDER_API_KEY`)
+   - `models`: Array of 3 models for complexity levels 0, 1, and 2
+
+2. **Set as default**: Change `global.llm` to your new provider name
+
+3. **Automatic handling**: The system will:
+   - Set the environment variable for LiteLLM
+   - Load the models for different complexity levels
+   - Validate that the configured LLM is available
+
+**Example**: To add Anthropic Claude support, simply add the `anthropic` section shown above and set `global.llm: anthropic`. No code changes required!
 
 # Global modules configuration (shared)
 services:
@@ -712,6 +764,56 @@ When setting up CI/CD pipelines, use the Docker test images for consistent testi
   run: |
     docker build -f Dockerfile.test -t tom-tests .
     docker run --rm tom-tests
+```
+
+### Core Module Testing
+
+#### Testing `tomllm.py` (LLM Configuration Module)
+
+The LLM configuration module requires special testing considerations due to its role in managing multiple LLM providers and configurations.
+
+**Test file**: `tests/test_tomllm.py`
+
+Key testing areas:
+- **Configuration parsing**: Both new structure (`global.llms.NOM_LLM`) and legacy structure (`global.NOM_LLM`)
+- **Environment variable setting**: Verify API keys are correctly set in environment
+- **Model selection**: Test complexity-based model selection
+- **Provider support**: Test all supported LLM providers (OpenAI, Mistral, DeepSeek, XAI, Gemini, OpenRouter)
+
+**Example test structure:**
+```python
+class TestTomLLM(unittest.TestCase):
+    def test_new_config_structure(self):
+        """Test new global.llms.provider structure"""
+        config = {
+            'global': {
+                'llm': 'openai',
+                'llms': {
+                    'openai': {
+                        'api': 'test-key',
+                        'models': ['model1', 'model2', 'model3']
+                    }
+                }
+            }
+        }
+        
+    def test_legacy_config_structure(self):
+        """Test backward compatibility with old structure"""
+        config = {
+            'global': {
+                'llm': 'openai',
+                'openai': {'api': 'test-key'}
+            }
+        }
+```
+
+**Running LLM tests:**
+```bash
+# Run LLM-specific tests
+python -m unittest tests.test_tomllm -v
+
+# Run with pytest
+python -m pytest tests/test_tomllm.py -v
 ```
 
 ### Test Dependencies

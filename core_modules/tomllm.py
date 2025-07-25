@@ -21,41 +21,43 @@ class TomLLM():
 
     self.llms = {}
 
-    if 'openai' in global_config['global'].keys():
-      os.environ["OPENAI_API_KEY"] = global_config['global']["openai"]["api"]
-      self.llms['openai'] = ["openai/gpt-4o-mini", "openai/gpt-4o", "openai/gpt-4o"]
+    # Load LLM configuration from global.llms structure
+    llms_config = global_config['global'].get('llms', {})
 
-    if 'openrouter' in global_config['global'].keys():
-      os.environ["OPENROUTER_API_KEY"] = global_config['global']["openrouter"]["api"]
-      self.llms['openrouter'] = ["openrouter/moonshotai/kimi-k2", "openrouter/moonshotai/kimi-k2", "openrouter/moonshotai/kimi-k2"]
+    # Configure each LLM provider from configuration
+    for llm_name, llm_config in llms_config.items():
+      if not isinstance(llm_config, dict):
+        tomlogger.warning(f"Invalid configuration for LLM '{llm_name}', skipping")
+        continue
+        
+      api_key = llm_config.get("api")
+      if not api_key:
+        tomlogger.warning(f"No API key found for LLM '{llm_name}', skipping")
+        continue
+        
+      # Get models configuration (required)
+      models = llm_config.get("models")
+      if not models or len(models) != 3:
+        tomlogger.warning(f"LLM '{llm_name}' must have exactly 3 models for complexity levels 0, 1, 2. Skipping.")
+        continue
+        
+      # Get environment variable name (required)
+      env_var = llm_config.get("env_var")
+      if not env_var:
+        tomlogger.warning(f"No env_var specified for LLM '{llm_name}', skipping")
+        continue
+      
+      # Configure the LLM
+      os.environ[env_var] = api_key
+      self.llms[llm_name] = models
 
-    if 'mistral' in global_config['global'].keys():
-      os.environ["MISTRAL_API_KEY"] = global_config['global']["mistral"]["api"]
-      self.llms['mistral'] = [ "mistral/mistral-large-latest", "mistral/mistral-large-latest", "mistral/mistral-large-latest"]
-
-    if 'deepseek' in global_config['global'].keys():
-      os.environ["DEEPSEEK_API_KEY"] = global_config['global']["deepseek"]["api"]
-      self.llms['deepseek'] = ["deepseek/deepseek-chat", "deepseek/deepseek-chat", "deepseek/deepseek-reasoner"]
-
-    if 'xai' in global_config['global'].keys():
-      os.environ["XAI_API_KEY"] = global_config['global']["xai"]["api"]
-      self.llms['xai'] = ["xai/grok-beta", "xai/grok-beta", "xai/grok-beta"]
-
-    if 'gemini' in global_config['global'].keys():
-      os.environ["GEMINI_API_KEY"] = global_config['global']["gemini"]["api"]
-      self.llms['gemini'] = ["gemini/gemini-1.5-flash", "gemini/gemini-1.5-flash", "gemini/gemini-1.5-flash"]
-
-
-    if global_config['global']['llm'] not in ["mistral", "openai", "deepseek", "xai", "gemini", "openrouter"]:
-      tomlogger.critical(f"LLM {global_config['global']['llm']} not supported")
+    # Check that the configured LLM was actually loaded
+    configured_llm = global_config['global']['llm']
+    if configured_llm not in self.llms:
+      tomlogger.critical(f"LLM '{configured_llm}' is not configured or failed to load. Available LLMs: {list(self.llms.keys())}")
       exit(-1)
 
     self.llm = global_config['global']['llm']
-
-      #elif global_config['global']['llm'] == "gemini":
-      #  Gemini.configure(api_key=global_config['global']["gemini"]["api"])
-      #  self.llm = self.callGemini
-      #  self.llm_models = ["gemini-1.5-flash", "gemini-1.5-flash", "gemini-1.5-flash"]
 
     self.history = []
 
@@ -67,10 +69,7 @@ class TomLLM():
 
     self.user_context = user_config['personalContext']
 
-
     self.tts = None
-
-    #self.tom_context = f'''Your name is Tom and you are my personal life assistant. When your answer contains a date, it must be in the form 'Weekday day month'.\n\nImportant: 'Do not make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous'\nYour responses will be transcribed into audio, so by default, and unless otherwise specified, you must reply with audible sentences, without indents, dashes, lists, or any markdown or other formatting. Additionally, you should respond as concisely as possible whenever possible.\n{self.user_context} '''
 
     self.tom_context = f'''Your name is Tom, and you are my personal assistant. You have access to numerous external functionalities via function calls. Since you have access to more functions than your memory can hold, they are grouped into modules. A module is a logical grouping of functions within a specific scope. One of your primary tasks will be "triage," which involves identifying the modules to load to fulfill the user's request.
 
@@ -110,30 +109,16 @@ class TomLLM():
     weeknumber = datetime.now().isocalendar().week
     todayMsg = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
 
-    #svc_context = ""
-    #for service in self.services:
-    #  if self.services[service]['service_context'] != "":
-    #    svc_context = f"{svc_context}\n{self.services[service]['service_context']}\n"
-
     behaviors = self.services['behavior']['obj'].behavior_get()
-
-    #morning_routines = self.services['morningroutine']['obj'].morning_routine_prompt()
-    
-    
-
+  
     if self.history: 
       self.history[0] = todayMsg
     else:
       self.history.append(todayMsg)
       self.history.append({"role": "system", "content": self.tom_context})
-      #self.history.append({"role": "system", "content": f"{svc_context}"})
 
       if behaviors:
         self.history.append({"role": "system", "content": f"\n{behaviors}"})
-
-    #behaviors = self.services['behavior']['obj'].behavior_get()
-    #if len(behaviors) > 1:
-    #  self.history.append({"role": "system", "content": behaviors})
   
     self.history.append({"role": "user", "content": input})
 
@@ -186,13 +171,11 @@ class TomLLM():
 
 
 
-
   def set_response_context(self, client_type):
     if client_type == 'tui':
       return "Your response will be displayed in a TUI terminal application. You should use markdown to format your answer for better readability. You can use titles, lists, bold text, etc."
     else: # web and pwa
       return "Your response will be displayed in a web browser or in an mobile app, so it must be concise and free of any markdown formatting, lists, or complex layouts. Use simple text and line breaks for readability. Do not forget in most case, your response will be play using a text to speech feature. Unless the user explicitly ask for it, you must never directly write URL or stuff like that. Instead, you must use the tag [open:PLACE URL HERE]"
-
 
 
 
@@ -273,7 +256,8 @@ class TomLLM():
           if self.services[mod]["complexity"] > complexity:
             complexity = self.services[mod]["complexity"]
             tomlogger.debug(f"Complexity increased to {complexity}", self.username)
-        except:
+        except KeyError:
+          # Module doesn't have complexity setting, use default
           pass
       else:
         tomlogger.warning(f"Module '{mod}' not loaded in services, skipping", self.username)
@@ -351,166 +335,3 @@ class TomLLM():
         return response.choices[0].message.content
       
       return False
-
-  def old_processRequest_backup(self, input, lang, position, client_type):
-    tools = [
-      {
-        "type": "function",
-        "function": {
-          "name": "modules_needed_to_answer_user_prompt",
-          "description": "This function is used to execute the appropriate module to get the required data to answer the user's request",
-          "strict": True,
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "modules_name": {
-                #                "type": "array",
-                #                "items": {
-                  "type": "string",
-                  "enum": modules_name_list,
-                #                },
-                "description": f"List of module names",
-              },
-            },
-            "required": ["modules_name"],
-            "additionalProperties": False,
-          },
-        },
-      },
-    ]
-
-    conversation = copy.deepcopy(self.history) 
-  
-    tooling = json.dumps(available_tools)
-    #    conversation.append({"role": "system", "content": f"Here is a list of available modules. Your role is to identify the necessary module(s) to meet the user's request. To do so, you must call the function 'modules_needed_to_answer_user_prompt' with the list of required modules as a parameter. If you are able to answer the user request without any modules, do it and do not call 'modules_needed_to_answer_user_prompt' function.\n\n{tooling}"})
-    #conversation.append({"role": "system", "content": f"Here is a list of modules. For each module, you have the its description. Your role is to call the function 'modules_needed_to_answer_user_prompt' with the module needed to provide me the answer to my request. 'module_name' is not a name of a function, it's a possible value of the parameter of the 'modules_needed_to_answer_prompt'. You must never use the field 'module_name' as a function name.\n{tooling}"})
-    prompt = f'''As an AI assistant, you have access to a wide range of functions, far more than your API allows. These functions are grouped into modules. A module is a logical grouping of functions for a specific theme.
-
-    For each new user request, you have access to the conversation history.
-
-    If you need a function that is not in your list of tools to respond to the user's request, you should call the 'modules_needed_to_answer_user_prompt' function with the necessary modules. You can call the 'modules_needed_to_answer_user_prompt' function as many times as needed.
-
-    It is very important that you do not invent module names—only the modules provided in the list exist.
-
-    Once you call the 'modules_needed_to_answer_user_prompt' function, the user's request will be sent back to you with the functions from the requested modules added to your tools. At that point, you can choose the appropriate function(s) to respond to the user's request.
-    
-    ```json
-    {tooling}
-    ```
-    '''
-    conversation.append({"role": "system", "content": prompt})
-
-    # Alternative to test: As a language model, you cannot respond to all of my requests. Therefore, you might need additional information. Certain information or functionalities can be found in modules. You can load these modules to assist you in responding by using the load_module function. Below, you will find a complete list of modules along with their descriptions.
-
-    complexity = 1
-
-    #llm = "openai"
-    llm = self.llm
-
-    response_context = self.set_response_context(client_type)
-    conversation.append({"role": 'system', "content": response_context})
-    #self.history.append({"role": 'system', "content": response_context})
-
-    while True:
-
-
-      response = self.callLLM(messages=conversation, tools=tools, complexity=complexity, llm=llm)
-
-      conversation = copy.deepcopy(self.history)
-  
-      if response != False:
-        if response.choices[0].finish_reason == "stop":
-          self.history.append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
-          return response.choices[0].message.content
-  
-        elif response.choices[0].finish_reason == "tool_calls":
-
-          load_modules= []
-          # Are we in triage?
-          for tool_call in response.choices[0].message.tool_calls:
-            if tool_call.function.name.find("modules_needed_to_answer_user_prompt") != -1:    # Probably bad prompt, but sometimes it calls 'module_name.modules_needed_to_answer_user_prompt'
-              mod = json.loads(tool_call.function.arguments)
-              mod_name=mod['modules_name']
-              #for mod in mods['modules_name']:
-              load_modules.append(mod_name)
-            # Todo add something to check if the function name is a module, if so, it's an LLM error and we must use it as if it was a parameter
-            if tool_call.function.name in modules_name_list:
-              mod_name=tool_call.function.name
-              load_modules.append(mod_name)
-            
-
-
-          # Yes we are
-          if load_modules:
-            tomlogger.debug(f"Load modules: {str(load_modules)}", self.username)
-  
-            tools = []
-            complexity = 0
-
-            #if 'memory' not in load_modules:
-            #  load_modules.append('memory')
-
-
-            for mod in set(load_modules):
-              if mod in self.services:
-                tools = tools + self.services[mod]['tools']
-
-                conversation.append({"role": "system", "content": self.services[mod]["systemContext"]})
-
-                try:
-                  if self.services[mod]["complexity"] > complexity:
-                    complexity = self.services[mod]["complexity"]
-                    tomlogger.debug(f"Complexity increased to {complexity}", self.username)
-                except:
-                  pass
-              else:
-                tomlogger.warning(f"Module '{mod}' not loaded in services, skipping", self.username)
-
-
-            llm = None
-
-  
-          # We are not
-          else:
-
-            llm = None
-            
-            #self.history.append(response.choices[0].message.to_dict())
-            conversation.append(response.choices[0].message.to_dict())
-
-            for tool_call in response.choices[0].message.tool_calls:
-    
-              function_name = tool_call.function.name
-              function_params = json.loads(tool_call.function.arguments)
-    
-              tomlogger.info(f"Calling function: {function_name} with {function_params}", self.username)
-    
-              if function_name in self.functions:
-                # Set module context for logging during function execution
-                function_data = self.functions[function_name]
-                module_name = function_data.get('module_name', 'system')
-                set_log_context(module_name=module_name)
-                
-                try:
-                  function_result = function_data['function'](**function_params)
-                finally:
-                  # Reset module context after function execution
-                  set_log_context(module_name=None)
-              else:
-                tomlogger.error(f"Function '{function_name}' not found in available functions", self.username)
-                tomlogger.error(f"Available functions: {list(self.functions.keys())}", self.username)
-                function_result = {"error": f"Function '{function_name}' not available. This might be due to a module loading error."}
-    
-              if function_result is False:
-                self.history.append({"role": 'assistant', "content": "Error while executing the function call"})
-                return False
-    
-
-              self.history.append({"role": 'system', "content": json.dumps(function_result)})
-              conversation.append({"role": 'tool', "content": json.dumps(function_result), "tool_call_id": tool_call.id})
-  
-        else:
-          return False
-    
-      else: 
-        return False
