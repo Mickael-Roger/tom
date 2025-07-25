@@ -25,6 +25,10 @@ class TomLLM():
       os.environ["OPENAI_API_KEY"] = global_config['global']["openai"]["api"]
       self.llms['openai'] = ["openai/gpt-4o-mini", "openai/gpt-4o", "openai/gpt-4o"]
 
+    if 'openrouter' in global_config['global'].keys():
+      os.environ["OPENROUTER_API_KEY"] = global_config['global']["openrouter"]["api"]
+      self.llms['openrouter'] = ["openrouter/moonshotai/kimi-k2", "openrouter/moonshotai/kimi-k2", "openrouter/moonshotai/kimi-k2"]
+
     if 'mistral' in global_config['global'].keys():
       os.environ["MISTRAL_API_KEY"] = global_config['global']["mistral"]["api"]
       self.llms['mistral'] = [ "mistral/mistral-large-latest", "mistral/mistral-large-latest", "mistral/mistral-large-latest"]
@@ -42,7 +46,7 @@ class TomLLM():
       self.llms['gemini'] = ["gemini/gemini-1.5-flash", "gemini/gemini-1.5-flash", "gemini/gemini-1.5-flash"]
 
 
-    if global_config['global']['llm'] not in ["mistral", "openai", "deepseek", "xai", "gemini"]:
+    if global_config['global']['llm'] not in ["mistral", "openai", "deepseek", "xai", "gemini", "openrouter"]:
       tomlogger.critical(f"LLM {global_config['global']['llm']} not supported")
       exit(-1)
 

@@ -111,6 +111,15 @@ test_cases:
     expected_modules: ["idfm"]
     description: "French transport query"
 
+  - prompt: "Enregistre l'adresse de Joe au 5 rue de de la paix"
+    expected_modules: ["contacts"]
+    description: "Contact add query"
+
+  - prompt: "Quelle est l'adresse de grand pere?"
+    expected_modules: ["contacts"]
+    description: "Contact search query"
+
+
   # Weather-like prompts (should not match any available modules)
   - prompt: "What's the weather like today?"
     expected_modules: ["weather"]
