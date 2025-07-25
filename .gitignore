@@ -8,4 +8,5 @@ data/*
 # Except for the .gitkeep file
 !data/.gitkeep
 
-TomApp/app/google-services.json
+
+CLAUDE.md

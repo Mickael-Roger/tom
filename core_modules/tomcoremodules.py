@@ -436,10 +436,12 @@ class TomCoreModules:
         tomlogger.debug(f"Global module {service_name} found and enabled", self.user_config['username'])
         return service_config, is_enabled
       else:
-        # Global module not configured globally - skip
-        global_services = self.global_config.get('services', {})
-        tomlogger.debug(f"Global module {service_name} not found in global services. Available: {list(global_services.keys())}", self.user_config['username'])
-        return None, False
+        # Global module not configured globally - use default config
+        service_config = {
+          'all_datadir': self.global_config.get('all_datadir', '/data/all/')
+        }
+        tomlogger.debug(f"Global module {service_name} not found in global services, using default config", self.user_config['username'])
+        return service_config, is_enabled
     else:
       # Personal modules get config from user.services
       tomlogger.debug(f"Looking for personal module {service_name} in user services", self.user_config['username'])
@@ -659,11 +661,11 @@ class TomCoreModules:
           self._load_single_module(service_name)
         else:
           self._unload_single_module(service_name)
-      elif service_name in new_services and service_name not in old_services:
+      elif service_name in new_personal_services and service_name not in old_personal_services:
         # New module added
         if new_enable:
           self._load_single_module(service_name)
-      elif service_name in old_services and service_name not in new_services:
+      elif service_name in old_personal_services and service_name not in new_personal_services:
         # Module removed
         self._unload_single_module(service_name)
     
