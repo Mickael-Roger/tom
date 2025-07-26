@@ -60,8 +60,18 @@ class TestTomLLMConfiguration(unittest.TestCase):
         global_config = {
             'global': {
                 'llm': 'openai',
-                'openai': {'api': 'test-key-legacy-structure'},
-                'deepseek': {'api': 'test-deepseek-key'}
+                'llms': {
+                    'openai': {
+                        'api': 'test-key-legacy-structure',
+                        'env_var': 'OPENAI_API_KEY',
+                        'models': ['openai/gpt-4o-mini', 'openai/gpt-4o', 'openai/gpt-4o']
+                    },
+                    'deepseek': {
+                        'api': 'test-deepseek-key',
+                        'env_var': 'DEEPSEEK_API_KEY',
+                        'models': ['deepseek/deepseek-chat', 'deepseek/deepseek-chat', 'deepseek/deepseek-reasoner']
+                    }
+                }
             }
         }
         
@@ -90,11 +100,15 @@ class TestTomLLMConfiguration(unittest.TestCase):
                 'llms': {
                     'openai': {
                         'api': 'test-new-openai-key',
+                        'env_var': 'OPENAI_API_KEY',
                         'models': ['openai/gpt-4o-mini', 'openai/gpt-4o', 'openai/gpt-4o']
+                    },
+                    'mistral': {
+                        'api': 'test-legacy-mistral-key',
+                        'env_var': 'MISTRAL_API_KEY',
+                        'models': ['mistral/mistral-large-latest', 'mistral/mistral-large-latest', 'mistral/mistral-large-latest']
                     }
-                },
-                # Legacy structure for other providers
-                'mistral': {'api': 'test-legacy-mistral-key'}
+                }
             }
         }
         
@@ -201,7 +215,13 @@ class TestTomLLMTriageModules(unittest.TestCase):
         self.global_config = {
             'global': {
                 'llm': 'openai',
-                'openai': {'api': 'test_api_key'}
+                'llms': {
+                    'openai': {
+                        'api': 'test_api_key',
+                        'env_var': 'OPENAI_API_KEY',
+                        'models': ['openai/gpt-4o-mini', 'openai/gpt-4o', 'openai/gpt-4o']
+                    }
+                }
             }
         }
         
