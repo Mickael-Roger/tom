@@ -145,12 +145,12 @@ users:
         url: http://localhost:8765
         profile: user1_profile
       
-      vm:
+      techcapabilities:
         enable: true
-        cache_db: ./data/users/user1/vm.db
+        tasks_dir: ./data/users/user1/techcapabilities/
         host: your-vm-server.com
         username: vm_username
-        password: vm_password
+        ssh_key_path: /path/to/your/ssh/private/key
       
       groceries:
         enable: true
