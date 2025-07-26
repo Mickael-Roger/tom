@@ -7,6 +7,10 @@ from datetime import datetime, timedelta
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'modules'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+sys.path.append(os.path.dirname(__file__))  # Add tests directory to path
+
+# Import test config loader
+from test_config_loader import load_test_config, get_module_config_for_test
 
 # Mock logger before importing
 with patch('tomtodo.logger') as mock_logger:
@@ -21,30 +25,20 @@ class TestTomTodoIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up class-level resources - load config once"""
-        cls.config_path = '/config.yml'
-        cls.config_loaded = False
-        cls.todo_config = None
-        
-        # Try to load config
-        try:
-            if os.path.exists(cls.config_path):
-                with open(cls.config_path, 'r') as file:
-                    config = yaml.safe_load(file)
-                    if 'todo' in config:
-                        cls.todo_config = config['todo']
-                        cls.config_loaded = True
-                        print(f"✓ Config loaded from {cls.config_path}")
-                    else:
-                        print(f"✗ TODO config not found in {cls.config_path}")
-            else:
-                print(f"✗ Config file not found at {cls.config_path}")
-        except Exception as e:
-            print(f"✗ Error loading config: {e}")
+        cls.test_config = load_test_config()
+        cls.global_config = cls.test_config.get_global_config() or {}
+        cls.username = 'test_user'
     
     def setUp(self):
         """Set up test fixtures"""
-        if not self.config_loaded:
-            self.skipTest("Config file not available - skipping integration tests")
+        if not self.test_config.config_loaded:
+            self.skipTest("Test configuration not available - skipping integration tests")
+            
+        if not self.test_config.has_user_service_config(self.username, 'todo'):
+            self.skipTest("Todo service not configured for test user - skipping integration tests")
+        
+        # Get module configuration using unified config
+        self.todo_config = get_module_config_for_test('todo', self.global_config, is_personal=True, username=self.username)
         
         # Create TomTodo instance with real config but mock logger
         with patch('tomtodo.logger') as mock_logger:
@@ -57,7 +51,7 @@ class TestTomTodoIntegration(unittest.TestCase):
     
     def test_config_loaded(self):
         """Test that configuration is properly loaded"""
-        self.assertTrue(self.config_loaded, "Configuration should be loaded")
+        self.assertTrue(self.test_config.config_loaded, "Configuration should be loaded")
         self.assertIsNotNone(self.todo_config, "TODO config should not be None")
         self.assertIn('url', self.todo_config, "URL should be in config")
         self.assertIn('user', self.todo_config, "User should be in config")
@@ -312,33 +306,30 @@ class TestTomTodoIntegration(unittest.TestCase):
         self.assertEqual(self.todo.systemContext, "")
         self.assertIsInstance(self.todo.tasks, list)
     
-    @unittest.skipIf(not os.path.exists('/config.yml'), "Config file not available")
     def test_config_file_structure(self):
         """Test that config file has correct structure"""
-        with open('/config.yml', 'r') as file:
-            config = yaml.safe_load(file)
+        if not self.test_config.config_loaded:
+            self.skipTest("Config file not available")
         
-        self.assertIn('todo', config, "Config should have todo section")
-        
-        todo_config = config['todo']
-        self.assertIn('url', todo_config, "TODO config should have url")
-        self.assertIn('user', todo_config, "TODO config should have user")
-        self.assertIn('password', todo_config, "TODO config should have password")
-        self.assertIn('list', todo_config, "TODO config should have list")
+        self.assertIsNotNone(self.todo_config, "TODO config should not be None")
+        self.assertIn('url', self.todo_config, "TODO config should have url")
+        self.assertIn('user', self.todo_config, "TODO config should have user")
+        self.assertIn('password', self.todo_config, "TODO config should have password")
+        self.assertIn('list', self.todo_config, "TODO config should have list")
         
         # Test that required fields are not empty
-        self.assertIsInstance(todo_config['url'], str, "URL should be a string")
-        self.assertGreater(len(todo_config['url']), 0, "URL should not be empty")
-        self.assertTrue(todo_config['url'].startswith(('http://', 'https://')), "URL should be a valid HTTP/HTTPS URL")
+        self.assertIsInstance(self.todo_config['url'], str, "URL should be a string")
+        self.assertGreater(len(self.todo_config['url']), 0, "URL should not be empty")
+        self.assertTrue(self.todo_config['url'].startswith(('http://', 'https://')), "URL should be a valid HTTP/HTTPS URL")
         
-        self.assertIsInstance(todo_config['user'], str, "User should be a string")
-        self.assertGreater(len(todo_config['user']), 0, "User should not be empty")
+        self.assertIsInstance(self.todo_config['user'], str, "User should be a string")
+        self.assertGreater(len(self.todo_config['user']), 0, "User should not be empty")
         
-        self.assertIsInstance(todo_config['password'], str, "Password should be a string")
-        self.assertGreater(len(todo_config['password']), 0, "Password should not be empty")
+        self.assertIsInstance(self.todo_config['password'], str, "Password should be a string")
+        self.assertGreater(len(self.todo_config['password']), 0, "Password should not be empty")
         
-        self.assertIsInstance(todo_config['list'], str, "List should be a string")
-        self.assertGreater(len(todo_config['list']), 0, "List should not be empty")
+        self.assertIsInstance(self.todo_config['list'], str, "List should be a string")
+        self.assertGreater(len(self.todo_config['list']), 0, "List should not be empty")
 
 if __name__ == '__main__':
     unittest.main()

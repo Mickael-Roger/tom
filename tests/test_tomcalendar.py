@@ -417,7 +417,7 @@ class TestTomCalendar(unittest.TestCase):
         self.assertIsInstance(calendar.tools, list)
         self.assertEqual(len(calendar.tools), 4)  # Now has 4 functions
         
-        expected_functions = ['calendar_search', 'calendar_add', 'calendar_delete', 'calendar_update']
+        expected_functions = ['calendar_search_event', 'calendar_add_event', 'calendar_delete_event', 'calendar_update_event']
         
         for i, tool in enumerate(calendar.tools):
             self.assertEqual(tool['type'], 'function')
@@ -434,7 +434,7 @@ class TestTomCalendar(unittest.TestCase):
         
         calendar = TomCalendar(self.config, None)
         
-        expected_functions = ['calendar_search', 'calendar_add', 'calendar_delete', 'calendar_update']
+        expected_functions = ['calendar_search_event', 'calendar_add_event', 'calendar_delete_event', 'calendar_update_event']
         
         for func_name in expected_functions:
             self.assertIn(func_name, calendar.functions)
@@ -782,40 +782,6 @@ class TestTomCalendar(unittest.TestCase):
         self.assertEqual(result['status'], 'success')
         self.assertEqual(result['message'], 'Event updated')
     
-    @patch('tomcalendar.caldav.DAVClient')
-    @patch('tomcalendar.logger')
-    def test_tools_structure_with_new_functions(self, mock_logger, mock_dav_client):
-        """Test that tools are properly structured with new functions"""
-        mock_dav_client.return_value = self.mock_client
-        
-        calendar = TomCalendar(self.config, None)
-        
-        self.assertIsInstance(calendar.tools, list)
-        self.assertEqual(len(calendar.tools), 4)  # Now has 4 functions
-        
-        expected_functions = ['calendar_search', 'calendar_add', 'calendar_delete', 'calendar_update']
-        
-        for i, tool in enumerate(calendar.tools):
-            self.assertEqual(tool['type'], 'function')
-            self.assertIn('function', tool)
-            self.assertEqual(tool['function']['name'], expected_functions[i])
-            self.assertIn('description', tool['function'])
-            self.assertIn('parameters', tool['function'])
-    
-    @patch('tomcalendar.caldav.DAVClient')
-    @patch('tomcalendar.logger')
-    def test_functions_structure_with_new_functions(self, mock_logger, mock_dav_client):
-        """Test that functions are properly structured with new functions"""
-        mock_dav_client.return_value = self.mock_client
-        
-        calendar = TomCalendar(self.config, None)
-        
-        expected_functions = ['calendar_search', 'calendar_add', 'calendar_delete', 'calendar_update']
-        
-        for func_name in expected_functions:
-            self.assertIn(func_name, calendar.functions)
-            self.assertIn('function', calendar.functions[func_name])
-            self.assertTrue(callable(calendar.functions[func_name]['function']))
 
 if __name__ == '__main__':
     unittest.main()

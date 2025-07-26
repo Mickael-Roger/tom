@@ -2,13 +2,16 @@ import unittest
 from unittest.mock import patch
 import sys
 import os
-import yaml
 import tempfile
 import sqlite3
 from datetime import datetime
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'modules'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+sys.path.append(os.path.dirname(__file__))  # Add tests directory to path
+
+# Import test config loader
+from test_config_loader import load_test_config, skip_if_no_config, get_module_config_for_test
 
 # Mock logger before importing
 with patch('tomidfm.logger') as mock_logger:
@@ -17,39 +20,28 @@ with patch('tomidfm.logger') as mock_logger:
 class TestTomIdfmIntegration(unittest.TestCase):
     """
     Integration tests for TomIdfm module that require real API calls.
-    These tests require a valid config.yml file mounted at /config.yml in Docker.
+    These tests require a valid test configuration with IDFM service configured.
     """
     
     @classmethod
     def setUpClass(cls):
         """Set up class-level resources - load config once"""
-        cls.config_path = '/config.yml'
-        cls.config_loaded = False
-        cls.idfm_config = None
-        
-        # Try to load config
-        try:
-            if os.path.exists(cls.config_path):
-                with open(cls.config_path, 'r') as file:
-                    config = yaml.safe_load(file)
-                    if 'idfm' in config:
-                        cls.idfm_config = config['idfm']
-                        cls.config_loaded = True
-                        print(f"✓ Config loaded from {cls.config_path}")
-                    else:
-                        print(f"✗ IDFM config not found in {cls.config_path}")
-            else:
-                print(f"✗ Config file not found at {cls.config_path}")
-        except Exception as e:
-            print(f"✗ Error loading config: {e}")
+        cls.test_config = load_test_config()
+        cls.global_config = cls.test_config.get_global_config() or {}
     
     def setUp(self):
         """Set up test fixtures"""
-        if not self.config_loaded:
-            self.skipTest("Config file not available - skipping integration tests")
+        if not self.test_config.config_loaded:
+            self.skipTest("Test configuration not available - skipping integration tests")
+            
+        if not self.test_config.has_service_config('idfm'):
+            self.skipTest("IDFM service not configured - skipping integration tests")
         
         # Reset the class variable for each test
         TomIdfm._already_updated = False
+        
+        # Get module configuration using unified config
+        self.idfm_config = get_module_config_for_test('idfm', self.global_config, is_personal=False)
         
         # Create TomIdfm instance with real config but mock logger
         with patch('tomidfm.logger') as mock_logger:
@@ -57,10 +49,9 @@ class TestTomIdfmIntegration(unittest.TestCase):
         
     def test_config_loaded(self):
         """Test that configuration is properly loaded"""
-        self.assertTrue(self.config_loaded, "Configuration should be loaded")
+        self.assertTrue(self.test_config.config_loaded, "Configuration should be loaded")
         self.assertIsNotNone(self.idfm_config, "IDFM config should not be None")
         self.assertIn('token', self.idfm_config, "Token should be in config")
-        self.assertIn('cache_db', self.idfm_config, "Cache DB path should be in config")
     
     def test_database_initialization(self):
         """Test that database is properly initialized"""

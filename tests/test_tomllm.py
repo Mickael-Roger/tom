@@ -11,6 +11,184 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
 with patch('tomllm.tomlogger') as mock_tomlogger:
     from tomllm import TomLLM
 
+class TestTomLLMConfiguration(unittest.TestCase):
+    
+    def test_new_config_structure(self):
+        """Test new global.llms.provider structure"""
+        user_config = {
+            'username': 'test_user',
+            'personalContext': 'Test personal context'
+        }
+        
+        global_config = {
+            'global': {
+                'llm': 'openai',
+                'llms': {
+                    'openai': {
+                        'api': 'test-key-new-structure',
+                        'env_var': 'OPENAI_API_KEY',
+                        'models': ['openai/gpt-4o-mini', 'openai/gpt-4o', 'openai/gpt-4o']
+                    },
+                    'mistral': {
+                        'api': 'test-mistral-key',
+                        'env_var': 'MISTRAL_API_KEY',
+                        'models': ['mistral/mistral-large-latest'] * 3
+                    }
+                }
+            }
+        }
+        
+        with patch('tomllm.tomlogger') as mock_tomlogger, \
+             patch.dict('os.environ', {}, clear=True):
+            llm = TomLLM(user_config, global_config)
+            
+            # Verify API keys are set in environment
+            self.assertEqual(os.environ.get('OPENAI_API_KEY'), 'test-key-new-structure')
+            self.assertEqual(os.environ.get('MISTRAL_API_KEY'), 'test-mistral-key')
+            
+            # Verify models are correctly configured
+            self.assertEqual(llm.llms['openai'], ['openai/gpt-4o-mini', 'openai/gpt-4o', 'openai/gpt-4o'])
+            self.assertEqual(llm.llms['mistral'], ['mistral/mistral-large-latest'] * 3)
+    
+    def test_legacy_config_structure(self):
+        """Test backward compatibility with old structure"""
+        user_config = {
+            'username': 'test_user',
+            'personalContext': 'Test personal context'
+        }
+        
+        global_config = {
+            'global': {
+                'llm': 'openai',
+                'openai': {'api': 'test-key-legacy-structure'},
+                'deepseek': {'api': 'test-deepseek-key'}
+            }
+        }
+        
+        with patch('tomllm.tomlogger') as mock_tomlogger, \
+             patch.dict('os.environ', {}, clear=True):
+            llm = TomLLM(user_config, global_config)
+            
+            # Verify API keys are set in environment
+            self.assertEqual(os.environ.get('OPENAI_API_KEY'), 'test-key-legacy-structure')
+            self.assertEqual(os.environ.get('DEEPSEEK_API_KEY'), 'test-deepseek-key')
+            
+            # Verify default models are used
+            self.assertEqual(llm.llms['openai'], ["openai/gpt-4o-mini", "openai/gpt-4o", "openai/gpt-4o"])
+            self.assertEqual(llm.llms['deepseek'], ["deepseek/deepseek-chat", "deepseek/deepseek-chat", "deepseek/deepseek-reasoner"])
+    
+    def test_mixed_config_structure(self):
+        """Test mixed new and legacy configuration"""
+        user_config = {
+            'username': 'test_user',
+            'personalContext': 'Test personal context'
+        }
+        
+        global_config = {
+            'global': {
+                'llm': 'openai',
+                'llms': {
+                    'openai': {
+                        'api': 'test-new-openai-key',
+                        'models': ['openai/gpt-4o-mini', 'openai/gpt-4o', 'openai/gpt-4o']
+                    }
+                },
+                # Legacy structure for other providers
+                'mistral': {'api': 'test-legacy-mistral-key'}
+            }
+        }
+        
+        with patch('tomllm.tomlogger') as mock_tomlogger, \
+             patch.dict('os.environ', {}, clear=True):
+            llm = TomLLM(user_config, global_config)
+            
+            # New structure should take precedence for OpenAI
+            self.assertEqual(os.environ.get('OPENAI_API_KEY'), 'test-new-openai-key')
+            # Legacy structure should work for Mistral
+            self.assertEqual(os.environ.get('MISTRAL_API_KEY'), 'test-legacy-mistral-key')
+    
+    def test_custom_env_var(self):
+        """Test custom environment variable names"""
+        user_config = {
+            'username': 'test_user',
+            'personalContext': 'Test personal context'
+        }
+        
+        global_config = {
+            'global': {
+                'llm': 'openai',
+                'llms': {
+                    'openai': {
+                        'api': 'test-custom-key',
+                        'env_var': 'CUSTOM_OPENAI_KEY',  # Custom env var name
+                        'models': ['openai/gpt-4o-mini', 'openai/gpt-4o', 'openai/gpt-4o']
+                    }
+                }
+            }
+        }
+        
+        with patch('tomllm.tomlogger') as mock_tomlogger, \
+             patch.dict('os.environ', {}, clear=True):
+            llm = TomLLM(user_config, global_config)
+            
+            # Verify API key is set with custom environment variable name
+            self.assertEqual(os.environ.get('CUSTOM_OPENAI_KEY'), 'test-custom-key')
+            self.assertIsNone(os.environ.get('OPENAI_API_KEY'))  # Default should not be set
+    
+    def test_new_llm_provider(self):
+        """Test adding a completely new LLM provider"""
+        user_config = {
+            'username': 'test_user',
+            'personalContext': 'Test personal context'
+        }
+        
+        global_config = {
+            'global': {
+                'llm': 'anthropic',  # New LLM not in defaults
+                'llms': {
+                    'anthropic': {
+                        'api': 'sk-ant-test-key',
+                        'env_var': 'ANTHROPIC_API_KEY',
+                        'models': ['anthropic/claude-3-haiku', 'anthropic/claude-3-sonnet', 'anthropic/claude-3-opus']
+                    }
+                }
+            }
+        }
+        
+        with patch('tomllm.tomlogger') as mock_tomlogger, \
+             patch.dict('os.environ', {}, clear=True):
+            llm = TomLLM(user_config, global_config)
+            
+            # Verify new LLM is configured
+            self.assertEqual(os.environ.get('ANTHROPIC_API_KEY'), 'sk-ant-test-key')
+            self.assertEqual(llm.llms['anthropic'], ['anthropic/claude-3-haiku', 'anthropic/claude-3-sonnet', 'anthropic/claude-3-opus'])
+            self.assertEqual(llm.llm, 'anthropic')
+    
+    def test_llm_not_configured_error(self):
+        """Test error when configured LLM is not available"""
+        user_config = {
+            'username': 'test_user',
+            'personalContext': 'Test personal context'
+        }
+        
+        global_config = {
+            'global': {
+                'llm': 'nonexistent',  # LLM not configured
+                'llms': {
+                    'openai': {
+                        'api': 'test-key',
+                        'env_var': 'OPENAI_API_KEY'
+                    }
+                }
+            }
+        }
+        
+        with patch('tomllm.tomlogger') as mock_tomlogger, \
+             patch.dict('os.environ', {}, clear=True):
+            with self.assertRaises(SystemExit):
+                TomLLM(user_config, global_config)
+
+
 class TestTomLLMTriageModules(unittest.TestCase):
     
     def setUp(self):

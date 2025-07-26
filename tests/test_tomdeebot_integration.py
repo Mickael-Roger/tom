@@ -9,6 +9,10 @@ import time
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'modules'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+sys.path.append(os.path.dirname(__file__))  # Add tests directory to path
+
+# Import test config loader
+from test_config_loader import load_test_config, get_module_config_for_test
 
 # Create a global mock logger that will be used throughout
 mock_logger = MagicMock()
@@ -32,30 +36,19 @@ class TestTomDeebotIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up class-level resources - load config once"""
-        cls.config_path = '/config.yml'
-        cls.config_loaded = False
-        cls.deebot_config = None
-        
-        # Try to load config
-        try:
-            if os.path.exists(cls.config_path):
-                with open(cls.config_path, 'r') as file:
-                    config = yaml.safe_load(file)
-                    if 'deebot' in config:
-                        cls.deebot_config = config['deebot']
-                        cls.config_loaded = True
-                        print(f"✓ Config loaded from {cls.config_path}")
-                    else:
-                        print(f"✗ Deebot config not found in {cls.config_path}")
-            else:
-                print(f"✗ Config file not found at {cls.config_path}")
-        except Exception as e:
-            print(f"✗ Error loading config: {e}")
+        cls.test_config = load_test_config()
+        cls.global_config = cls.test_config.get_global_config() or {}
     
     def setUp(self):
         """Set up test fixtures"""
-        if not self.config_loaded:
-            self.skipTest("Config file not available - skipping integration tests")
+        if not self.test_config.config_loaded:
+            self.skipTest("Test configuration not available - skipping integration tests")
+            
+        if not self.test_config.has_service_config('deebot'):
+            self.skipTest("Deebot service not configured - skipping integration tests")
+        
+        # Get module configuration using unified config
+        self.deebot_config = get_module_config_for_test('deebot', self.global_config, is_personal=False)
         
         # Setup comprehensive logger patching
         self.logger_patchers = [
@@ -93,7 +86,7 @@ class TestTomDeebotIntegration(unittest.TestCase):
     
     def test_config_loaded(self):
         """Test that configuration is properly loaded"""
-        self.assertTrue(self.config_loaded, "Configuration should be loaded")
+        self.assertTrue(self.test_config.config_loaded, "Configuration should be loaded")
         self.assertIsNotNone(self.deebot_config, "Deebot config should not be None")
         self.assertIn('username', self.deebot_config, "Username should be in config")
         self.assertIn('password', self.deebot_config, "Password should be in config")

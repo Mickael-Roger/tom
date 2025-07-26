@@ -1,41 +1,134 @@
 # Example configuration file for integration tests
 # Copy this to config.yml and fill in your real values
 
-idfm:
-  token: "YOUR_IDFM_API_TOKEN_HERE"
-  cache_db: "/app/data/idfm_cache.db"
-
-todo:
-  list: "YOUR_TODO_LIST_NAME"
-  password: "YOUR_CALDAV_PASSWORD"
-  url: "https://your-caldav-server.com/remote.php/dav/"
-  user: "YOUR_CALDAV_USERNAME"
-
-groceries:
-  list: "YOUR_GROCERY_LIST_NAME"
-  password: "YOUR_CALDAV_PASSWORD"
-  url: "https://your-caldav-server.com/remote.php/dav/"
-
-calendar:
-  calendar_name: "YOUR_CALENDAR_NAME"
-  password: "YOUR_CALDAV_PASSWORD"
-  url: "https://your-caldav-server.com/remote.php/dav/"
-  user: "YOUR_CALDAV_USERNAME"
-
 global:
-  # Add other global configuration as needed
-  log_level: "DEBUG"
-  user_datadir: "/app/data"
+  llm: openai
+  log_level: INFO
+  user_datadir: /app/data/users/
+  all_datadir: /app/data/all/
+  sessions: /app/data/sessions/
+  
+  # LLM Configuration - Add your real API keys here
+  llms:
+    openai:
+      api: sk-YOUR-REAL-OPENAI-API-KEY-HERE
+      env_var: OPENAI_API_KEY
+      models:
+        - "openai/gpt-4o-mini"
+        - "openai/gpt-4o"
+        - "openai/gpt-4o"
+    
+    mistral:
+      api: YOUR-REAL-MISTRAL-API-KEY-HERE
+      env_var: MISTRAL_API_KEY
+      models:
+        - "mistral/mistral-large-latest"
+        - "mistral/mistral-large-latest"
+        - "mistral/mistral-large-latest"
+    
+    deepseek:
+      api: sk-YOUR-REAL-DEEPSEEK-API-KEY-HERE
+      env_var: DEEPSEEK_API_KEY
+      models:
+        - "deepseek/deepseek-chat"
+        - "deepseek/deepseek-chat"
+        - "deepseek/deepseek-reasoner"
 
+# Configuration des modules globaux - Add your real service credentials
+services:
+  idfm:
+    token: YOUR-REAL-IDFM-TOKEN-HERE
+  
+  weather:
+    # No configuration needed - uses free APIs
+  
+  deebot:
+    username: your-real-deebot-email@example.com
+    password: your-real-deebot-password
+    country: FR
+  
+  cafetaria:
+    username: your-real-cafetaria-username
+    password: your-real-cafetaria-password
+  
+  news:
+    url: https://your-real-news-server.com/api
+    user: your-real-news-username
+    password: your-real-news-password
+  
+  kwyk:
+    username: your-real-kwyk-username
+    password: your-real-kwyk-password
+    id: "your-real-kwyk-id"
+
+# Configuration des utilisateurs de test
 users:
-  - username: testuser
-    password: testpass
+  - username: test_user
+    password: test_password
+    admin: true
+    memory: true
+    personalContext: "Je suis un utilisateur de test pour les tests d'intégration"
     services:
+      # Activation des modules globaux
       idfm:
-        # Any user-specific IDFM configuration if needed
-      todo:
-        # Any user-specific TODO configuration if needed
-      groceries:
-        # Any user-specific groceries configuration if needed
+        enable: true
+      weather:
+        enable: true
+      deebot:
+        enable: true
+      cafetaria:
+        enable: true
+      news:
+        enable: true
+      kwyk:
+        enable: true
+      contacts:
+        enable: true
+        
+      # Configuration des modules personnels - Add your real credentials
       calendar:
-        # Any user-specific calendar configuration if needed
+        enable: true
+        user: your-real-caldav-username
+        password: your-real-caldav-password  
+        url: 'https://your-real-caldav-server.com/remote.php/dav/'
+        calendar_name: 'Personal'
+     
+      todo:
+        enable: true
+        user: your-real-todo-username
+        password: your-real-todo-password
+        url: 'https://your-real-caldav-server.com/remote.php/dav/'
+        list: 'Todo'
+      
+      youtube:
+        enable: true
+      
+      coachsport:
+        enable: true
+      
+      # Anki (requires Anki-connect addon)
+      anki:
+        enable: true
+        url: http://localhost:8765
+        profile: your_profile
+      
+      vm:
+        enable: true
+        host: your-real-vm-server.com
+        username: your-real-vm-username
+        password: your-real-vm-password
+      
+      groceries:
+        enable: true
+        url: 'https://your-real-caldav-server.com/remote.php/dav/'
+        user: your-real-groceries-username
+        password: your-real-groceries-password
+        list: 'Groceries'
+      
+      # Pronote (requires QR code setup)
+      pronote:
+        enable: true
+        children:
+        - name: your_child_name
+          token: /app/data/users/test_user/your_child.json
+          cache: /app/data/users/test_user/your_child.sqlite

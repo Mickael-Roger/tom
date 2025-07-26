@@ -11,6 +11,10 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="httpx")
 warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+sys.path.append(os.path.dirname(__file__))  # Add tests directory to path
+
+# Import test config loader
+from test_config_loader import load_test_config
 
 # Mock the logger before importing tomllm
 with patch('tomllm.tomlogger') as mock_tomlogger:
@@ -34,38 +38,34 @@ class TestTomLLMTriageIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Load real configuration and test cases once for all tests"""
-        cls.config_loaded = False
-        cls.test_cases = []
+        cls.test_config = load_test_config()
         
-        # Try to load configuration
-        config_paths = ['/config.yml', '/tmp/conf', 'config.yml']
-        for config_path in config_paths:
-            try:
-                with open(config_path, 'r') as file:
-                    config_data = yaml.safe_load(file)
-                    
-                    # Extract global config
-                    cls.global_config = {
-                        'global': {
-                            'llm': config_data.get('llm', 'openai'),
-                            **{k: v for k, v in config_data.items() if k in ['openai', 'deepseek', 'mistral', 'xai', 'gemini']}
-                        }
-                    }
-                    
-                    # Extract modules list
-                    cls.available_modules = config_data.get('modules', ['calendar', 'groceries', 'idfm', 'todo', 'deebot'])
-                    cls.config_loaded = True
-                    break
-            except (FileNotFoundError, yaml.YAMLError, KeyError) as e:
-                continue
+        # Build global_config with the expected structure for TomLLM
+        global_section = cls.test_config.get_global_config() or {}
+        cls.global_config = {'global': global_section}
+        
+        # Extract available modules from services and user services
+        cls.available_modules = []
+        if cls.test_config.config_loaded:
+            # Get global services
+            services = cls.test_config.config.get('services', {})
+            cls.available_modules.extend(services.keys())
+            
+            # Get user services (personal modules)
+            users = cls.test_config.config.get('users', [])
+            for user in users:
+                user_services = user.get('services', {})
+                for service_name in user_services.keys():
+                    if service_name not in cls.available_modules:
+                        cls.available_modules.append(service_name)
         
         # Load test cases
         cls.test_cases = load_test_cases()
     
     def setUp(self):
         """Set up test fixtures for each test"""
-        if not self.config_loaded:
-            self.skipTest("Config file not available - skipping integration test")
+        if not self.test_config.config_loaded:
+            self.skipTest("Test configuration not available - skipping integration test")
         
         if not self.test_cases:
             self.skipTest("Test cases file not available - skipping integration test")

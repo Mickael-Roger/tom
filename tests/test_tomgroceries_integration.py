@@ -7,6 +7,10 @@ from datetime import datetime
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'modules'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+sys.path.append(os.path.dirname(__file__))  # Add tests directory to path
+
+# Import test config loader
+from test_config_loader import load_test_config, get_module_config_for_test
 
 # Mock logger before importing
 with patch('tomgroceries.logger') as mock_logger:
@@ -21,30 +25,20 @@ class TestTomGroceriesIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up class-level resources - load config once"""
-        cls.config_path = '/config.yml'
-        cls.config_loaded = False
-        cls.groceries_config = None
-        
-        # Try to load config
-        try:
-            if os.path.exists(cls.config_path):
-                with open(cls.config_path, 'r') as file:
-                    config = yaml.safe_load(file)
-                    if 'groceries' in config:
-                        cls.groceries_config = config['groceries']
-                        cls.config_loaded = True
-                        print(f"✓ Groceries config loaded from {cls.config_path}")
-                    else:
-                        print(f"✗ Groceries config not found in {cls.config_path}")
-            else:
-                print(f"✗ Config file not found at {cls.config_path}")
-        except Exception as e:
-            print(f"✗ Error loading config: {e}")
+        cls.test_config = load_test_config()
+        cls.global_config = cls.test_config.get_global_config() or {}
+        cls.username = 'test_user'
     
     def setUp(self):
         """Set up test fixtures"""
-        if not self.config_loaded:
-            self.skipTest("Config file not available - skipping integration tests")
+        if not self.test_config.config_loaded:
+            self.skipTest("Test configuration not available - skipping integration tests")
+            
+        if not self.test_config.has_user_service_config(self.username, 'groceries'):
+            self.skipTest("Groceries service not configured for test user - skipping integration tests")
+        
+        # Get module configuration using unified config
+        self.groceries_config = get_module_config_for_test('groceries', self.global_config, is_personal=True, username=self.username)
         
         # Create TomGroceries instance with real config but mock logger
         with patch('tomgroceries.logger') as mock_logger:
@@ -57,7 +51,7 @@ class TestTomGroceriesIntegration(unittest.TestCase):
     
     def test_config_loaded(self):
         """Test that configuration is properly loaded"""
-        self.assertTrue(self.config_loaded, "Configuration should be loaded")
+        self.assertTrue(self.test_config.config_loaded, "Configuration should be loaded")
         self.assertIsNotNone(self.groceries_config, "Groceries config should not be None")
         self.assertIn('url', self.groceries_config, "URL should be in config")
         self.assertIn('password', self.groceries_config, "Password should be in config")

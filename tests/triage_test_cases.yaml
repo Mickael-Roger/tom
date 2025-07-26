@@ -119,6 +119,19 @@ test_cases:
     expected_modules: ["contacts"]
     description: "Contact search query"
 
+  - prompt: "Quel est mon code de carte bleue?"
+    expected_modules: ["memory"]
+    description: "Memory CB pin"
+
+  - prompt: "Ou suis je garé?"
+    expected_modules: ["memory"]
+    description: "Memory where am i parked"
+
+  - prompt: "C'est quand la derniere fois ou je suis allé chez le coiffeur?"
+    expected_modules: ["memory"]
+    description: "Memory remember event"
+
+
 
   # Weather-like prompts (should not match any available modules)
   - prompt: "What's the weather like today?"

@@ -2,13 +2,16 @@ import unittest
 from unittest.mock import patch
 import sys
 import os
-import yaml
 import json
 from datetime import datetime, timedelta
 
 # Add modules path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'modules'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
+sys.path.append(os.path.dirname(__file__))  # Add tests directory to path
+
+# Import test config loader
+from test_config_loader import load_test_config, skip_if_no_config, get_module_config_for_test
 
 # Import tomlogger to initialize it properly for integration tests
 from tomlogger import logger
@@ -19,36 +22,26 @@ from tomcalendar import TomCalendar
 class TestTomCalendarIntegration(unittest.TestCase):
     """
     Integration tests for TomCalendar module that require real CalDAV server access.
-    These tests require a valid config.yml file mounted at /config.yml in Docker.
+    These tests require a valid test configuration with calendar service configured.
     """
     
     @classmethod
     def setUpClass(cls):
         """Set up class-level resources - load config once"""
-        cls.config_path = '/config.yml'
-        cls.config_loaded = False
-        cls.calendar_config = None
-        
-        # Try to load config
-        try:
-            if os.path.exists(cls.config_path):
-                with open(cls.config_path, 'r') as file:
-                    config = yaml.safe_load(file)
-                    if 'calendar' in config:
-                        cls.calendar_config = config['calendar']
-                        cls.config_loaded = True
-                        print(f"✓ Calendar config loaded from {cls.config_path}")
-                    else:
-                        print(f"✗ Calendar config not found in {cls.config_path}")
-            else:
-                print(f"✗ Config file not found at {cls.config_path}")
-        except Exception as e:
-            print(f"✗ Error loading config: {e}")
+        cls.test_config = load_test_config()
+        cls.global_config = cls.test_config.get_global_config() or {}
+        cls.username = 'test_user'
     
     def setUp(self):
         """Set up test fixtures"""
-        if not self.config_loaded:
-            self.skipTest("Config file not available - skipping integration tests")
+        if not self.test_config.config_loaded:
+            self.skipTest("Test configuration not available - skipping integration tests")
+            
+        if not self.test_config.has_user_service_config(self.username, 'calendar'):
+            self.skipTest("Calendar service not configured for test user - skipping integration tests")
+        
+        # Get module configuration using unified config
+        self.calendar_config = get_module_config_for_test('calendar', self.global_config, is_personal=True, username=self.username)
         
         # Create TomCalendar instance with real config
         try:
@@ -57,15 +50,6 @@ class TestTomCalendarIntegration(unittest.TestCase):
         except Exception as e:
             print(f"✗ Failed to connect to CalDAV server: {e}")
             self.integration_available = False
-    
-    def test_config_loaded(self):
-        """Test that configuration is properly loaded"""
-        self.assertTrue(self.config_loaded, "Configuration should be loaded")
-        self.assertIsNotNone(self.calendar_config, "Calendar config should not be None")
-        self.assertIn('url', self.calendar_config, "URL should be in config")
-        self.assertIn('user', self.calendar_config, "User should be in config")
-        self.assertIn('password', self.calendar_config, "Password should be in config")
-        self.assertIn('calendar_name', self.calendar_config, "Calendar name should be in config")
     
     def test_caldav_connection(self):
         """Test CalDAV server connection"""
@@ -258,34 +242,6 @@ class TestTomCalendarIntegration(unittest.TestCase):
         self.assertEqual(self.calendar.systemContext, "")
         self.assertIsInstance(self.calendar.calendarsContent, list)
         self.assertIsNotNone(self.calendar.calendars)
-    
-    @unittest.skipIf(not os.path.exists('/config.yml'), "Config file not available")
-    def test_config_file_structure(self):
-        """Test that config file has correct structure"""
-        with open('/config.yml', 'r') as file:
-            config = yaml.safe_load(file)
-        
-        self.assertIn('calendar', config, "Config should have calendar section")
-        
-        calendar_config = config['calendar']
-        self.assertIn('url', calendar_config, "Calendar config should have url")
-        self.assertIn('user', calendar_config, "Calendar config should have user")
-        self.assertIn('password', calendar_config, "Calendar config should have password")
-        self.assertIn('calendar_name', calendar_config, "Calendar config should have calendar_name")
-        
-        # Test that required fields are not empty
-        self.assertIsInstance(calendar_config['url'], str, "URL should be a string")
-        self.assertGreater(len(calendar_config['url']), 0, "URL should not be empty")
-        self.assertTrue(calendar_config['url'].startswith(('http://', 'https://')), "URL should be a valid HTTP/HTTPS URL")
-        
-        self.assertIsInstance(calendar_config['user'], str, "User should be a string")
-        self.assertGreater(len(calendar_config['user']), 0, "User should not be empty")
-        
-        self.assertIsInstance(calendar_config['password'], str, "Password should be a string")
-        self.assertGreater(len(calendar_config['password']), 0, "Password should not be empty")
-        
-        self.assertIsInstance(calendar_config['calendar_name'], str, "Calendar name should be a string")
-        self.assertGreater(len(calendar_config['calendar_name']), 0, "Calendar name should not be empty")
     
     def test_stress_add_multiple_events(self):
         """Test adding multiple events rapidly"""

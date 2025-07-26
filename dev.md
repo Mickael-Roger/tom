@@ -736,22 +736,55 @@ Integration tests require additional setup:
    - **IDFM module**: Requires IDFM API token and internet connectivity
    - **TODO module**: Requires CalDAV server access (e.g., Nextcloud, ownCloud)
 
-#### Configuration Examples
+#### Test Configuration System
 
-**IDFM Module:**
-```yaml
-idfm:
-  token: "your_idfm_api_token"
-  cache_db: "/app/data/idfm_cache.db"
+The project uses a unified configuration system for all integration tests. This ensures consistency and makes it easier to run tests with real services.
+
+**Configuration Files:**
+- `tests/config.test.yml`: Default test configuration with mock values
+- `tests/config.integration.example.yml`: Example with real service placeholders
+- `/config.yml`: Docker mount point for CI/CD
+
+**Configuration Loader:**
+Tests use `test_config_loader.py` which automatically finds and loads configuration from:
+1. `/config.yml` (Docker mount)
+2. `tests/config.test.yml` (local default)
+3. Project root `config.yml`
+
+**Usage in Tests:**
+```python
+from test_config_loader import load_test_config, get_module_config_for_test
+
+# Load unified config
+test_config = load_test_config()
+
+# Get module config (global service)
+idfm_config = get_module_config_for_test('idfm', global_config, is_personal=False)
+
+# Get module config (personal service)
+calendar_config = get_module_config_for_test('calendar', global_config, is_personal=True, username='test_user')
 ```
 
-**TODO Module:**
+**Configuration Examples:**
+
+**Global Service (IDFM):**
 ```yaml
-todo:
-  list: "Todo"  # Name of your CalDAV todo list
-  password: "your_caldav_password"  
-  url: "https://your-server.com/remote.php/dav/"
-  user: "your_caldav_username"
+services:
+  idfm:
+    token: "your_idfm_api_token"
+```
+
+**Personal Service (Calendar):**
+```yaml
+users:
+  - username: test_user
+    services:
+      calendar:
+        enable: true
+        user: "caldav_username"
+        password: "caldav_password"
+        url: "https://your-server.com/remote.php/dav/"
+        calendar_name: "Personal"
 ```
 
 ### Continuous Integration
