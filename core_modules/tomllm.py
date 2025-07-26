@@ -88,8 +88,19 @@ class TomLLM():
 
   def reset(self):
     tomlogger.info(f"History cleaning", self.username)
+    
+    # Analyze session for memory before clearing history
+    if self.history and 'memory' in self.services:
+      try:
+        memory_service = self.services['memory']['obj']
+        if hasattr(memory_service, 'analyze_session_async'):
+          # Update the LLM reference to ensure it points to this instance
+          memory_service.llm = self
+          memory_service.analyze_session_async(self.history)
+      except Exception as e:
+        tomlogger.error(f"Error during session memory analysis: {str(e)}", self.username)
+    
     self.history = []
-
     return True
 
 

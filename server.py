@@ -542,7 +542,7 @@ for username, module_manager in module_managers.items():
       "module_name": "behavior"
     }
 
-  memory_obj = TomMemory(global_config, username)
+  memory_obj = TomMemory(global_config, username, userList[username])
   userList[username].services['memory'] = {
     "obj": memory_obj,
     "description": memory_obj.tom_config["description"], 

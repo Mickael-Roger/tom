@@ -6,6 +6,7 @@ import threading
 import time
 import json
 from datetime import datetime
+import tomlogger
 
 ################################################################################################
 #                                                                                              #
@@ -33,7 +34,7 @@ tom_config = {
 
 class TomMemory:
 
-  def __init__(self, global_config, username) -> None:
+  def __init__(self, global_config, username, llm=None) -> None:
     self.tom_config = tom_config
 
     memory_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], username)
@@ -41,6 +42,7 @@ class TomMemory:
 
     self.memory_file = os.path.join(memory_path, "memory.md")
     self.username = username
+    self.llm = llm
 
     # Initialize memory file if it doesn't exist
     self._init_memory_file()
@@ -234,3 +236,158 @@ class TomMemory:
       return {"status": "success", "content": "", "message": "Aucun fichier de mémoire trouvé. Aucune information n'est stockée."}
     except Exception as e:
       return {"status": "error", "message": f"Erreur lors de la récupération des souvenirs : {str(e)}"}
+
+
+  def extract_user_visible_content(self, conversation_history):
+    """Extract only user-visible content from conversation history (input/output text only)."""
+    user_visible_content = []
+    
+    try:
+      for message in conversation_history:
+        role = message.get('role', '')
+        content = message.get('content', '')
+        
+        # Only include user and assistant messages (not system, function calls, etc.)
+        if role in ['user', 'assistant'] and content:
+          user_visible_content.append({
+            'role': role,
+            'content': content
+          })
+      
+      return user_visible_content
+    except Exception as e:
+      tomlogger.error(f"Error extracting user-visible content: {str(e)}", self.username)
+      return []
+
+
+  def store_session_insight(self, information):
+    """Function to store insights extracted from session analysis."""
+    try:
+      result = self.remember_add(information)
+      tomlogger.info(f"Auto-stored from session analysis: {information}", self.username)
+      return {"status": "success", "message": f"Stored: {information}"}
+    except Exception as e:
+      tomlogger.error(f"Error storing session insight: {str(e)}", self.username)
+      return {"status": "error", "message": f"Failed to store: {str(e)}"}
+
+  def analyze_session_with_llm(self, conversation_history):
+    """Analyze conversation history with Mistral LLM to extract important information."""
+    if not self.llm:
+      tomlogger.warning("No LLM available for session analysis", self.username)
+      return
+    
+    # Debug: check the type and attributes of self.llm
+    tomlogger.debug(f"LLM object type: {type(self.llm)}", self.username)
+    if hasattr(self.llm, 'callLLM'):
+      tomlogger.debug("LLM object has callLLM method", self.username)
+    else:
+      tomlogger.error(f"LLM object does not have callLLM method. Available attributes: {dir(self.llm)}", self.username)
+      return
+
+    if not conversation_history:
+      tomlogger.debug("Empty conversation history, nothing to analyze", self.username)
+      return
+
+    # Extract only user-visible content
+    user_content = self.extract_user_visible_content(conversation_history)
+    
+    if not user_content:
+      tomlogger.debug("No user-visible content to analyze", self.username)
+      return
+
+    # Prepare conversation content for analysis
+    conversation_text = ""
+    for msg in user_content:
+      role_label = "Utilisateur" if msg['role'] == 'user' else "Assistant"
+      conversation_text += f"{role_label}: {msg['content']}\n\n"
+
+    # LLM prompt for memory analysis with function calling
+    context = """Tu es un assistant qui analyse les conversations pour identifier les informations importantes à retenir en mémoire.
+
+    Analyse la conversation suivante et identifie uniquement les informations qui devraient être retenues pour de futures interactions. Ne garde que ce qui est vraiment pertinent et utile.
+
+    Types d'informations à retenir :
+    - Informations personnelles importantes (codes, dates, préférences durables)
+    - Détails situationnels utiles (localisation d'objets, informations de parking avec coordonnées GPS)
+    - Préférences utilisateur (habitudes, goûts, configurations)
+    - Informations factuelles importantes demandées explicitement
+
+    Types d'informations à NE PAS retenir :
+    - Conversations générales sans information factuelle
+    - Questions ponctuelles sans suite
+    - Informations temporaires ou éphémères
+    - Discussions techniques sans impact personnel
+
+    Si tu identifies des informations pertinentes, utilise la fonction store_session_insight pour chaque information importante à retenir.
+    Si aucune information pertinente n'est identifiée, ne fais aucun appel de fonction.
+
+    Conversation à analyser :
+    """
+
+    # Define the tool for storing session insights
+    session_analysis_tools = [
+      {
+        "type": "function",
+        "function": {
+          "name": "store_session_insight",
+          "description": "Stocke une information importante extraite de l'analyse de session",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "information": {
+                "type": "string",
+                "description": "L'information importante à retenir en mémoire"
+              }
+            },
+            "required": ["information"],
+            "additionalProperties": False
+          }
+        }
+      }
+    ]
+
+    llm_messages = [
+      {"role": "system", "content": context},
+      {"role": "user", "content": conversation_text}
+    ]
+
+    try:
+      response = self.llm.callLLM(llm_messages, tools=session_analysis_tools, llm='mistral')
+      
+      if response and response.choices:
+        choice = response.choices[0]
+        
+        # Check if there are tool calls (information to store)
+        if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
+          for tool_call in choice.message.tool_calls:
+            if tool_call.function.name == "store_session_insight":
+              try:
+                import json
+                args = json.loads(tool_call.function.arguments)
+                information = args.get("information", "")
+                if information:
+                  self.store_session_insight(information)
+              except Exception as e:
+                tomlogger.error(f"Error processing tool call: {str(e)}", self.username)
+        else:
+          tomlogger.debug("No relevant information found in session for memory storage", self.username)
+      
+    except Exception as e:
+      tomlogger.error(f"Error during LLM session analysis: {str(e)}", self.username)
+
+
+  def analyze_session_async(self, conversation_history):
+    """Analyze session in a separate thread to avoid blocking the reset call."""
+    def analysis_worker():
+      try:
+        self.analyze_session_with_llm(conversation_history)
+      except Exception as e:
+        tomlogger.error(f"Error in async session analysis: {str(e)}", self.username)
+    
+    # Start analysis in background thread
+    analysis_thread = threading.Thread(target=analysis_worker)
+    analysis_thread.daemon = True
+    analysis_thread.start()
+    
+    tomlogger.debug("Started async session analysis", self.username)
