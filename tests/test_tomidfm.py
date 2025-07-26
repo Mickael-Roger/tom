@@ -17,12 +17,12 @@ with patch('tomidfm.logger') as mock_logger:
 class TestTomIdfm(unittest.TestCase):
     
     def setUp(self):
-        self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
-        self.temp_db.close()
+        # Create temporary directory for all_datadir
+        self.temp_dir = tempfile.mkdtemp()
         
         self.config = {
             'token': 'test_token',
-            'cache_db': self.temp_db.name
+            'all_datadir': self.temp_dir
         }
         self.llm = MagicMock()
         
@@ -41,7 +41,8 @@ class TestTomIdfm(unittest.TestCase):
     
     def tearDown(self):
         try:
-            os.unlink(self.temp_db.name)
+            import shutil
+            shutil.rmtree(self.temp_dir)
         except:
             pass
     
@@ -128,7 +129,7 @@ class TestTomIdfm(unittest.TestCase):
     def test_search_station_success(self, mock_api_call):
         """Test search_station with successful API response"""
         # Setup database with test data
-        conn = sqlite3.connect(self.temp_db.name)
+        conn = sqlite3.connect(self.idfm.db)
         cursor = conn.cursor()
         cursor.execute('INSERT INTO stations (id, name, latitude, longitude, city) VALUES (?, ?, ?, ?, ?)', 
                       ('12345', 'Châtelet', 48.8585, 2.3475, 'Paris'))
@@ -222,7 +223,7 @@ class TestTomIdfm(unittest.TestCase):
     def test_list_stations_success(self):
         """Test list_stations with valid database data"""
         # Setup database with test data
-        conn = sqlite3.connect(self.temp_db.name)
+        conn = sqlite3.connect(self.idfm.db)
         cursor = conn.cursor()
         cursor.execute('INSERT INTO stations (id, name, latitude, longitude, city) VALUES (?, ?, ?, ?, ?)', 
                       ('12345', 'Châtelet', 48.8585, 2.3475, 'Paris'))
@@ -249,7 +250,7 @@ class TestTomIdfm(unittest.TestCase):
     def test_list_lines_success(self):
         """Test list_lines with valid database data"""
         # Setup database with test data
-        conn = sqlite3.connect(self.temp_db.name)
+        conn = sqlite3.connect(self.idfm.db)
         cursor = conn.cursor()
         cursor.execute('INSERT INTO lines (id, name, commercial_name, type) VALUES (?, ?, ?, ?)', 
                       ('M1', '1', 'Métro 1', 'METRO'))
@@ -508,7 +509,7 @@ class TestTomIdfm(unittest.TestCase):
         """Test that configuration attributes are set correctly"""
         self.assertEqual(self.idfm.url, "https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia")
         self.assertEqual(self.idfm.apiKey, 'test_token')
-        self.assertEqual(self.idfm.db, self.temp_db.name)
+        self.assertEqual(self.idfm.db, os.path.join(self.temp_dir, 'idfm.sqlite'))
         self.assertEqual(self.idfm.complexity, 1)
         self.assertEqual(self.idfm.systemContext, "")
         self.assertIsNone(self.idfm.route)

@@ -18,6 +18,7 @@ class TestConfig:
         self.config_loaded = False
         self.config_data = {}
         self.temp_dirs = {}
+        self.temp_all_datadir = None
         
     def load_config(self):
         """Load configuration from config.yml file"""
@@ -92,6 +93,12 @@ class TestConfig:
             self.temp_dirs[username] = temp_dir
         return self.temp_dirs[username]
     
+    def create_temp_all_datadir(self) -> str:
+        """Create temporary all_datadir for tests"""
+        if self.temp_all_datadir is None:
+            self.temp_all_datadir = tempfile.mkdtemp(prefix='test_all_data_')
+        return self.temp_all_datadir
+    
     def cleanup_temp_dirs(self):
         """Clean up temporary directories"""
         import shutil
@@ -100,7 +107,13 @@ class TestConfig:
                 shutil.rmtree(temp_dir)
             except Exception:
                 pass
+        if self.temp_all_datadir:
+            try:
+                shutil.rmtree(self.temp_all_datadir)
+            except Exception:
+                pass
         self.temp_dirs.clear()
+        self.temp_all_datadir = None
 
 
 # Global instance
@@ -146,8 +159,10 @@ def get_module_config_for_test(module_name: str, global_config: Dict[str, Any],
         return {}
     
     # Base configuration from global section
+    # Use temporary directories for test isolation
+    all_datadir = test_config.create_temp_all_datadir()
     config = {
-        'all_datadir': global_config.get('all_datadir', '/tmp/test_all_data/'),
+        'all_datadir': global_config.get('all_datadir', all_datadir),
         'user_datadir': global_config.get('user_datadir', '/tmp/test_user_data/'),
         'sessions': global_config.get('sessions', '/tmp/test_sessions/'),
         'username': username,

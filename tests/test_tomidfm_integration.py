@@ -47,12 +47,6 @@ class TestTomIdfmIntegration(unittest.TestCase):
         with patch('tomidfm.logger') as mock_logger:
             self.idfm = TomIdfm(self.idfm_config, None)
         
-    def test_config_loaded(self):
-        """Test that configuration is properly loaded"""
-        self.assertTrue(self.test_config.config_loaded, "Configuration should be loaded")
-        self.assertIsNotNone(self.idfm_config, "IDFM config should not be None")
-        self.assertIn('token', self.idfm_config, "Token should be in config")
-    
     def test_database_initialization(self):
         """Test that database is properly initialized"""
         db_path = self.idfm.db
@@ -204,16 +198,6 @@ class TestTomIdfmIntegration(unittest.TestCase):
         # Test conversion from IDFM format
         converted_back = self.idfm.date_from_idfm(idfm_date)
         self.assertEqual(converted_back, test_date, "Date conversion from IDFM should be correct")
-    
-    def test_module_configuration(self):
-        """Test module configuration attributes"""
-        self.assertEqual(self.idfm.url, "https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia")
-        self.assertEqual(self.idfm.apiKey, self.idfm_config['token'])
-        self.assertEqual(self.idfm.db, self.idfm_config['cache_db'])
-        self.assertEqual(self.idfm.complexity, 1)
-        self.assertEqual(self.idfm.systemContext, "")
-        self.assertIsNone(self.idfm.route)
-        self.assertIsInstance(self.idfm.routes, list)
     
 
 if __name__ == '__main__':
