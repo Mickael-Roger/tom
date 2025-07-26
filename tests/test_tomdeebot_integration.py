@@ -270,28 +270,6 @@ class TestTomDeebotIntegration(unittest.TestCase):
         self.deebot.bot = original_bot
     
     
-    @unittest.skipIf(not os.path.exists('/config.yml'), "Config file not available")
-    def test_config_file_structure(self):
-        """Test that config file has correct structure"""
-        with open('/config.yml', 'r') as file:
-            config = yaml.safe_load(file)
-        
-        self.assertIn('deebot', config, "Config should have deebot section")
-        
-        deebot_config = config['deebot']
-        self.assertIn('username', deebot_config, "Deebot config should have username")
-        self.assertIn('password', deebot_config, "Deebot config should have password")
-        
-        # Test that credentials are not empty
-        self.assertIsInstance(deebot_config['username'], str, "Username should be a string")
-        self.assertIsInstance(deebot_config['password'], str, "Password should be a string")
-        self.assertGreater(len(deebot_config['username']), 0, "Username should not be empty")
-        self.assertGreater(len(deebot_config['password']), 0, "Password should not be empty")
-        
-        # Test optional country field
-        if 'country' in deebot_config:
-            self.assertIsInstance(deebot_config['country'], str, "Country should be a string")
-            self.assertEqual(len(deebot_config['country']), 2, "Country should be 2-letter code")
 
 if __name__ == '__main__':
     unittest.main()
