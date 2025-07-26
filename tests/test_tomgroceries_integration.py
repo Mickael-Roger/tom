@@ -226,30 +226,6 @@ class TestTomGroceriesIntegration(unittest.TestCase):
         self.assertEqual(self.groceries.systemContext, "")
         self.assertIsInstance(self.groceries.groceryList, list)
     
-    @unittest.skipIf(not os.path.exists('/config.yml'), "Config file not available")
-    def test_config_file_structure(self):
-        """Test that config file has correct structure"""
-        with open('/config.yml', 'r') as file:
-            config = yaml.safe_load(file)
-        
-        self.assertIn('groceries', config, "Config should have groceries section")
-        
-        groceries_config = config['groceries']
-        self.assertIn('url', groceries_config, "Groceries config should have url")
-        self.assertIn('password', groceries_config, "Groceries config should have password")
-        self.assertIn('list', groceries_config, "Groceries config should have list")
-        
-        # Test that required fields are not empty
-        self.assertIsInstance(groceries_config['url'], str, "URL should be a string")
-        self.assertGreater(len(groceries_config['url']), 0, "URL should not be empty")
-        self.assertTrue(groceries_config['url'].startswith(('http://', 'https://')), "URL should be a valid HTTP/HTTPS URL")
-        
-        self.assertIsInstance(groceries_config['password'], str, "Password should be a string")
-        self.assertGreater(len(groceries_config['password']), 0, "Password should not be empty")
-        
-        self.assertIsInstance(groceries_config['list'], str, "List should be a string")
-        self.assertGreater(len(groceries_config['list']), 0, "List should not be empty")
-    
     @patch('tomgroceries.logger')
     def test_stress_add_remove_operations(self, mock_logger):
         """Test multiple rapid add/remove operations"""

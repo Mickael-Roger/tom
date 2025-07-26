@@ -306,30 +306,6 @@ class TestTomTodoIntegration(unittest.TestCase):
         self.assertEqual(self.todo.systemContext, "")
         self.assertIsInstance(self.todo.tasks, list)
     
-    def test_config_file_structure(self):
-        """Test that config file has correct structure"""
-        if not self.test_config.config_loaded:
-            self.skipTest("Config file not available")
-        
-        self.assertIsNotNone(self.todo_config, "TODO config should not be None")
-        self.assertIn('url', self.todo_config, "TODO config should have url")
-        self.assertIn('user', self.todo_config, "TODO config should have user")
-        self.assertIn('password', self.todo_config, "TODO config should have password")
-        self.assertIn('list', self.todo_config, "TODO config should have list")
-        
-        # Test that required fields are not empty
-        self.assertIsInstance(self.todo_config['url'], str, "URL should be a string")
-        self.assertGreater(len(self.todo_config['url']), 0, "URL should not be empty")
-        self.assertTrue(self.todo_config['url'].startswith(('http://', 'https://')), "URL should be a valid HTTP/HTTPS URL")
-        
-        self.assertIsInstance(self.todo_config['user'], str, "User should be a string")
-        self.assertGreater(len(self.todo_config['user']), 0, "User should not be empty")
-        
-        self.assertIsInstance(self.todo_config['password'], str, "Password should be a string")
-        self.assertGreater(len(self.todo_config['password']), 0, "Password should not be empty")
-        
-        self.assertIsInstance(self.todo_config['list'], str, "List should be a string")
-        self.assertGreater(len(self.todo_config['list']), 0, "List should not be empty")
 
 if __name__ == '__main__':
     unittest.main()

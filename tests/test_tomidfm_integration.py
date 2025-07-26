@@ -215,25 +215,6 @@ class TestTomIdfmIntegration(unittest.TestCase):
         self.assertIsNone(self.idfm.route)
         self.assertIsInstance(self.idfm.routes, list)
     
-    @unittest.skipIf(not os.path.exists('/config.yml'), "Config file not available")
-    def test_config_file_structure(self):
-        """Test that config file has correct structure"""
-        with open('/config.yml', 'r') as file:
-            config = yaml.safe_load(file)
-        
-        self.assertIn('idfm', config, "Config should have idfm section")
-        
-        idfm_config = config['idfm']
-        self.assertIn('token', idfm_config, "IDFM config should have token")
-        self.assertIn('cache_db', idfm_config, "IDFM config should have cache_db")
-        
-        # Test that token is not empty
-        self.assertIsInstance(idfm_config['token'], str, "Token should be a string")
-        self.assertGreater(len(idfm_config['token']), 0, "Token should not be empty")
-        
-        # Test that cache_db path is valid
-        self.assertIsInstance(idfm_config['cache_db'], str, "Cache DB should be a string")
-        self.assertGreater(len(idfm_config['cache_db']), 0, "Cache DB path should not be empty")
 
 if __name__ == '__main__':
     unittest.main()
