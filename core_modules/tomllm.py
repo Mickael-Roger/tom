@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 from timezonefinder import TimezoneFinder
 from datetime import datetime
 import copy
+import time
 
 # LitLLM
 from litellm import completion
@@ -20,6 +21,9 @@ class TomLLM():
   def __init__(self, user_config, global_config) -> None:
 
     self.llms = {}
+    
+    # Rate limiting for Mistral (1 QPS)
+    self.mistral_last_request = 0
 
     # Load LLM configuration from global.llms structure
     llms_config = global_config['global'].get('llms', {})
@@ -141,6 +145,16 @@ class TomLLM():
       llm=self.llm
 
     model=self.llms[self.llm][complexity]
+
+    # Rate limiting for Mistral (1.5 seconds between requests)
+    if llm == "mistral":
+      current_time = time.time()
+      time_since_last_request = current_time - self.mistral_last_request
+      if time_since_last_request < 1.5:
+        sleep_time = 1.5 - time_since_last_request
+        tomlogger.debug(f"Rate limiting Mistral: sleeping {sleep_time:.2f}s", self.username)
+        time.sleep(sleep_time)
+      self.mistral_last_request = time.time()
 
     tomlogger.debug(f"Messages to send: {str(messages)} | Tools available: {str(tools)}", self.username)
 
