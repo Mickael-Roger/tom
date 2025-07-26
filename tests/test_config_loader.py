@@ -16,7 +16,7 @@ class TestConfig:
     
     def __init__(self):
         self.config_loaded = False
-        self.config_data = {}
+        self.config = {}
         self.temp_dirs = {}
         self.temp_all_datadir = None
         
@@ -29,7 +29,7 @@ class TestConfig:
                 return False
                 
             with open(config_path, 'r', encoding='utf-8') as file:
-                self.config_data = yaml.safe_load(file) or {}
+                self.config = yaml.safe_load(file) or {}
                 self.config_loaded = True
                 return True
                 
@@ -58,16 +58,16 @@ class TestConfig:
     
     def get_global_config(self) -> Dict[str, Any]:
         """Get global configuration section"""
-        return self.config_data.get('global', {})
+        return self.config.get('global', {})
     
     def has_service_config(self, service_name: str) -> bool:
         """Check if a service is configured in global services"""
-        services = self.config_data.get('services', {})
+        services = self.config.get('services', {})
         return service_name in services and services[service_name] is not None
     
     def has_user_service_config(self, username: str, service_name: str) -> bool:
         """Check if a service is configured for a specific user"""
-        users = self.config_data.get('users', [])
+        users = self.config.get('users', [])
         for user in users:
             if user.get('username') == username:
                 user_services = user.get('services', {})
@@ -76,11 +76,11 @@ class TestConfig:
     
     def get_service_config(self, service_name: str) -> Dict[str, Any]:
         """Get global service configuration"""
-        return self.config_data.get('services', {}).get(service_name, {})
+        return self.config.get('services', {}).get(service_name, {})
     
     def get_user_service_config(self, username: str, service_name: str) -> Dict[str, Any]:
         """Get user-specific service configuration"""
-        users = self.config_data.get('users', [])
+        users = self.config.get('users', [])
         for user in users:
             if user.get('username') == username:
                 return user.get('services', {}).get(service_name, {})
