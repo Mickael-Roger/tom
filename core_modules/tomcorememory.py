@@ -150,6 +150,10 @@ class TomMemory:
       with open(self.memory_file, 'r', encoding='utf-8') as f:
         content = f.read()
       
+      # Check if this information already exists to avoid duplicates
+      if f"- {information}" in content:
+        return {"status": "success", "message": "Information already exists in memory"}
+      
       # Check if today's date section already exists
       date_header = f"# {current_date}"
       
@@ -288,6 +292,10 @@ class TomMemory:
       tomlogger.debug("Empty conversation history, nothing to analyze", self.username)
       return
 
+    # Get current memory content to avoid duplicates
+    current_memory = self.remember_list()
+    memory_content = current_memory.get('content', '') if current_memory.get('status') == 'success' else ''
+
     # Extract only user-visible content
     user_content = self.extract_user_visible_content(conversation_history)
     
@@ -302,9 +310,15 @@ class TomMemory:
       conversation_text += f"{role_label}: {msg['content']}\n\n"
 
     # LLM prompt for memory analysis with function calling
-    context = """Tu es un assistant qui analyse les conversations pour identifier les informations importantes à retenir en mémoire.
+    context = f"""Tu es un assistant qui analyse les conversations pour identifier les informations importantes à retenir en mémoire.
 
     Analyse la conversation suivante et identifie uniquement les informations qui devraient être retenues pour de futures interactions. Ne garde que ce qui est vraiment pertinent et utile.
+
+    IMPORTANT: Voici le contenu actuel de la mémoire. Ne stocke PAS d'informations qui sont déjà présentes dans cette mémoire :
+
+    === CONTENU ACTUEL DE LA MÉMOIRE ===
+    {memory_content}
+    === FIN DU CONTENU DE LA MÉMOIRE ===
 
     Types d'informations à retenir :
     - Informations personnelles importantes (codes, dates, préférences durables)
@@ -317,9 +331,10 @@ class TomMemory:
     - Questions ponctuelles sans suite
     - Informations temporaires ou éphémères
     - Discussions techniques sans impact personnel
+    - Informations déjà présentes dans la mémoire (voir ci-dessus)
 
-    Si tu identifies des informations pertinentes, utilise la fonction store_session_insight pour chaque information importante à retenir.
-    Si aucune information pertinente n'est identifiée, ne fais aucun appel de fonction.
+    Si tu identifies des informations pertinentes ET qu'elles ne sont pas déjà dans la mémoire, utilise la fonction store_session_insight pour chaque information importante à retenir.
+    Si aucune information pertinente n'est identifiée ou si toutes les informations sont déjà en mémoire, ne fais aucun appel de fonction.
 
     Conversation à analyser :
     """
