@@ -1,0 +1,536 @@
+package com.tom.assistant
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.location.Location
+import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.View
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
+import com.tom.assistant.databinding.ActivityMainBinding
+import com.tom.assistant.models.*
+import com.tom.assistant.network.ApiClient
+import com.tom.assistant.ui.auth.LoginActivity
+import com.tom.assistant.ui.chat.ChatAdapter
+import com.tom.assistant.ui.tasks.TasksAdapter
+import com.tom.assistant.utils.AudioManager
+import com.tom.assistant.utils.SessionManager
+import io.noties.markwon.Markwon
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import retrofit2.HttpException
+import java.io.IOException
+import java.util.regex.Pattern
+
+class MainActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityMainBinding
+    private lateinit var sessionManager: SessionManager
+    private lateinit var chatAdapter: ChatAdapter
+    private lateinit var tasksAdapter: TasksAdapter
+    private lateinit var audioManager: AudioManager
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+
+    private var currentPosition: Position? = null
+    private var lastDisplayedTaskId = 0
+    private var isSettingsPanelVisible = false
+    private var isTasksPanelVisible = false
+
+    companion object {
+        private const val PERMISSION_REQUEST_CODE = 1001
+        private val REQUIRED_PERMISSIONS = arrayOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        // Initialiser ApiClient avec le contexte pour les cookies persistants
+        ApiClient.initialize(this)
+        
+        sessionManager = SessionManager(this)
+        
+        // Vérifier la session locale puis avec le serveur
+        if (!sessionManager.isLoggedIn()) {
+            navigateToLogin()
+            return
+        }
+
+        setupToolbar()
+        setupRecyclerViews()
+        setupButtons()
+        setupAudio()
+        setupLocation()
+        setupPermissions()
+        
+        // Charger les paramètres
+        loadSettings()
+        
+        // Démarrer les tâches périodiques
+        startPeriodicTasks()
+        
+        // Tester la session avec le serveur (silencieusement)
+        testSessionValidityQuietly()
+    }
+
+    private fun setupToolbar() {
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.title = "Tom Assistant"
+    }
+
+    private fun setupRecyclerViews() {
+        // Chat RecyclerView
+        val markwon = Markwon.create(this)
+        chatAdapter = ChatAdapter(markwon)
+        binding.rvChat.apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = chatAdapter
+        }
+
+        // Tasks RecyclerView
+        tasksAdapter = TasksAdapter()
+        binding.rvTasks.apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = tasksAdapter
+        }
+    }
+
+    private fun setupButtons() {
+        // Message input listener
+        binding.etMessage.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                binding.btnSend.isEnabled = !s.isNullOrBlank()
+            }
+        })
+
+        // Send button
+        binding.btnSend.setOnClickListener {
+            sendMessage()
+        }
+
+        // Voice button
+        binding.btnVoice.setOnClickListener {
+            if (checkAudioPermission()) {
+                startVoiceInput()
+            } else {
+                requestPermissions()
+            }
+        }
+
+        // Reset button
+        binding.btnReset.setOnClickListener {
+            resetConversation()
+        }
+
+        // Settings button
+        binding.btnSettings.setOnClickListener {
+            toggleSettingsPanel()
+        }
+
+        // Tasks button
+        binding.btnTasks.setOnClickListener {
+            toggleTasksPanel()
+        }
+
+        // Language buttons
+        binding.btnLanguageFr.setOnClickListener {
+            selectLanguage("fr")
+        }
+
+        binding.btnLanguageEn.setOnClickListener {
+            selectLanguage("en")
+        }
+
+        // Sound switch
+        binding.switchSound.setOnCheckedChangeListener { _, isChecked ->
+            sessionManager.saveSoundEnabled(isChecked)
+        }
+
+        // Auto-submit switch
+        binding.switchAutoSubmit.setOnCheckedChangeListener { _, isChecked ->
+            sessionManager.saveAutoSubmitEnabled(isChecked)
+        }
+
+        // Logout button
+        binding.btnLogout.setOnClickListener {
+            logout()
+        }
+    }
+
+    private fun setupAudio() {
+        audioManager = AudioManager(
+            context = this,
+            onSpeechResult = { result ->
+                binding.etMessage.setText(result)
+                if (sessionManager.isAutoSubmitEnabled()) {
+                    sendMessage()
+                }
+            },
+            onSpeechError = { error ->
+                Toast.makeText(this, "Speech error: $error", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    private fun setupLocation() {
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        updateLocation()
+    }
+
+    private fun setupPermissions() {
+        if (!hasAllPermissions()) {
+            requestPermissions()
+        }
+    }
+
+    private fun hasAllPermissions(): Boolean {
+        return REQUIRED_PERMISSIONS.all { permission ->
+            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    private fun checkAudioPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestPermissions() {
+        ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, PERMISSION_REQUEST_CODE)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            updateLocation()
+        }
+    }
+
+    private fun updateLocation() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
+                location?.let {
+                    currentPosition = Position(it.latitude, it.longitude)
+                }
+            }
+        }
+    }
+
+    private fun loadSettings() {
+        val language = sessionManager.getLanguage()
+        selectLanguage(language, false)
+        
+        binding.switchSound.isChecked = sessionManager.isSoundEnabled()
+        binding.switchAutoSubmit.isChecked = sessionManager.isAutoSubmitEnabled()
+    }
+
+    private fun selectLanguage(language: String, save: Boolean = true) {
+        if (save) {
+            sessionManager.saveLanguage(language)
+        }
+
+        // Mettre à jour l'UI
+        binding.btnLanguageFr.isSelected = language == "fr"
+        binding.btnLanguageEn.isSelected = language == "en"
+        
+        // Mettre à jour les couleurs des boutons
+        val selectedColor = ContextCompat.getColor(this, R.color.primary_color)
+        val defaultColor = ContextCompat.getColor(this, android.R.color.darker_gray)
+        
+        binding.btnLanguageFr.setBackgroundColor(if (language == "fr") selectedColor else defaultColor)
+        binding.btnLanguageEn.setBackgroundColor(if (language == "en") selectedColor else defaultColor)
+    }
+
+    private fun startVoiceInput() {
+        audioManager.stopSpeaking()
+        audioManager.startListening(sessionManager.getLanguage())
+        
+        // Changer la couleur du bouton pendant l'écoute
+        binding.btnVoice.setBackgroundResource(R.drawable.voice_button_background)
+    }
+
+    private fun sendMessage() {
+        val message = binding.etMessage.text.toString().trim()
+        if (message.isEmpty()) return
+
+        // Ajouter le message utilisateur au chat
+        chatAdapter.addMessage(ChatMessage(message, true))
+        scrollToBottom()
+
+        // Créer la requête
+        val request = ProcessRequest(
+            request = message,
+            lang = sessionManager.getLanguage(),
+            position = currentPosition,
+            tts = true,
+            client_type = "android"
+        )
+
+        // Envoyer la requête
+        lifecycleScope.launch {
+            try {
+                val response = ApiClient.tomApiService.process(request)
+                if (response.isSuccessful) {
+                    response.body()?.let { processResponse ->
+                        // Ajouter la réponse au chat
+                        chatAdapter.addMessage(ChatMessage(processResponse.response, false))
+                        scrollToBottom()
+
+                        // Traiter les commandes personnalisées
+                        processCustomCommands(processResponse.response)
+
+                        // Lire la réponse avec TTS si activé
+                        if (sessionManager.isSoundEnabled()) {
+                            val cleanText = cleanTextForTTS(processResponse.response)
+                            audioManager.speak(cleanText, sessionManager.getLanguage())
+                        }
+                    }
+                } else {
+                    if (response.code() == 302 || response.code() == 401 || response.code() == 403) {
+                        sessionManager.logout()
+                        navigateToLogin()
+                        return@launch
+                    }
+                    showError("Error: ${response.code()}")
+                    resetConversation()
+                }
+            } catch (e: IOException) {
+                showError("Network error")
+                resetConversation()
+            } catch (e: HttpException) {
+                showError("HTTP error: ${e.code()}")
+                resetConversation()
+            } catch (e: Exception) {
+                showError("Error: ${e.message}")
+                resetConversation()
+            }
+        }
+
+        // Vider le champ de saisie
+        binding.etMessage.setText("")
+    }
+
+    private fun processCustomCommands(text: String) {
+        // Traiter les commandes [open:URL]
+        val openPattern = Pattern.compile("\\[open:(.+?)\\]")
+        val matcher = openPattern.matcher(text)
+        
+        while (matcher.find()) {
+            val url = matcher.group(1)
+            if (url != null && isValidUrl(url)) {
+                // Ouvrir l'URL dans le navigateur
+                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                if (intent.resolveActivity(packageManager) != null) {
+                    startActivity(intent)
+                }
+            }
+        }
+    }
+
+    private fun isValidUrl(url: String): Boolean {
+        return try {
+            java.net.URL(url)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun cleanTextForTTS(text: String): String {
+        // Supprimer les commandes markdown et personnalisées
+        return text
+            .replace(Regex("\\[open:.*?\\]"), "")
+            .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1") // Gras
+            .replace(Regex("\\*(.*?)\\*"), "$1") // Italique
+            .replace(Regex("```[\\s\\S]*?```"), "") // Blocs de code
+            .replace(Regex("`(.*?)`"), "$1") // Code inline
+            .trim()
+    }
+
+    private fun testSessionValidityQuietly() {
+        lifecycleScope.launch {
+            try {
+                // Test silencieux avec getTasks qui ne modifie rien
+                val response = ApiClient.tomApiService.getTasks()
+                if (response.isSuccessful) {
+                    // Session valide, charger les données
+                    response.body()?.let { tasksResponse ->
+                        tasksAdapter.updateTasks(tasksResponse.background_tasks)
+                        updateTasksCounter(tasksResponse.background_tasks.size)
+                    }
+                } else {
+                    // Session invalide, retourner au login
+                    if (response.code() == 302 || response.code() == 401 || response.code() == 403 || response.code() == 500) {
+                        sessionManager.logout()
+                        navigateToLogin()
+                    }
+                }
+            } catch (e: Exception) {
+                // En cas d'erreur de connexion, on reste sur l'interface
+                // mais on ne redirige pas automatiquement vers login
+            }
+        }
+    }
+
+    private fun testSessionAndReset() {
+        lifecycleScope.launch {
+            try {
+                val response = ApiClient.tomApiService.reset()
+                if (response.isSuccessful) {
+                    chatAdapter.clearMessages()
+                    fetchTasks()
+                } else {
+                    // Session invalide, retourner au login
+                    if (response.code() == 302 || response.code() == 401 || response.code() == 403 || response.code() == 500) {
+                        sessionManager.logout()
+                        navigateToLogin()
+                        return@launch
+                    }
+                    showError("Reset failed: ${response.code()}")
+                }
+            } catch (e: Exception) {
+                showError("Session test error: ${e.message}")
+                // En cas d'erreur de session, rediriger vers login
+                sessionManager.logout()
+                navigateToLogin()
+            }
+        }
+    }
+    
+    private fun resetConversation() {
+        lifecycleScope.launch {
+            try {
+                val response = ApiClient.tomApiService.reset()
+                if (response.isSuccessful) {
+                    chatAdapter.clearMessages()
+                    fetchTasks()
+                } else {
+                    if (response.code() == 302 || response.code() == 401 || response.code() == 403) {
+                        sessionManager.logout()
+                        navigateToLogin()
+                        return@launch
+                    }
+                    showError("Reset failed: ${response.code()}")
+                }
+            } catch (e: Exception) {
+                showError("Reset error: ${e.message}")
+            }
+        }
+    }
+
+    private fun fetchTasks() {
+        lifecycleScope.launch {
+            try {
+                val response = ApiClient.tomApiService.getTasks()
+                if (response.isSuccessful) {
+                    response.body()?.let { tasksResponse ->
+                        // Mettre à jour la liste des tâches
+                        tasksAdapter.updateTasks(tasksResponse.background_tasks)
+                        updateTasksCounter(tasksResponse.background_tasks.size)
+                        
+                        // Afficher le message si nouveau
+                        if (tasksResponse.id > lastDisplayedTaskId && tasksResponse.message.isNotEmpty()) {
+                            lastDisplayedTaskId = tasksResponse.id
+                            chatAdapter.addMessage(ChatMessage(tasksResponse.message, false))
+                            scrollToBottom()
+                            
+                            // Lire le message si le son est activé
+                            if (sessionManager.isSoundEnabled()) {
+                                audioManager.speak(tasksResponse.message, sessionManager.getLanguage())
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignorer les erreurs de tâches en arrière-plan
+            }
+        }
+    }
+
+    private fun startPeriodicTasks() {
+        // Mettre à jour la position toutes les 30 secondes
+        lifecycleScope.launch {
+            while (isActive) {
+                delay(30000)
+                updateLocation()
+            }
+        }
+
+        // Récupérer les tâches toutes les 60 secondes
+        lifecycleScope.launch {
+            while (isActive) {
+                delay(60000)
+                fetchTasks()
+            }
+        }
+    }
+
+    private fun updateTasksCounter(count: Int) {
+        binding.tvTasksCounter.text = count.toString()
+        binding.tvTasksCounter.visibility = if (count > 0) View.VISIBLE else View.GONE
+    }
+
+    private fun toggleSettingsPanel() {
+        isSettingsPanelVisible = !isSettingsPanelVisible
+        binding.settingsPanel.visibility = if (isSettingsPanelVisible) View.VISIBLE else View.GONE
+        
+        if (isSettingsPanelVisible && isTasksPanelVisible) {
+            isTasksPanelVisible = false
+            binding.tasksPanel.visibility = View.GONE
+        }
+    }
+
+    private fun toggleTasksPanel() {
+        isTasksPanelVisible = !isTasksPanelVisible
+        binding.tasksPanel.visibility = if (isTasksPanelVisible) View.VISIBLE else View.GONE
+        
+        if (isTasksPanelVisible && isSettingsPanelVisible) {
+            isSettingsPanelVisible = false
+            binding.settingsPanel.visibility = View.GONE
+        }
+    }
+
+    private fun logout() {
+        sessionManager.logout()
+        navigateToLogin()
+    }
+
+    private fun navigateToLogin() {
+        val intent = Intent(this, LoginActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        startActivity(intent)
+        finish()
+    }
+
+    private fun scrollToBottom() {
+        binding.rvChat.scrollToPosition(chatAdapter.itemCount - 1)
+    }
+
+    private fun showError(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        audioManager.destroy()
+    }
+}

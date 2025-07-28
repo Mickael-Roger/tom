@@ -8,5 +8,17 @@ data/*
 # Except for the .gitkeep file
 !data/.gitkeep
 
+# Android specific
+TomAssistant/.gradle/
+TomAssistant/app/build/
+TomAssistant/local.properties
+TomAssistant/.idea/
+TomAssistant/build/
+TomAssistant/*.iml
+TomAssistant/captures/
+TomAssistant/.externalNativeBuild/
+TomAssistant/.cxx/
+TomAssistant/*.apk
+TomAssistant/*.aab
 
 CLAUDE.md

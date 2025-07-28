@@ -1,0 +1,17 @@
+# Correctifs pour le crash après authentification
+
+## Problèmes identifiés :
+
+1. **ViewBinding vs DataBinding** : Confusion entre les deux systèmes
+2. **Markwon dependency** : Peut ne pas être disponible
+3. **Permissions audio/GPS** : Gestion non sécurisée
+4. **Thème manquant** : Style Theme.TomAssistant
+
+## Corrections à appliquer :
+
+### 1. Simplifier MainActivity sans ViewBinding complexe
+### 2. Gérer les permissions de façon défensive  
+### 3. Fallback pour Markwon
+### 4. Thème de base Android
+
+Ces corrections seront appliquées dès que vous partagerez les logs du crash.
