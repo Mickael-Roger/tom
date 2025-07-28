@@ -89,8 +89,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupToolbar() {
-        setSupportActionBar(binding.toolbar)
-        supportActionBar?.title = "Tom Assistant"
+        // Toolbar supprimée pour plus d'espace
     }
 
     private fun setupRecyclerViews() {
@@ -171,6 +170,11 @@ class MainActivity : AppCompatActivity() {
         // Logout button
         binding.btnLogout.setOnClickListener {
             logout()
+        }
+
+        // Overlay background - fermer les panneaux en cliquant dessus
+        binding.overlayBackground.setOnClickListener {
+            closeAllPanels()
         }
     }
 
@@ -492,6 +496,7 @@ class MainActivity : AppCompatActivity() {
     private fun toggleSettingsPanel() {
         isSettingsPanelVisible = !isSettingsPanelVisible
         binding.settingsPanel.visibility = if (isSettingsPanelVisible) View.VISIBLE else View.GONE
+        binding.overlayBackground.visibility = if (isSettingsPanelVisible) View.VISIBLE else View.GONE
         
         if (isSettingsPanelVisible && isTasksPanelVisible) {
             isTasksPanelVisible = false
@@ -502,11 +507,20 @@ class MainActivity : AppCompatActivity() {
     private fun toggleTasksPanel() {
         isTasksPanelVisible = !isTasksPanelVisible
         binding.tasksPanel.visibility = if (isTasksPanelVisible) View.VISIBLE else View.GONE
+        binding.overlayBackground.visibility = if (isTasksPanelVisible) View.VISIBLE else View.GONE
         
         if (isTasksPanelVisible && isSettingsPanelVisible) {
             isSettingsPanelVisible = false
             binding.settingsPanel.visibility = View.GONE
         }
+    }
+
+    private fun closeAllPanels() {
+        isSettingsPanelVisible = false
+        isTasksPanelVisible = false
+        binding.settingsPanel.visibility = View.GONE
+        binding.tasksPanel.visibility = View.GONE
+        binding.overlayBackground.visibility = View.GONE
     }
 
     private fun logout() {

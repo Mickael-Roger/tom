@@ -1,19 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
     android:background="#f5f5f5">
 
-    <!-- Toolbar -->
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/toolbar"
+    <!-- Interface principale -->
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="@color/primary_color"
-        app:titleTextColor="@android:color/white"
-        app:title="Tom Assistant" />
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
     <!-- Chat RecyclerView -->
     <androidx.recyclerview.widget.RecyclerView
@@ -129,103 +125,137 @@
         </LinearLayout>
 
     </LinearLayout>
-
-    <!-- Tasks Panel (hidden by default) -->
-    <LinearLayout
-        android:id="@+id/tasksPanel"
-        android:layout_width="match_parent"
-        android:layout_height="200dp"
-        android:orientation="vertical"
-        android:background="@android:color/white"
-        android:elevation="8dp"
-        android:padding="16dp"
-        android:visibility="gone">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Background Tasks"
-            android:textStyle="bold"
-            android:textSize="16sp"
-            android:layout_marginBottom="8dp" />
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rvTasks"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-
+    
     </LinearLayout>
 
-    <!-- Settings Panel (hidden by default) -->
-    <LinearLayout
-        android:id="@+id/settingsPanel"
+    <!-- Fond semi-transparent pour les overlays -->
+    <View
+        android:id="@+id/overlayBackground"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:background="@android:color/white"
-        android:elevation="8dp"
-        android:padding="16dp"
-        android:visibility="gone">
+        android:layout_height="match_parent"
+        android:background="#80000000"
+        android:visibility="gone"
+        android:clickable="true" />
 
-        <TextView
+    <!-- Tasks Panel flottant -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/tasksPanel"
+        android:layout_width="320dp"
+        android:layout_height="400dp"
+        android:layout_gravity="center"
+        android:visibility="gone"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="16dp">
+
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Settings"
-            android:textStyle="bold"
-            android:textSize="16sp"
-            android:layout_marginBottom="16dp" />
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:background="@android:color/white"
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Background Tasks"
+                android:textStyle="bold"
+                android:textSize="18sp"
+                android:textColor="@color/primary_color"
+                android:layout_marginBottom="16dp"
+                android:gravity="center" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvTasks"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+        </LinearLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <!-- Settings Panel flottant -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/settingsPanel"
+        android:layout_width="320dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:visibility="gone"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="16dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="12dp">
+            android:orientation="vertical"
+            android:background="@android:color/white"
+            android:padding="20dp">
 
             <TextView
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Language" />
+                android:text="Settings"
+                android:textStyle="bold"
+                android:textSize="18sp"
+                android:textColor="@color/primary_color"
+                android:layout_marginBottom="20dp"
+                android:gravity="center" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="16dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Language"
+                    android:textSize="16sp" />
+
+                <Button
+                    android:id="@+id/btnLanguageFr"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:text="FR"
+                    android:layout_marginEnd="8dp"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+                <Button
+                    android:id="@+id/btnLanguageEn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:text="EN"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+            </LinearLayout>
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/switchSound"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Sound enabled"
+                android:textSize="16sp"
+                android:layout_marginBottom="16dp" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/switchAutoSubmit"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Auto-submit voice input"
+                android:textSize="16sp"
+                android:layout_marginBottom="20dp" />
 
             <Button
-                android:id="@+id/btnLanguageFr"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="FR"
-                android:layout_marginEnd="8dp"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
-
-            <Button
-                android:id="@+id/btnLanguageEn"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="EN"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+                android:id="@+id/btnLogout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Logout"
+                android:backgroundTint="@color/error_color" />
 
         </LinearLayout>
 
-        <androidx.appcompat.widget.SwitchCompat
-            android:id="@+id/switchSound"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Sound enabled"
-            android:layout_marginBottom="12dp" />
+    </androidx.cardview.widget.CardView>
 
-        <androidx.appcompat.widget.SwitchCompat
-            android:id="@+id/switchAutoSubmit"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Auto-submit voice input"
-            android:layout_marginBottom="16dp" />
-
-        <Button
-            android:id="@+id/btnLogout"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Logout"
-            android:backgroundTint="@color/error_color" />
-
-    </LinearLayout>
-
-</LinearLayout>
+</FrameLayout>

@@ -92,7 +92,7 @@ object ApiClient {
             level = HttpLoggingInterceptor.Level.BODY
         })
         .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(180, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
     
