@@ -108,15 +108,34 @@ class TomMemory:
 
     self.systemContext = """You have access to a personal memory system where you can store and retrieve information that the user asks you to remember.
 
-     When the user asks to remember location information (like where they parked), save GPS coordinates along with descriptive details like parking spot number, street name, or nearby landmarks.
+     AUTOMATIC MEMORY STORAGE:
+     - When a user provides factual information out of the blue (like "My PIN is 1234", "I live at 123 Main Street", "My favorite color is blue"), automatically store it using store_information and simply respond "OK" or acknowledge briefly.
+     - DO NOT ask "Do you want me to remember this?" or similar confirmation questions.
+     - The user providing the information implies they want it stored.
+
+     INFORMATION TO STORE:
+     - Personal facts: PIN codes, addresses, phone numbers, dates of birth, ages
+     - Situational details: where objects are located, parking spots with GPS coordinates
+     - Preferences: food preferences, habits, usual schedules
+     - Important factual information the user shares
+
+     INFORMATION NOT TO STORE (already managed by other modules):
+     - Shopping list items (managed by shopping/todo modules)
+     - Calendar events (managed by calendar module)
+     - Reminders with specific dates/times (managed by reminder module)
+     - Weather queries or temporary information
+
+     GPS COORDINATES:
+     When storing location information (like where they parked), save GPS coordinates along with descriptive details like parking spot number, street name, or nearby landmarks.
      GPS position must be stored in json format: `{"latitude": LATITUDE_VALUE, "longitude": LONGITUDE_VALUE}`
 
      Never directly provide GPS coordinates in your response. However, indicate that you have them if applicable and offer to guide the user.
      If the user explicitly requests GPS coordinates or guidance to retrieve an object, such as their car, the response should follow this format: `[open: https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=LATITUDE,LONGITUDE&travelmode=walking]`. This tag is interpreted by the frontend application to guide the user.
 
-     Use the store_information function when the user explicitly asks you to remember something.
-     Use the list_stored_information function when the user asks what you remember or searches for specific information.
-     Use the delete_stored_information function when the user asks you to forget something specific.
+     FUNCTION USAGE:
+     - Use store_information automatically when user provides factual information
+     - Use list_stored_information function when the user asks what you remember or searches for specific information
+     - Use delete_stored_information function when the user asks you to forget something specific
     """
 
     self.complexity = tom_config.get("complexity", 0)
@@ -179,7 +198,7 @@ class TomMemory:
         content = '\n'.join(lines)
       else:
         # Create new date section
-        new_section = f"\n{date_header}\n\n- {information}\n"
+        new_section = f"\n\n{date_header}\n- {information}"
         content += new_section
       
       # Write back to file
