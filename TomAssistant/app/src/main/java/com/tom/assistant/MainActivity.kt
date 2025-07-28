@@ -24,6 +24,7 @@ import com.tom.assistant.ui.chat.ChatAdapter
 import com.tom.assistant.ui.tasks.TasksAdapter
 import com.tom.assistant.utils.AudioManager
 import com.tom.assistant.utils.SessionManager
+import com.tom.assistant.utils.HeadsetButtonManager
 import io.noties.markwon.Markwon
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -40,6 +41,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tasksAdapter: TasksAdapter
     private lateinit var audioManager: AudioManager
     private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var headsetButtonManager: HeadsetButtonManager
 
     private var currentPosition: Position? = null
     private var lastDisplayedTaskId = 0
@@ -75,6 +77,7 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerViews()
         setupButtons()
         setupAudio()
+        setupHeadsetButtons()
         setupLocation()
         setupPermissions()
         
@@ -191,6 +194,37 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Speech error: $error", Toast.LENGTH_SHORT).show()
             }
         )
+    }
+    
+    private fun setupHeadsetButtons() {
+        headsetButtonManager = HeadsetButtonManager(
+            context = this,
+            onToggleRecording = {
+                // Vérifier les permissions avant d'utiliser l'audio
+                if (checkAudioPermission()) {
+                    toggleVoiceInputFromHeadset()
+                } else {
+                    Toast.makeText(this, "Microphone permission required", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+        headsetButtonManager.initialize()
+    }
+    
+    private fun toggleVoiceInputFromHeadset() {
+        audioManager.stopSpeaking() // Arrêter le TTS d'abord
+        
+        if (audioManager.isCurrentlyListening()) {
+            // Arrêter l'enregistrement
+            audioManager.stopListening()
+            // Remettre le bouton voice à l'état normal
+            binding.btnVoice.setBackgroundResource(android.R.drawable.ic_btn_speak_now)
+        } else {
+            // Démarrer l'enregistrement
+            audioManager.startListening(sessionManager.getLanguage())
+            // Changer la couleur du bouton pendant l'écoute
+            binding.btnVoice.setBackgroundResource(R.drawable.voice_button_background)
+        }
     }
 
     private fun setupLocation() {
@@ -546,5 +580,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         audioManager.destroy()
+        headsetButtonManager.cleanup()
     }
 }

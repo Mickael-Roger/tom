@@ -80,6 +80,18 @@ class AudioManager(
             isListening = false
         }
     }
+    
+    fun toggleListening(language: String = "fr") {
+        if (isListening) {
+            stopListening()
+        } else {
+            startListening(language)
+        }
+    }
+    
+    fun isCurrentlyListening(): Boolean {
+        return isListening
+    }
 
     fun stopSpeaking() {
         textToSpeech?.stop()
