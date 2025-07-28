@@ -8,7 +8,10 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Toast
+import android.animation.ObjectAnimator
+import android.view.animation.LinearInterpolator
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -32,6 +35,7 @@ import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import java.io.IOException
 import java.util.regex.Pattern
+import android.util.Log
 
 class MainActivity : AppCompatActivity() {
 
@@ -47,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     private var lastDisplayedTaskId = 0
     private var isSettingsPanelVisible = false
     private var isTasksPanelVisible = false
+    private var tickerAnimator: ObjectAnimator? = null
 
     companion object {
         private const val PERMISSION_REQUEST_CODE = 1001
@@ -89,6 +94,9 @@ class MainActivity : AppCompatActivity() {
         
         // Tester la session avec le serveur (silencieusement)
         testSessionValidityQuietly()
+        
+        // Test du ticker avec des données de test
+        testTickerWithDummyData()
     }
 
     private fun setupToolbar() {
@@ -524,36 +532,102 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateNotificationTicker() {
+        Log.d("TomTicker", "updateNotificationTicker called")
         lifecycleScope.launch {
             try {
                 val response = ApiClient.tomApiService.getTasks()
                 if (response.isSuccessful) {
                     response.body()?.let { tasksResponse ->
                         val notifications = tasksResponse.background_tasks
+                        Log.d("TomTicker", "Got ${notifications.size} notifications")
                         
                         if (notifications.isEmpty()) {
                             binding.tvNotificationTicker.text = "Aucune notification"
+                            Log.d("TomTicker", "No notifications - showing default text")
                         } else {
                             // Create scrolling text with bold module names
                             val notificationText = notifications.joinToString("    •    ") { task ->
                                 "${task.module}: ${task.status}"
-                            }
+                            } + "     " // Ajout d'espaces à la fin pour éviter la troncature
+                            
+                            Log.d("TomTicker", "Original notification text length: ${notificationText.length}")
+                            Log.d("TomTicker", "Original notification text: '$notificationText'")
+                            
                             binding.tvNotificationTicker.text = notificationText
+                            
+                            // Check what was actually set
+                            val actualSetText = binding.tvNotificationTicker.text.toString()
+                            Log.d("TomTicker", "Actually set text length: ${actualSetText.length}")
+                            Log.d("TomTicker", "Actually set text: '$actualSetText'")
+                            
+                            if (notificationText != actualSetText) {
+                                Log.e("TomTicker", "TEXT WAS TRUNCATED SOMEWHERE!")
+                                Log.e("TomTicker", "Expected: '$notificationText'")
+                                Log.e("TomTicker", "Got: '$actualSetText'")
+                            }
                             
                             // Start scrolling animation
                             startTickerAnimation()
                         }
                     }
+                } else {
+                    Log.e("TomTicker", "API response failed: ${response.code()}")
                 }
             } catch (e: Exception) {
-                // Ignore errors for background ticker updates
+                Log.e("TomTicker", "Error updating ticker: ${e.message}")
             }
         }
     }
 
     private fun startTickerAnimation() {
+        Log.d("TomTicker", "startTickerAnimation called")
         val ticker = binding.tvNotificationTicker
-        ticker.isSelected = true // Enable marquee scrolling
+        val container = ticker.parent as? ViewGroup
+        
+        // Cancel existing animation
+        tickerAnimator?.cancel()
+        Log.d("TomTicker", "Cancelled existing animation")
+        
+        // Wait for layout to complete, then start animation
+        ticker.post {
+            // Reset position
+            ticker.translationX = 0f
+            
+            // Measure the actual text content width
+            val paint = ticker.paint
+            val actualTextWidth = paint.measureText(ticker.text.toString())
+            val containerWidth = container?.width ?: 0
+            
+            Log.d("TomTicker", "Actual text width: $actualTextWidth, Container width: $containerWidth")
+            
+            // Force the TextView to use its actual text width
+            val widthSpec = View.MeasureSpec.makeMeasureSpec(actualTextWidth.toInt(), View.MeasureSpec.EXACTLY)
+            val heightSpec = View.MeasureSpec.makeMeasureSpec(ticker.height, View.MeasureSpec.EXACTLY)
+            ticker.measure(widthSpec, heightSpec)
+            ticker.layout(0, 0, actualTextWidth.toInt(), ticker.height)
+            
+            Log.d("TomTicker", "TextView resized to: ${ticker.width} x ${ticker.height}")
+            
+            if (actualTextWidth > containerWidth && containerWidth > 0) {
+                // Start scrolling animation from right to left
+                val startX = containerWidth.toFloat()
+                val endX = -actualTextWidth
+                val distance = startX - endX
+                
+                Log.d("TomTicker", "Starting animation: startX=$startX, endX=$endX, distance=$distance")
+                
+                tickerAnimator = ObjectAnimator.ofFloat(ticker, "translationX", startX, endX).apply {
+                    duration = (distance * 8).toLong() // 8ms per pixel
+                    interpolator = LinearInterpolator()
+                    repeatCount = ObjectAnimator.INFINITE
+                    repeatMode = ObjectAnimator.RESTART
+                    start()
+                }
+                Log.d("TomTicker", "Animation started with duration: ${(distance * 8).toLong()}ms")
+            } else {
+                Log.d("TomTicker", "Animation not started - actualTextWidth: $actualTextWidth, containerWidth: $containerWidth")
+            }
+        }
     }
 
     private fun toggleSettingsPanel() {
@@ -606,9 +680,23 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
+    private fun testTickerWithDummyData() {
+        Log.d("TomTicker", "Testing ticker with dummy data")
+        
+        // Simulate long notification text that should scroll
+        val longText = "Module1: Status très long qui devrait défiler    •    Module2: Autre status long    •    Module3: Encore plus de texte"
+        binding.tvNotificationTicker.text = longText
+        
+        // Wait a bit for layout then start animation
+        binding.tvNotificationTicker.postDelayed({
+            startTickerAnimation()
+        }, 500)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         audioManager.destroy()
         headsetButtonManager.cleanup()
+        tickerAnimator?.cancel()
     }
 }

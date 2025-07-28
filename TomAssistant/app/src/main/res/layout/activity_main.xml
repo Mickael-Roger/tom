@@ -19,15 +19,18 @@
         android:gravity="center_vertical"
         android:padding="8dp"
         android:background="@android:color/white"
-        android:elevation="2dp">
+        android:elevation="2dp"
+        android:clipChildren="false"
+        android:clipToPadding="false">
 
         <ImageView
             android:id="@+id/ivTasksHeader"
             android:layout_width="30dp"
             android:layout_height="30dp"
-            android:src="@drawable/ic_tasks"
+            android:src="@drawable/ic_tasks_new"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Tasks" />
+            android:contentDescription="Tasks"
+            android:scaleType="fitCenter" />
 
         <TextView
             android:id="@+id/tvTasksCounterHeader"
@@ -42,14 +45,15 @@
             android:layout_marginTop="-8dp"
             android:visibility="gone" />
 
-        <HorizontalScrollView
+        <FrameLayout
             android:layout_width="0dp"
             android:layout_height="30dp"
             android:layout_weight="1"
             android:layout_marginStart="8dp"
             android:layout_marginEnd="8dp"
-            android:scrollbars="none"
-            android:background="#2c3e50">
+            android:background="#2c3e50"
+            android:clipChildren="false"
+            android:clipToPadding="false">
 
             <TextView
                 android:id="@+id/tvNotificationTicker"
@@ -62,21 +66,19 @@
                 android:paddingStart="16dp"
                 android:paddingEnd="16dp"
                 android:singleLine="true"
-                android:ellipsize="marquee"
-                android:marqueeRepeatLimit="marquee_forever"
-                android:scrollHorizontally="true"
-                android:focusable="true"
-                android:focusableInTouchMode="true" />
+                android:ellipsize="none"
+                android:maxLines="1" />
 
-        </HorizontalScrollView>
+        </FrameLayout>
 
         <ImageView
             android:id="@+id/ivSettingsHeader"
             android:layout_width="30dp"
             android:layout_height="30dp"
-            android:src="@drawable/ic_settings"
+            android:src="@drawable/ic_settings_new"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Settings" />
+            android:contentDescription="Settings"
+            android:scaleType="fitCenter" />
 
     </LinearLayout>
 
