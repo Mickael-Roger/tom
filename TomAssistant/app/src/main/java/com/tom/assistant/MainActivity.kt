@@ -141,13 +141,13 @@ class MainActivity : AppCompatActivity() {
             resetConversation()
         }
 
-        // Settings button
-        binding.btnSettings.setOnClickListener {
+        // Settings button (header)
+        binding.ivSettingsHeader.setOnClickListener {
             toggleSettingsPanel()
         }
 
-        // Tasks button
-        binding.btnTasks.setOnClickListener {
+        // Tasks button (header)
+        binding.ivTasksHeader.setOnClickListener {
             toggleTasksPanel()
         }
 
@@ -516,8 +516,44 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateTasksCounter(count: Int) {
-        binding.tvTasksCounter.text = count.toString()
-        binding.tvTasksCounter.visibility = if (count > 0) View.VISIBLE else View.GONE
+        binding.tvTasksCounterHeader.text = count.toString()
+        binding.tvTasksCounterHeader.visibility = if (count > 0) View.VISIBLE else View.GONE
+        
+        // Update notification ticker
+        updateNotificationTicker()
+    }
+
+    private fun updateNotificationTicker() {
+        lifecycleScope.launch {
+            try {
+                val response = ApiClient.tomApiService.getTasks()
+                if (response.isSuccessful) {
+                    response.body()?.let { tasksResponse ->
+                        val notifications = tasksResponse.background_tasks
+                        
+                        if (notifications.isEmpty()) {
+                            binding.tvNotificationTicker.text = "Aucune notification"
+                        } else {
+                            // Create scrolling text with bold module names
+                            val notificationText = notifications.joinToString("    •    ") { task ->
+                                "${task.module}: ${task.status}"
+                            }
+                            binding.tvNotificationTicker.text = notificationText
+                            
+                            // Start scrolling animation
+                            startTickerAnimation()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore errors for background ticker updates
+            }
+        }
+    }
+
+    private fun startTickerAnimation() {
+        val ticker = binding.tvNotificationTicker
+        ticker.isSelected = true // Enable marquee scrolling
     }
 
     private fun toggleSettingsPanel() {

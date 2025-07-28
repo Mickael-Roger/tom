@@ -11,6 +11,75 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
+    <!-- Notification Header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="8dp"
+        android:background="@android:color/white"
+        android:elevation="2dp">
+
+        <ImageView
+            android:id="@+id/ivTasksHeader"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:src="@drawable/ic_tasks"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Tasks" />
+
+        <TextView
+            android:id="@+id/tvTasksCounterHeader"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:text="0"
+            android:background="@drawable/tasks_counter_background"
+            android:textColor="@android:color/white"
+            android:textSize="10sp"
+            android:gravity="center"
+            android:layout_marginStart="-8dp"
+            android:layout_marginTop="-8dp"
+            android:visibility="gone" />
+
+        <HorizontalScrollView
+            android:layout_width="0dp"
+            android:layout_height="30dp"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            android:scrollbars="none"
+            android:background="#2c3e50">
+
+            <TextView
+                android:id="@+id/tvNotificationTicker"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:text="Aucune notification"
+                android:textColor="@android:color/white"
+                android:textSize="14sp"
+                android:gravity="center_vertical"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:singleLine="true"
+                android:ellipsize="marquee"
+                android:marqueeRepeatLimit="marquee_forever"
+                android:scrollHorizontally="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true" />
+
+        </HorizontalScrollView>
+
+        <ImageView
+            android:id="@+id/ivSettingsHeader"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:src="@drawable/ic_settings"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Settings" />
+
+    </LinearLayout>
+
     <!-- Chat RecyclerView -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvChat"
@@ -30,49 +99,13 @@
         android:elevation="4dp"
         android:padding="16dp">
 
-        <!-- Control buttons row -->
+        <!-- Control buttons row (Reset only) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="center_vertical"
+            android:gravity="center"
             android:layout_marginBottom="8dp">
-
-            <ImageButton
-                android:id="@+id/btnSettings"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:src="@drawable/ic_settings"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Settings" />
-
-            <View
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <TextView
-                android:id="@+id/tvTasksCounter"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="0"
-                android:background="@drawable/tasks_counter_background"
-                android:textColor="@android:color/white"
-                android:textSize="12sp"
-                android:gravity="center"
-                android:minWidth="20dp"
-                android:minHeight="20dp"
-                android:layout_marginEnd="4dp"
-                android:visibility="gone" />
-
-            <ImageButton
-                android:id="@+id/btnTasks"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:src="@drawable/ic_tasks"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Tasks"
-                android:layout_marginEnd="8dp" />
 
             <ImageButton
                 android:id="@+id/btnReset"
