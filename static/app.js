@@ -4,16 +4,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const speakButton = document.getElementById("speak-button");
     const chatBox = document.getElementById("chat-box");
     const resetButton = document.getElementById("reset-button");
-    const gearIcon = document.getElementById("gear-icon");
+    const gearIconHeader = document.getElementById("gear-icon-header");
     const configBox = document.getElementById("config-box");
     const autoSubmitConfig = document.getElementById("auto-submit-config");
     const soundConfig = document.getElementById("sound-config");
     const languageConfigEn = document.getElementById("language-config-en");
     const languageConfigFr = document.getElementById("language-config-fr");
-    const tasksIcon = document.getElementById("tasks-icon");
     const tasksBox = document.getElementById("tasks-box");
-    const tasksCounter = document.getElementById("tasks-counter");
     const tasksList = document.getElementById("tasks-list");
+    const tasksIconHeader = document.getElementById("tasks-icon-header");
+    const tasksCounterHeader = document.getElementById("tasks-counter-header");
 
     let tasks = [];
 
@@ -71,7 +71,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Toggle configuration box visibility
-    gearIcon.addEventListener("click", () => {
+    gearIconHeader.addEventListener("click", () => {
         configBox.classList.toggle("hidden");
     });
 
@@ -162,7 +162,7 @@ document.addEventListener("DOMContentLoaded", () => {
         fetch("/tasks", { method: "GET" })
             .then(response => response.json())
             .then(taskData => {
-                // Afficher et lire les messages de tâches
+                // Traiter les messages de tâches (sans affichage dans le chat)
                 displayAndReadTaskMessage(taskData);
     
                 // Une fois les messages de tâches traités, gérer la réponse de /process
@@ -474,7 +474,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
     // Toggle tasks box visibility
-    tasksIcon.addEventListener("click", () => {
+    function toggleTasksBox() {
         if (tasksBox.classList.contains("hidden")) {
             tasksBox.classList.remove("hidden");
             console.log("Tasks box shown");
@@ -482,7 +482,9 @@ document.addEventListener("DOMContentLoaded", () => {
             tasksBox.classList.add("hidden");
             console.log("Tasks box hidden");
         }
-    });
+    }
+
+    tasksIconHeader.addEventListener("click", toggleTasksBox);
 
     // Fetch background tasks periodically
     setInterval(fetchBackgroundTasks, 60000); // Every 60 seconds
@@ -495,7 +497,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (data.background_tasks) {
                     tasks = data.background_tasks;
                     updateTasksUI(); // Met à jour l'interface pour les tâches
-                    displayAndReadTaskMessage(data); // Affiche et lit le message et ID
+                    displayAndReadTaskMessage(data); // Traite l'ID (sans affichage dans le chat)
                 }
             })
             .catch(error => console.error("Error fetching tasks:", error));
@@ -514,14 +516,17 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     
     // Appliquer la logique pour la boîte de configuration
-    closeOnClickOutside(configBox, gearIcon);
+    closeOnClickOutside(configBox, gearIconHeader);
     
     // Appliquer la logique pour la boîte des tâches
-    closeOnClickOutside(tasksBox, tasksIcon);
+    closeOnClickOutside(tasksBox, tasksIconHeader);
 
     function updateTasksUI() {
         // Update counter
-        tasksCounter.textContent = tasks.length;
+        tasksCounterHeader.textContent = tasks.length;
+        
+        // Show/hide counter based on task count
+        tasksCounterHeader.style.display = tasks.length > 0 ? 'flex' : 'none';
 
         // Update tasks list
         tasksList.innerHTML = ""; // Clear existing items
@@ -542,28 +547,39 @@ document.addEventListener("DOMContentLoaded", () => {
 
             tasksList.appendChild(taskItem);
         });
+
+        // Update notification ticker
+        updateNotificationTicker();
     }
 
-    // Tasks messages
+    // Tasks messages - Ne plus afficher le message dans le chat
     function displayAndReadTaskMessage(data) {
-        const message = data.message;
         const id = data.id;
     
-        // Afficher et lire le message uniquement si l'ID est supérieur au dernier affiché
+        // Mettre à jour l'ID uniquement si supérieur au dernier traité
         if (id > lastDisplayedId) {
             lastDisplayedId = id; // Mettre à jour le dernier ID traité
-    
-            // Ajouter le message à la chat box
-            if (message) {
-                addMessageToChat("bot", message);
-    
-                // Lire le message avec TTS si activé
-                if (soundEnabled) {
-                    speakText(message, selectedLanguage);
-                }
-            }
+        }
+    }
+
+    // Update notification ticker with scrolling notifications
+    function updateNotificationTicker() {
+        const tickerContent = document.getElementById("ticker-content");
+        
+        if (tasks.length === 0) {
+            tickerContent.innerHTML = '<span class="ticker-text">Aucune notification</span>';
         } else {
-            return;
+            // Create scrolling text with all notifications, module names in bold
+            let notificationText = "";
+            tasks.forEach((task, index) => {
+                notificationText += `<span class="ticker-module">${task.module}</span>: ${task.status}`;
+                if (index < tasks.length - 1) {
+                    notificationText += "    •    ";
+                }
+            });
+            
+            // Simple single display without repetition
+            tickerContent.innerHTML = `<span class="ticker-text">${notificationText}</span>`;
         }
     }
 

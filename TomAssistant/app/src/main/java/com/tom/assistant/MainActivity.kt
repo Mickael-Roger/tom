@@ -485,16 +485,9 @@ class MainActivity : AppCompatActivity() {
                         tasksAdapter.updateTasks(tasksResponse.background_tasks)
                         updateTasksCounter(tasksResponse.background_tasks.size)
                         
-                        // Afficher le message si nouveau
-                        if (tasksResponse.id > lastDisplayedTaskId && tasksResponse.message.isNotEmpty()) {
+                        // Mettre à jour l'ID uniquement (sans affichage dans le chat)
+                        if (tasksResponse.id > lastDisplayedTaskId) {
                             lastDisplayedTaskId = tasksResponse.id
-                            chatAdapter.addMessage(ChatMessage(tasksResponse.message, false))
-                            scrollToBottom()
-                            
-                            // Lire le message si le son est activé
-                            if (sessionManager.isSoundEnabled()) {
-                                audioManager.speak(tasksResponse.message, sessionManager.getLanguage())
-                            }
                         }
                     }
                 }

@@ -262,15 +262,14 @@ class TomWebService:
 
     username = cherrypy.session['username']
     response = userList[username].tasks.tasks
-    message = userList[username].tasks.msg
     id = userList[username].tasks.status_id
 
     logger.debug(f"Tasks retrieved: {len(response) if response else 0} items", username)
 
     if response:
-      return {"background_tasks": response, "message": message, "id": id} 
+      return {"background_tasks": response, "id": id} 
     else:
-      return {"background_tasks": [], "message": "", "id": 0} 
+      return {"background_tasks": [], "id": 0} 
 
 
 

@@ -206,35 +206,32 @@ body {
 .reset-button:hover {
     background-color: #c82333;
 }
-/* Gear Icon */
-.gear-icon {
-    position: fixed; /* Fixed position */
-    bottom: 20px; /* Position at the bottom */
-    right: 20px; /* Position on the right */
-    width: 48px; /* Size of the gear image */
-    height: 48px; /* Size of the gear image */
+/* Gear Icon Header */
+.gear-icon-header {
+    width: 30px;
+    height: 30px;
     cursor: pointer;
-    z-index: 1000; /* Ensure it's above other elements */
+    flex-shrink: 0;
 }
 
-/* Gear Image */
-.gear-image {
-    width: 100%; /* Make the image fill the container */
-    height: 100%; /* Make the image fill the container */
+.gear-image-header {
+    width: 100%;
+    height: 100%;
 }
 
 /* Configuration Box */
 .config-box {
     position: fixed;
-    bottom: 60px;
-    right: 20px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     background-color: #fff;
     border: 1px solid #ddd;
     border-radius: 8px;
-    padding: 10px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
     z-index: 1500;
-    width: 150px; /* Fixed width for better alignment */
+    width: 200px; /* Fixed width for better alignment */
 }
 
 .config-box.hidden {
@@ -289,50 +286,20 @@ body {
     color: #fff; /* White text when active */
 }
 
-/* Tasks Icon */
-.tasks-icon {
-    position: fixed;
-    bottom: 90px; /* Above the gear icon */
-    right: 20px;
-    width: 48px;
-    height: 48px;
-    cursor: pointer;
-    z-index: 1000;
-}
-
-.tasks-image {
-    width: 100%;
-    height: 100%;
-}
-
-.tasks-counter {
-    position: absolute;
-    top: -10px;
-    right: -10px;
-    background-color: #dc3545;
-    color: #fff;
-    border-radius: 50%;
-    width: 20px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.8rem;
-    font-weight: bold;
-}
 
 /* Tasks Box */
 .tasks-box {
     position: fixed;
-    bottom: 160px;
-    right: 20px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     background-color: #fff;
     border: 1px solid #ddd;
     border-radius: 8px;
-    padding: 10px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    padding: 15px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
     z-index: 999;
-    width: 250px;
+    width: 300px;
 }
 
 .tasks-box.hidden {
@@ -364,4 +331,86 @@ body {
 
 .tasks-list-item .status {
     color: #555;
+}
+
+/* Notification Header */
+.notification-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+/* Tasks Icon Header */
+.tasks-icon-header {
+    width: 30px;
+    height: 30px;
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.tasks-image-header {
+    width: 100%;
+    height: 100%;
+}
+
+.tasks-counter-header {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background-color: #dc3545;
+    color: #fff;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: bold;
+}
+
+/* Notification Ticker */
+.notification-ticker {
+    height: 30px;
+    background-color: #2c3e50;
+    color: #fff;
+    overflow: hidden;
+    border-radius: 5px;
+    position: relative;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+.ticker-content {
+    white-space: nowrap;
+    position: absolute;
+    animation: scroll-left 20s linear infinite;
+    padding-left: 100%;
+}
+
+.ticker-text {
+    display: inline-block;
+    margin-right: 150px;
+}
+
+.ticker-module {
+    font-weight: bold;
+}
+
+@keyframes scroll-left {
+    0% {
+        transform: translateX(0%);
+    }
+    100% {
+        transform: translateX(-100%);
+    }
+}
+
+/* Pause animation on hover */
+.notification-ticker:hover .ticker-content {
+    animation-play-state: paused;
 }

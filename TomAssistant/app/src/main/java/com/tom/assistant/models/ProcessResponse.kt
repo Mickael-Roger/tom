@@ -6,7 +6,6 @@ data class ProcessResponse(
 
 data class TasksResponse(
     val background_tasks: List<BackgroundTask>,
-    val message: String,
     val id: Int
 )
 

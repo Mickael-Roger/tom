@@ -29,7 +29,6 @@ class TomBackground:
     self.tasks = []
     self.last_update = 0
     self.status_id = 0
-    self.msg = ""
 
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
@@ -71,44 +70,11 @@ class TomBackground:
             update_msg = True
 
     if update_msg == True:
-      #self.llm_synthesis(self.tasks)
-      self.msg = self.llm_synthesis(self.tasks)
       self.status_id = int(time.time())
 
     self.last_update = int(time.time())
 
 
-  def llm_synthesis(self, tasks):
-
-    llm_consign = []
-
-    context = """The user has an application running in the background that retrieves information or performs useful tasks for the user. Each module can provide relevant information to the user. For example, the 'news' module informs the user about the number of unread articles, or the 'weather' module can notify about an upcoming weather event.
-
-    You are an agent to which the user will send a JSON array. Each module with information to report will add an entry to the JSON array. The JSON format is as follows:
-    ```json
-    "module": MODULE_NAME,
-    "status": INFORMATION_USEFUL_FOR_THE_USER
-    ```
-
-    If there is no new information for a module, do not mention it in your response and do not say anything about that module.
-
-    Your task is to synthesize the content of this JSON into a short and intelligible sentence.
-
-    If the array is empty, you should respond with an empty message.
-    Your answer must be in french and you must address me informally
-    """
-
-    llm_consign.append({"role": "system", "content": context})
-    llm_consign.append({"role": "user", "content": json.dumps(tasks)})
-
-    response = self.llm.callLLM(llm_consign, llm='mistral')
-
-    if response:
-      tomlogger.debug(f"Background task response: {response.choices[0].message.content}", self.username)
-      return response.choices[0].message.content
-    else:
-      tomlogger.warning("No response from background task processing", self.username)
-      return ""
 
 
 
