@@ -56,7 +56,7 @@ class TomMemory:
         "type": "function",
         "function": {
           "name": "list_stored_information",
-          "description": "Function to retrieve all pieces of information that the user has previously asked the system to remember. Use this when the user asks about their memory, searches for specific information, or wants to know what you remember about them. For example: 'List everything you remember.', 'What have I told you to remember?', 'Do you remember my pin code?', 'Where did I park my car?', 'Where are my keys?', 'What is my PIN code?', etc. This returns the complete memory content for you to analyze and respond to the user's query.",
+          "description": "Function to retrieve all the information that the is stored in the memory. Use this when the user asks about information that you could find in your memory, searches for specific information, or wants to know what you remember about them. For example: 'Where did I park my car?', 'Where are my keys?', 'What is my PIN code?', etc. This returns the complete memory content for you to analyze and respond to the user's query.",
           "strict": True,
           "parameters": {
             "type": "object",
