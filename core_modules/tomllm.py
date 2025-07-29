@@ -276,7 +276,9 @@ class TomLLM():
     for mod in set(modules):
       if mod in self.services:
         tools = tools + self.services[mod]['tools']
-        conversation.append({"role": "system", "content": self.services[mod]["systemContext"]})
+        # Access systemContext dynamically to support @property decorators
+        system_context = getattr(self.services[mod]["obj"], 'systemContext', '')
+        conversation.append({"role": "system", "content": system_context})
         try:
           if self.services[mod]["complexity"] > complexity:
             complexity = self.services[mod]["complexity"]
