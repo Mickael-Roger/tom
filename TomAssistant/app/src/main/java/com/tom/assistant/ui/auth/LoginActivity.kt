@@ -79,9 +79,16 @@ class LoginActivity : AppCompatActivity() {
                 val response = apiService.login(username, password)
                 
                 if (response.isSuccessful) {
-                    // Connexion réussie
-                    sessionManager.saveLoginSession(username)
-                    navigateToMain()
+                    // Tester immédiatement la validité de la session
+                    val testResponse = apiService.getTasks()
+                    if (testResponse.isSuccessful) {
+                        // Connexion vraiment réussie
+                        sessionManager.saveLoginSession(username)
+                        navigateToMain()
+                    } else {
+                        // Session invalide malgré le login réussi
+                        showError("Échec de l'authentification")
+                    }
                 } else {
                     when (response.code()) {
                         401, 403 -> showError("Identifiants incorrects")

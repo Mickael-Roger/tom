@@ -21,4 +21,9 @@ TomAssistant/.cxx/
 TomAssistant/*.apk
 TomAssistant/*.aab
 
+# Android signing keys - SECURITY: Never commit these!
+TomAssistant/app/*.keystore
+TomAssistant/app/*.jks
+TomAssistant/app/key.properties
+
 CLAUDE.md

@@ -12,6 +12,11 @@ import android.view.ViewGroup
 import android.widget.Toast
 import android.animation.ObjectAnimator
 import android.view.animation.LinearInterpolator
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.KeyEvent
+import android.util.Log
+import kotlin.math.abs
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -35,7 +40,6 @@ import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import java.io.IOException
 import java.util.regex.Pattern
-import android.util.Log
 
 class MainActivity : AppCompatActivity() {
 
@@ -85,6 +89,9 @@ class MainActivity : AppCompatActivity() {
         setupHeadsetButtons()
         setupLocation()
         setupPermissions()
+        
+        // Démarrer le service média pour maintenir la MediaSession active
+        startService(Intent(this, MediaService::class.java))
         
         // Charger les paramètres
         loadSettings()
@@ -144,9 +151,17 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Reset button
-        binding.btnReset.setOnClickListener {
-            resetConversation()
+        // Reset button - different behavior for debug/release
+        if (BuildConfig.DEBUG) {
+            // Debug: visible button
+            binding.btnReset.visibility = View.VISIBLE
+            binding.btnReset.setOnClickListener {
+                resetConversation()
+            }
+        } else {
+            // Release: hidden button, slide gesture instead
+            binding.btnReset.visibility = View.GONE
+            setupResetSlideGesture()
         }
 
         // Settings button (header)
@@ -186,6 +201,35 @@ class MainActivity : AppCompatActivity() {
         // Overlay background - fermer les panneaux en cliquant dessus
         binding.overlayBackground.setOnClickListener {
             closeAllPanels()
+        }
+    }
+
+    private fun setupResetSlideGesture() {
+        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                velocityX: Float,
+                velocityY: Float
+            ): Boolean {
+                if (e1 != null) {
+                    val diffY = e2.y - e1.y
+                    val diffX = e2.x - e1.x
+                    
+                    // Slide from bottom to top
+                    if (abs(diffY) > abs(diffX) && diffY < -100 && abs(velocityY) > 100) {
+                        resetConversation()
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+        
+        // Apply gesture to the main chat area
+        binding.rvChat.setOnTouchListener { _, event ->
+            gestureDetector.onTouchEvent(event)
+            false // Allow normal scroll behavior
         }
     }
 
@@ -593,39 +637,47 @@ class MainActivity : AppCompatActivity() {
             // Reset position
             ticker.translationX = 0f
             
-            // Measure the actual text content width
+            // Measure the actual text content width including padding
             val paint = ticker.paint
-            val actualTextWidth = paint.measureText(ticker.text.toString())
+            val textContent = ticker.text.toString()
+            val actualTextWidth = paint.measureText(textContent)
+            val paddingWidth = ticker.paddingStart + ticker.paddingEnd
+            val totalTextWidth = actualTextWidth + paddingWidth
             val containerWidth = container?.width ?: 0
             
-            Log.d("TomTicker", "Actual text width: $actualTextWidth, Container width: $containerWidth")
+            Log.d("TomTicker", "Text: '$textContent'")
+            Log.d("TomTicker", "Actual text width: $actualTextWidth, Padding: $paddingWidth, Total: $totalTextWidth")
+            Log.d("TomTicker", "Container width: $containerWidth")
             
-            // Force the TextView to use its actual text width
-            val widthSpec = View.MeasureSpec.makeMeasureSpec(actualTextWidth.toInt(), View.MeasureSpec.EXACTLY)
-            val heightSpec = View.MeasureSpec.makeMeasureSpec(ticker.height, View.MeasureSpec.EXACTLY)
-            ticker.measure(widthSpec, heightSpec)
-            ticker.layout(0, 0, actualTextWidth.toInt(), ticker.height)
-            
-            Log.d("TomTicker", "TextView resized to: ${ticker.width} x ${ticker.height}")
-            
-            if (actualTextWidth > containerWidth && containerWidth > 0) {
-                // Start scrolling animation from right to left
+            if (totalTextWidth > containerWidth && containerWidth > 0) {
+                // Force the TextView to use its actual text width
+                val newWidth = totalTextWidth.toInt()
+                val widthSpec = View.MeasureSpec.makeMeasureSpec(newWidth, View.MeasureSpec.EXACTLY)
+                val heightSpec = View.MeasureSpec.makeMeasureSpec(ticker.height, View.MeasureSpec.EXACTLY)
+                ticker.measure(widthSpec, heightSpec)
+                ticker.layout(0, 0, newWidth, ticker.height)
+                
+                Log.d("TomTicker", "TextView resized to: ${ticker.width} x ${ticker.height}")
+                
+                // Start scrolling animation from right edge of container to left edge
                 val startX = containerWidth.toFloat()
-                val endX = -actualTextWidth
+                val endX = -newWidth.toFloat()
                 val distance = startX - endX
                 
                 Log.d("TomTicker", "Starting animation: startX=$startX, endX=$endX, distance=$distance")
                 
                 tickerAnimator = ObjectAnimator.ofFloat(ticker, "translationX", startX, endX).apply {
-                    duration = (distance * 8).toLong() // 8ms per pixel
+                    duration = (distance * 10).toLong() // 10ms per pixel for smoother animation
                     interpolator = LinearInterpolator()
                     repeatCount = ObjectAnimator.INFINITE
                     repeatMode = ObjectAnimator.RESTART
                     start()
                 }
-                Log.d("TomTicker", "Animation started with duration: ${(distance * 8).toLong()}ms")
+                Log.d("TomTicker", "Animation started with duration: ${(distance * 10).toLong()}ms")
             } else {
-                Log.d("TomTicker", "Animation not started - actualTextWidth: $actualTextWidth, containerWidth: $containerWidth")
+                // Text fits in container, center it
+                ticker.translationX = 0f
+                Log.d("TomTicker", "Text fits in container, no animation needed")
             }
         }
     }
@@ -663,6 +715,39 @@ class MainActivity : AppCompatActivity() {
     private fun logout() {
         sessionManager.logout()
         navigateToLogin()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        val keyName = when (keyCode) {
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> "MEDIA_PLAY_PAUSE"
+            KeyEvent.KEYCODE_HEADSETHOOK -> "HEADSETHOOK" 
+            KeyEvent.KEYCODE_MEDIA_PLAY -> "MEDIA_PLAY"
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> "MEDIA_PAUSE"
+            KeyEvent.KEYCODE_MEDIA_NEXT -> "MEDIA_NEXT"
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> "MEDIA_PREVIOUS"
+            KeyEvent.KEYCODE_VOLUME_UP -> "VOLUME_UP"
+            KeyEvent.KEYCODE_VOLUME_DOWN -> "VOLUME_DOWN"
+            else -> "OTHER($keyCode)"
+        }
+        
+        Toast.makeText(this, "KeyDown: $keyName détecté!", Toast.LENGTH_LONG).show()
+        
+        // Log de debug pour voir TOUS les événements clavier
+        Log.d("MainActivity", "onKeyDown: keyCode=$keyCode, keyName=$keyName, event=$event")
+        
+        // Si c'est un bouton média, déclencher l'enregistrement vocal
+        when (keyCode) {
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_HEADSETHOOK,
+            KeyEvent.KEYCODE_MEDIA_PLAY,
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                Toast.makeText(this, "Bouton casque → Enregistrement vocal!", Toast.LENGTH_LONG).show()
+                toggleVoiceInputFromHeadset()
+                return true
+            }
+        }
+        
+        return super.onKeyDown(keyCode, event)
     }
 
     private fun navigateToLogin() {
