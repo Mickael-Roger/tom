@@ -227,6 +227,20 @@ class TomLLM():
           },
         },
       },
+      {
+        "type": "function",
+        "function": {
+          "name": "reset_conversation",
+          "description": "Reset the conversation history when the user greets you with expressions like 'Hello', 'Hi', 'Salut', 'Hi Tom', 'Salut Tom', or similar greetings that indicate a fresh start to the conversation",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False,
+          },
+        },
+      },
     ]
 
     triage_conversation = copy.deepcopy(conversation) 
@@ -235,6 +249,8 @@ class TomLLM():
     prompt = f'''As an AI assistant, you have access to a wide range of functions, far more than your API allows. These functions are grouped into modules. A module is a logical grouping of functions for a specific theme.
 
     For each new user request, you have access to the conversation history.
+
+    IMPORTANT: If the user greets you with expressions like "Hello", "Hi", "Salut", "Hi Tom", "Salut Tom", or similar greetings that indicate a fresh start to the conversation, you MUST call the 'reset_conversation' function first before processing any other request. This will clear the conversation history and provide a clean slate for the new conversation.
 
     If you need a function that is not in your list of tools to respond to the user's request, you should call the 'modules_needed_to_answer_user_prompt' function with the necessary modules. You can call the 'modules_needed_to_answer_user_prompt' function as many times as needed.
 
@@ -257,15 +273,25 @@ class TomLLM():
     response = self.callLLM(messages=triage_conversation, tools=tools, complexity=complexity, llm=llm)
     
     load_modules = []
+    reset_requested = False
+    
     if response != False and response.choices[0].finish_reason == "tool_calls":
       for tool_call in response.choices[0].message.tool_calls:
-        if tool_call.function.name.find("modules_needed_to_answer_user_prompt") != -1:
+        if tool_call.function.name == "reset_conversation":
+          reset_requested = True
+          tomlogger.info(f"Reset conversation requested via greeting detection", self.username)
+        elif tool_call.function.name.find("modules_needed_to_answer_user_prompt") != -1:
           mod = json.loads(tool_call.function.arguments)
           mod_name = mod['modules_name']
           load_modules.append(mod_name)
-        if tool_call.function.name in modules_name_list:
+        elif tool_call.function.name in modules_name_list:
           mod_name = tool_call.function.name
           load_modules.append(mod_name)
+    
+    # Handle reset request
+    if reset_requested:
+      self.reset()
+      return ["reset_performed"]  # Special indicator for reset
     
     return load_modules
 
@@ -348,9 +374,17 @@ class TomLLM():
     required_modules = self.triageModules(conversation, available_tools, modules_name_list, client_type)
     
     if required_modules:
-      tomlogger.debug(f"Load modules: {str(required_modules)}", self.username)
-      # Phase 2: Execute request with identified modules
-      return self.executeRequest(conversation, required_modules, client_type)
+      # Check if reset was performed
+      if required_modules == ["reset_performed"]:
+        tomlogger.debug(f"Reset performed, generating greeting response", self.username)
+        # Generate a simple greeting response after reset
+        greeting_response = "Salut ! Comment puis-je t'aider ?" if lang == "fr" else "Hello! How can I help you?"
+        self.history.append({"role": "assistant", "content": greeting_response})
+        return greeting_response
+      else:
+        tomlogger.debug(f"Load modules: {str(required_modules)}", self.username)
+        # Phase 2: Execute request with identified modules
+        return self.executeRequest(conversation, required_modules, client_type)
     else:
       # If no modules identified, try to answer directly
       response_context = self.set_response_context(client_type)
