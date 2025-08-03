@@ -17,16 +17,25 @@ import tomlogger
 tom_config = {
   "module_name": "memory",
   "class_name": "TomMemory",
-  "description": """This module is used to manage everything related to your memory. It stores information that the user asks you to remember, such as personal details, preferences, or situational information.
+  "description": """This module manages personal memory storage for important user information. It automatically stores personal details, preferences, and situational information shared by the user.
 
-     Examples of information to remember:
-     - Personal facts: "My PIN code is 1234," "X's date of birth is [date]," "Mr. X is 45 years old"
+     AUTOMATIC STORAGE (no confirmation needed):
+     - Personal facts: "My PIN code is 1234," "Today I went to the doctor," "I live at 123 Main Street"
+     - Life events: "Today I had a job interview," "I bought a new car," "I moved to a new apartment"
      - Situational details: "I left my keys on the table," "I parked in spot B12," "The Wi-Fi password is abc123"
      - Preferences: "I prefer coffee without sugar," "I usually take the 8:15 train"
+     - Daily activities: "Today I went shopping," "I had lunch with Sarah," "I finished my project"
 
-     If the user asks to remember where something is parked or located, save GPS coordinates along with additional context like parking spot number, street name, or nearby landmarks.
+     DO NOT STORE:
+     - Requests for other modules (Nintendo Switch control, calendar management, weather queries, etc.)
+     - Technical questions or troubleshooting
+     - General conversations without personal information
+     - Commands or requests for actions
 
-     This module must absolutely be used when the user explicitly asks you to search in your memory.
+     LOCATION STORAGE:
+     When storing location information, save GPS coordinates with descriptive details like parking spot number, street name, or nearby landmarks.
+
+     This module must be used when the user explicitly asks you to search in your memory or shares personal information.
     """,
   "type": "core",
   "complexity": 0
@@ -89,7 +98,7 @@ class TomMemory:
         "type": "function",
         "function": {
           "name": "store_information",
-          "description": "A function to store user-provided information. The purpose of this function is to retain facts, data, or context provided by the user for future reference. This serves as a knowledge repository. For example: 'Remember that my PIN code is 1234.' or 'Remember I parked in spot B12.' or 'Remember I prefer coffee without sugar.'",
+          "description": "Store personal information, life events, or important details shared by the user. Use this automatically when the user shares personal facts, daily activities, or situational information. DO NOT use for module requests (Nintendo Switch, calendar, weather, etc.) or technical questions. Examples: 'My PIN is 1234', 'Today I went to the doctor', 'I parked in spot B12', 'I prefer coffee without sugar'.",
           "strict": True,
           "parameters": {
             "type": "object",
@@ -106,36 +115,45 @@ class TomMemory:
       },
     ]
 
-    self.systemContext = """You have access to a personal memory system where you can store and retrieve information that the user asks you to remember.
+    self.systemContext = """You have access to a personal memory system for storing and retrieving important user information.
 
-     AUTOMATIC MEMORY STORAGE:
-     - When a user provides factual information out of the blue (like "My PIN is 1234", "I live at 123 Main Street", "My favorite color is blue"), automatically store it using store_information and simply respond "OK" or acknowledge briefly.
-     - DO NOT ask "Do you want me to remember this?" or similar confirmation questions.
-     - The user providing the information implies they want it stored.
+     AUTOMATIC MEMORY STORAGE (NO CONFIRMATION REQUIRED):
+     - When a user shares personal information or daily activities ("Today I went to the doctor", "My PIN is 1234", "I had lunch with Sarah"), automatically store it using store_information.
+     - Simply acknowledge with "OK" or respond briefly. NEVER ask "Do you want me to remember this?"
+     - The user sharing information implies they want it stored for future reference.
 
-     INFORMATION TO STORE:
-     - Personal facts: PIN codes, addresses, phone numbers, dates of birth, ages
+     INFORMATION TO AUTOMATICALLY STORE:
+     - Personal facts: PIN codes, addresses, phone numbers, dates of birth, ages, names
+     - Daily activities: "Today I went shopping", "I had a meeting", "I visited my mother"
+     - Life events: "I got a new job", "I moved apartments", "I bought a car"
      - Situational details: where objects are located, parking spots with GPS coordinates
      - Preferences: food preferences, habits, usual schedules
-     - Important factual information the user shares
+     - Important personal information shared in conversation
 
-     INFORMATION NOT TO STORE (already managed by other modules):
-     - Shopping list items (managed by shopping/todo modules)
-     - Calendar events (managed by calendar module)
-     - Reminders with specific dates/times (managed by reminder module)
-     - Weather queries or temporary information
+     INFORMATION NOT TO STORE:
+     - Requests for other modules: Nintendo Switch control, calendar management, weather queries, etc.
+     - Technical questions or troubleshooting help
+     - Commands or action requests ("Extend my Switch time", "Add to calendar", etc.)
+     - General conversations without personal facts
+     - Temporary information or casual chat
+
+     DETECTING PERSONAL INFORMATION:
+     Store information when the user:
+     - States facts about themselves ("I am 25 years old", "My address is...")
+     - Describes what they did ("Today I...", "Yesterday I...", "I went to...")
+     - Shares preferences or habits ("I prefer...", "I usually...")
+     - Mentions important details ("My password is...", "I left my keys...")
 
      GPS COORDINATES:
-     When storing location information (like where they parked), save GPS coordinates along with descriptive details like parking spot number, street name, or nearby landmarks.
-     GPS position must be stored in json format: `{"latitude": LATITUDE_VALUE, "longitude": LONGITUDE_VALUE}`
-
-     Never directly provide GPS coordinates in your response. However, indicate that you have them if applicable and offer to guide the user.
-     If the user explicitly requests GPS coordinates or guidance to retrieve an object, such as their car, the response should follow this format: `[open: https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=LATITUDE,LONGITUDE&travelmode=walking]`. This tag is interpreted by the frontend application to guide the user.
+     When storing location information, save GPS coordinates with descriptive details.
+     Format: `{"latitude": LATITUDE_VALUE, "longitude": LONGITUDE_VALUE}`
+     
+     For guidance requests, use: `[open: https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=LATITUDE,LONGITUDE&travelmode=walking]`
 
      FUNCTION USAGE:
-     - Use store_information automatically when user provides factual information
-     - Use list_stored_information function when the user asks what you remember or searches for specific information
-     - Use delete_stored_information function when the user asks you to forget something specific
+     - Use store_information automatically for personal information (no confirmation)
+     - Use list_stored_information when user asks what you remember
+     - Use delete_stored_information when user asks to forget something
     """
 
     self.complexity = tom_config.get("complexity", 0)
@@ -329,31 +347,35 @@ class TomMemory:
       conversation_text += f"{role_label}: {msg['content']}\n\n"
 
     # LLM prompt for memory analysis with function calling
-    context = f"""Tu es un assistant qui analyse les conversations pour identifier les informations importantes à retenir en mémoire.
+    context = f"""Tu es un assistant qui analyse les conversations pour identifier les informations personnelles importantes à retenir en mémoire.
 
-    Analyse la conversation suivante et identifie uniquement les informations qui devraient être retenues pour de futures interactions. Ne garde que ce qui est vraiment pertinent et utile.
+    Analyse la conversation suivante et identifie UNIQUEMENT les informations personnelles partagées par l'utilisateur. Focus sur ce que l'utilisateur dit sur lui-même, ses activités, ou sa vie.
 
-    IMPORTANT: Voici le contenu actuel de la mémoire. Ne stocke PAS d'informations qui sont déjà présentes dans cette mémoire :
+    IMPORTANT: Voici le contenu actuel de la mémoire. Ne stocke PAS d'informations qui sont déjà présentes :
 
     === CONTENU ACTUEL DE LA MÉMOIRE ===
     {memory_content}
     === FIN DU CONTENU DE LA MÉMOIRE ===
 
-    Types d'informations à retenir :
-    - Informations personnelles importantes (codes, dates, préférences durables)
-    - Détails situationnels utiles (localisation d'objets, informations de parking avec coordonnées GPS)
-    - Préférences utilisateur (habitudes, goûts, configurations)
-    - Informations factuelles importantes demandées explicitement
+    INFORMATIONS À RETENIR (seulement si nouvelles) :
+    - Faits personnels : "Mon code PIN est 1234", "J'habite à Paris", "J'ai 30 ans"
+    - Activités quotidiennes : "Aujourd'hui j'ai été chez le médecin", "J'ai déjeuné avec Sarah"
+    - Événements de vie : "J'ai eu un entretien", "J'ai acheté une nouvelle voiture"
+    - Préférences durables : "Je préfère le café sans sucre", "Je prends le train de 8h15"
+    - Informations situationnelles : "J'ai garé ma voiture en B12", "Mes clés sont sur la table"
 
-    Types d'informations à NE PAS retenir :
-    - Conversations générales sans information factuelle
-    - Questions ponctuelles sans suite
-    - Informations temporaires ou éphémères
-    - Discussions techniques sans impact personnel
-    - Informations déjà présentes dans la mémoire (voir ci-dessus)
+    INFORMATIONS À NE JAMAIS RETENIR :
+    - Demandes de gestion de modules (Nintendo Switch, calendrier, météo, transport, etc.)
+    - Questions techniques ou dépannage
+    - Commandes d'action ("Étends mon temps de jeu", "Ajoute au calendrier")
+    - Conversations générales sans information personnelle
+    - Requêtes de fonctionnalités ("Peux-tu faire...", "Comment...")
+    - Discussions sur le système ou les modules
 
-    Si tu identifies des informations pertinentes ET qu'elles ne sont pas déjà dans la mémoire, utilise la fonction store_session_insight pour chaque information importante à retenir.
-    Si aucune information pertinente n'est identifiée ou si toutes les informations sont déjà en mémoire, ne fais aucun appel de fonction.
+    RÈGLE IMPORTANTE : Si l'utilisateur demande quelque chose concernant un autre module (Nintendo Switch, calendrier, météo, transport, etc.), ou pose une question technique, NE STOCKE RIEN.
+
+    Si tu identifies des informations personnelles pertinentes ET qu'elles ne sont pas déjà dans la mémoire, utilise la fonction store_session_insight pour chaque information importante.
+    Si aucune information personnelle n'est identifiée ou si tout est déjà en mémoire, ne fais aucun appel de fonction.
 
     Conversation à analyser :
     """

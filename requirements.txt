@@ -20,7 +20,7 @@ paramiko
 watchdog
 deebot-client
 aiohttp #==3.10.0
-
+pynintendoparental
 
 # For unittest
 pytest

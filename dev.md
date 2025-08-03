@@ -519,24 +519,63 @@ Each module should have a corresponding test file following the naming conventio
 When creating unit tests for modules, follow these guidelines:
 
 1. **Mock external dependencies**: Use `unittest.mock` to mock API calls, database connections, and file operations
-2. **Mock the logger**: Since modules use the centralized logging system, mock the logger to avoid initialization issues:
+
+2. **CRITICAL: Handle Import Dependencies**: Modules import `tomlogger` and other dependencies that may not be available during testing. Always mock these BEFORE importing your module:
+
    ```python
-   from unittest.mock import patch
+   import unittest
+   from unittest.mock import patch, MagicMock
+   import sys
+   import os
    
-   # Mock logger during import
-   with patch('tomweather.logger') as mock_logger:
-       from tomweather import TomWeather
+   # Add paths for module imports
+   sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'modules'))
+   sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
    
-   # Or use decorator for specific tests
-   @patch('tomweather.logger')
-   def test_function(self, mock_logger):
-       # test code here
+   # Mock ALL dependencies BEFORE importing the module
+   mock_logger = MagicMock()
+   mock_logger.info = MagicMock()
+   mock_logger.warning = MagicMock()
+   mock_logger.error = MagicMock()
+   mock_logger.debug = MagicMock()
+   
+   # Mock external libraries if needed
+   mock_external_lib = MagicMock()
+   
+   # Set up mocks in sys.modules BEFORE import
+   sys.modules['tomlogger'] = MagicMock(logger=mock_logger)
+   sys.modules['external_library'] = mock_external_lib
+   sys.modules['external_library.submodule'] = MagicMock()
+   
+   # NOW import the module
+   from your_module_name import YourModuleClass, tom_config
    ```
 
-3. **Test all public methods**: Include tests for all functions exposed in `self.functions`
-4. **Use temporary files for databases**: Use `tempfile` for SQLite databases in tests
-5. **Test error conditions**: Include tests for API failures, invalid inputs, and edge cases
-6. **Verify tool structure**: Test that `self.tools` and `self.functions` are properly structured
+3. **Example for Nintendo Switch Module**:
+   ```python
+   # Mock pynintendoparental dependencies
+   mock_authenticator = MagicMock()
+   mock_nintendo_parental = MagicMock()
+   mock_invalid_session_token_exception = Exception
+   
+   # Mock all modules that might be imported
+   sys.modules['tomlogger'] = MagicMock(logger=mock_logger)
+   sys.modules['pynintendoparental'] = MagicMock(
+       Authenticator=mock_authenticator,
+       NintendoParental=mock_nintendo_parental
+   )
+   sys.modules['pynintendoparental.exceptions'] = MagicMock(
+       InvalidSessionTokenException=mock_invalid_session_token_exception
+   )
+   
+   # Now import safely
+   from tomswitchparentalcontrol import TomSwitchParentalControl, tom_config
+   ```
+
+4. **Test all public methods**: Include tests for all functions exposed in `self.functions`
+5. **Use temporary files for databases**: Use `tempfile` for SQLite databases in tests
+6. **Test error conditions**: Include tests for API failures, invalid inputs, and edge cases
+7. **Verify tool structure**: Test that `self.tools` and `self.functions` are properly structured
 
 ### Example Test Structure
 
@@ -547,18 +586,35 @@ import sys
 import os
 import tempfile
 
+# Add paths for module imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'modules'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
 
-# Mock logger before import
-with patch('tomweather.logger') as mock_logger:
-    from tomweather import TomWeather
+# Mock ALL dependencies BEFORE importing
+mock_logger = MagicMock()
+mock_logger.info = MagicMock()
+mock_logger.warning = MagicMock()
+mock_logger.error = MagicMock()
+mock_logger.debug = MagicMock()
+
+# Set up mocks in sys.modules BEFORE import
+sys.modules['tomlogger'] = MagicMock(logger=mock_logger)
+
+# Mock external libraries if the module uses them
+# sys.modules['requests'] = MagicMock()  # Example for modules using requests
+
+# NOW import the module
+from tomweather import TomWeather, tom_config
 
 class TestTomWeather(unittest.TestCase):
     
     def setUp(self):
         self.config = {'api_key': 'test_key'}
         self.llm = MagicMock()
-        self.weather = TomWeather(self.config, self.llm)
+        # Mock filesystem operations if needed
+        with patch('os.makedirs'), \
+             patch('os.path.exists', return_value=False):
+            self.weather = TomWeather(self.config, self.llm)
     
     @patch('tomweather.requests.get')
     def test_api_call_success(self, mock_get):
@@ -578,6 +634,12 @@ class TestTomWeather(unittest.TestCase):
         for tool in self.weather.tools:
             self.assertIn('type', tool)
             self.assertEqual(tool['type'], 'function')
+    
+    def test_tom_config_structure(self):
+        # Test that tom_config is properly structured
+        self.assertEqual(tom_config['module_name'], 'weather')
+        self.assertEqual(tom_config['class_name'], 'TomWeather')
+        self.assertIn('description', tom_config)
 ```
 
 ### Running Tests
@@ -864,7 +926,37 @@ The following packages are available for testing:
 3. **Mock external services**: Never make real API calls or database connections in tests
 4. **Test both positive and negative cases**: Include tests for expected failures
 5. **Use setUp and tearDown**: Clean up resources (like temporary files) after tests
-6. **Mock the logger**: Always mock the logger to avoid dependency issues
+6. **ALWAYS mock dependencies first**: Mock `tomlogger` and external libraries BEFORE importing your module
 7. **Test tool definitions**: Verify that `self.tools` and `self.functions` are properly structured
+
+### Common Import Issues and Solutions
+
+**Problem**: `ModuleNotFoundError: No module named 'tomlogger'`
+**Solution**: Mock the logger before importing:
+```python
+sys.modules['tomlogger'] = MagicMock(logger=mock_logger)
+from your_module import YourClass
+```
+
+**Problem**: `ModuleNotFoundError: No module named 'external_library'`
+**Solution**: Mock external dependencies:
+```python
+sys.modules['external_library'] = MagicMock()
+sys.modules['external_library.submodule'] = MagicMock()
+```
+
+**Problem**: Import errors during test collection
+**Solution**: Ensure all mocking is done at module level, not inside test methods
+
+### Testing Checklist
+
+Before running tests, ensure:
+- [ ] All imports are mocked in `sys.modules` before module import
+- [ ] `tomlogger` is mocked with all needed methods (info, warning, error, debug)
+- [ ] External libraries are mocked if used by the module
+- [ ] File system operations are mocked if needed
+- [ ] Test covers both success and failure cases
+- [ ] `tom_config` structure is validated
+- [ ] All tools and functions are tested
 
 By following these testing guidelines, you can ensure that your modules are robust, reliable, and maintainable.
