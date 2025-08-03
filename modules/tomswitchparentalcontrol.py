@@ -22,7 +22,7 @@ except ImportError:
 tom_config = {
     "module_name": "switchparentalcontrol",
     "class_name": "TomSwitchParentalControl",
-    "description": "Module to manage Nintendo Switch parental control: check daily usage time, extend or reduce play time",
+    "description": "Module to manage Nintendo Switch parental control: check daily usage time and add extra playing time",
     "type": "global",
     "complexity": 1,
     "configuration_parameters": {
@@ -80,43 +80,18 @@ class TomSwitchParentalControl:
                 "type": "function", 
                 "function": {
                     "name": "extend_switch_playtime",
-                    "description": "Extend the daily play time limit for a Nintendo Switch device by a specified number of minutes.",
+                    "description": "Add extra playing time to a Nintendo Switch device for today. This does NOT modify the daily limit but adds bonus time on top of it.",
                     "strict": True,
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "device_id": {
                                 "type": "string",
-                                "description": "Device ID to extend play time for"
+                                "description": "Device ID to add extra time for"
                             },
                             "minutes": {
                                 "type": "integer",
-                                "description": "Number of minutes to extend the play time (positive number)",
-                                "minimum": 1,
-                                "maximum": 480
-                            }
-                        },
-                        "required": ["device_id", "minutes"],
-                        "additionalProperties": False
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "reduce_switch_playtime", 
-                    "description": "Reduce the daily play time limit for a Nintendo Switch device by a specified number of minutes.",
-                    "strict": True,
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "device_id": {
-                                "type": "string", 
-                                "description": "Device ID to reduce play time for"
-                            },
-                            "minutes": {
-                                "type": "integer",
-                                "description": "Number of minutes to reduce the play time (positive number)",
+                                "description": "Number of minutes to add as extra playing time (positive number)",
                                 "minimum": 1,
                                 "maximum": 480
                             }
@@ -144,16 +119,13 @@ class TomSwitchParentalControl:
         self.complexity = tom_config.get("complexity", 1)
         self.functions = {
             "get_switch_daily_usage": {
-                "function": functools.partial(self._async_wrapper, self.get_daily_usage)
+                "function": functools.partial(self._debug_wrapper, "get_switch_daily_usage", self.get_daily_usage)
             },
             "extend_switch_playtime": {
-                "function": functools.partial(self._async_wrapper, self.extend_playtime)
-            },
-            "reduce_switch_playtime": {
-                "function": functools.partial(self._async_wrapper, self.reduce_playtime)
+                "function": functools.partial(self._debug_wrapper, "extend_switch_playtime", self.extend_playtime)
             },
             "list_switch_devices": {
-                "function": functools.partial(self._async_wrapper, self.list_devices)
+                "function": functools.partial(self._debug_wrapper, "list_switch_devices", self.list_devices)
             }
         }
 
@@ -195,138 +167,365 @@ class TomSwitchParentalControl:
 
 You can:
 - Check daily usage time for Switch devices
-- Extend or reduce daily play time limits
+- Add extra playing time for today (bonus time on top of daily limit)
 - List all registered devices
 
-IMPORTANT: When interpreting daily time limits:
-- If daily_limit_minutes is 0: This means NO play time allowed (blocked/restricted), not unlimited
-- If daily_limit_minutes is null/None: This means unlimited play time
-- If daily_limit_minutes is a positive number: This is the maximum minutes allowed per day
+IMPORTANT: When interpreting time limits:
+- daily_limit_minutes: The base daily limit (0 = blocked, null = unlimited, positive number = limit in minutes)
+- extra_time_minutes: Additional time granted for today only (0 = no extra time, positive number = extra minutes, "unlimited" = infinite extra time)
+- total_time_available_minutes: Total time available today (daily_limit + extra_time)
+- remaining_time_minutes: Time left to play today based on total_time_available - today_playing_time
+
+Note about extending play time:
+- extend_switch_playtime: Adds extra time for today only without changing the daily limit (using async_update_extra_playing_time API)
 
 Use the appropriate functions to help users manage their Nintendo Switch parental controls."""
 
+    def _debug_wrapper(self, function_name, async_func, *args, **kwargs):
+        """Debug wrapper that logs function calls and results"""
+        logger.info(f"[DEBUG] {function_name} called with args={args}, kwargs={kwargs}")
+        
+        try:
+            result = self._async_wrapper(async_func, *args, **kwargs)
+            if 'error' in str(result):
+                logger.error(f"[DEBUG] {function_name} returned error: {result}")
+            else:
+                logger.info(f"[DEBUG] {function_name} completed successfully")
+            return result
+        except Exception as e:
+            logger.error(f"[DEBUG] {function_name} failed: {type(e).__name__}: {e}")
+            raise
+
     def _async_wrapper(self, async_func, *args, **kwargs):
-        """Wrapper to run async functions in sync context"""
+        """Wrapper to run async functions in sync context with proper aiohttp session management"""
+        logger.info(f"[DEBUG] _async_wrapper called for function {async_func.__name__}")
+        
         try:
             loop = asyncio.get_event_loop()
+            logger.info(f"[DEBUG] Got event loop: {loop}, is_running: {loop.is_running()}")
+            
             if loop.is_running():
-                # Si une boucle est déjà en cours, créer une nouvelle tâche
+                logger.info("[DEBUG] Event loop is running, using ThreadPoolExecutor with new loop")
+                # Si une boucle est déjà en cours, utiliser un nouveau thread avec une nouvelle boucle
                 import concurrent.futures
+                import threading
+                
+                def run_in_new_loop():
+                    logger.info("[DEBUG] Creating new event loop in thread")
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        logger.info(f"[DEBUG] Running {async_func.__name__} in new loop")
+                        
+                        # Wrapper qui exécute la fonction async
+                        async def safe_async_func(*args, **kwargs):
+                            try:
+                                result = await async_func(*args, **kwargs)
+                                # Attendre un peu pour que les connexions HTTP se stabilisent
+                                await asyncio.sleep(0.1)
+                                return result
+                            except Exception as e:
+                                logger.error(f"[DEBUG] Exception in safe_async_func: {e}")
+                                raise
+                        
+                        result = new_loop.run_until_complete(safe_async_func(*args, **kwargs))
+                        logger.info(f"[DEBUG] Function {async_func.__name__} completed in new loop")
+                        return result
+                    except Exception as e:
+                        logger.error(f"[DEBUG] Exception in new loop for {async_func.__name__}: {e}")
+                        raise
+                    finally:
+                        # Nettoyer les tâches restantes avant de fermer la loop
+                        logger.info("[DEBUG] Cleaning up tasks before closing loop")
+                        pending_tasks = asyncio.all_tasks(new_loop)
+                        if pending_tasks:
+                            logger.info(f"[DEBUG] Found {len(pending_tasks)} pending tasks, cancelling them")
+                            for task in pending_tasks:
+                                task.cancel()
+                            # Attendre que les tâches soient annulées
+                            new_loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
+                        
+                        logger.info("[DEBUG] Closing new event loop")
+                        new_loop.close()
+                
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(asyncio.run, async_func(*args, **kwargs))
+                    future = executor.submit(run_in_new_loop)
                     return future.result()
             else:
+                logger.info("[DEBUG] Event loop not running, using run_until_complete")
                 return loop.run_until_complete(async_func(*args, **kwargs))
-        except RuntimeError:
-            # Pas de boucle existante, créer une nouvelle
-            return asyncio.run(async_func(*args, **kwargs))
+        except RuntimeError as e:
+            logger.info(f"[DEBUG] RuntimeError getting event loop: {e}, creating new with asyncio.run")
+            # Pas de boucle existante, créer une nouvelle avec gestion propre des sessions
+            
+            async def safe_run(*args, **kwargs):
+                try:
+                    result = await async_func(*args, **kwargs)
+                    # Attendre un peu pour que les connexions HTTP se stabilisent
+                    await asyncio.sleep(0.1)
+                    return result
+                except Exception as e:
+                    logger.error(f"[DEBUG] Exception in safe_run: {e}")
+                    raise
+            
+            return asyncio.run(safe_run(*args, **kwargs))
 
     async def _ensure_authenticated(self):
-        """Ensure we have valid authentication and device list"""
-        if self.auth is None or self.control is None:
-            try:
-                logger.info("Authenticating with Nintendo...")
-                self.auth = await Authenticator.complete_login(
-                    auth=None,
-                    response_token=self.session_token,
-                    is_session_token=True
-                )
+        """Ensure we have valid authentication and device list - Always create fresh session"""
+        logger.info("[DEBUG] _ensure_authenticated called - Creating fresh authentication")
+        
+        try:
+            # Toujours nettoyer l'ancienne auth pour éviter les problèmes d'event loop
+            if self.auth and hasattr(self.auth, 'client_session'):
+                if self.auth.client_session and not self.auth.client_session.closed:
+                    logger.info("[DEBUG] Closing old client session")
+                    try:
+                        await self.auth.client_session.close()
+                    except Exception as e:
+                        logger.warning(f"[DEBUG] Error closing old session: {e}")
+            
+            # Toujours créer une nouvelle authentification pour éviter les problèmes d'event loop
+            logger.info("[DEBUG] Creating fresh authentication...")
+            self.auth = await Authenticator.complete_login(
+                auth=None,
+                response_token=self.session_token,
+                is_session_token=True
+            )
+            logger.info("[DEBUG] Authenticator.complete_login completed")
+            
+            self.control = await NintendoParental.create(self.auth)
+            logger.info("[DEBUG] NintendoParental.create completed")
+            
+            if self.control.devices:
+                logger.info(f"[DEBUG] Found {len(self.control.devices)} devices, updating cache")
+                # Mettre à jour le cache avec les appareils
+                for device_id, device in self.control.devices.items():
+                    self.cache['devices'][device_id] = {
+                        'name': device.name,
+                        'device_id': device.device_id
+                    }
+                self.cache['last_update'] = datetime.now().isoformat()
+                self._save_cache()
+                logger.info(f"Found {len(self.control.devices)} Nintendo Switch devices")
+            else:
+                logger.warning("No Nintendo Switch devices found")
                 
-                self.control = await NintendoParental.create(self.auth)
-                
-                if self.control.devices:
-                    # Mettre à jour le cache avec les appareils
-                    for device_id, device in self.control.devices.items():
-                        self.cache['devices'][device_id] = {
-                            'name': device.name,
-                            'device_id': device.device_id
-                        }
-                    self.cache['last_update'] = datetime.now().isoformat()
-                    self._save_cache()
-                    logger.info(f"Found {len(self.control.devices)} Nintendo Switch devices")
-                else:
-                    logger.warning("No Nintendo Switch devices found")
-                    
-            except InvalidSessionTokenException:
-                logger.error("Invalid Nintendo session token")
-                raise ValueError("Invalid Nintendo session token. Please update the token in configuration.")
-            except Exception as e:
-                error_msg = str(e).lower()
-                if "event loop is closed" in error_msg or "connection" in error_msg or "network" in error_msg:
-                    logger.warning(f"Nintendo Switch appears to be offline: {e}")
-                    raise ValueError("Nintendo Switch is not connected to the internet. Please connect the device and try again.")
-                else:
-                    logger.error(f"Failed to authenticate with Nintendo: {e}")
-                    raise
+        except InvalidSessionTokenException:
+            logger.error("Invalid Nintendo session token")
+            raise ValueError("Invalid Nintendo session token. Please update the token in configuration.")
+        except Exception as e:
+            logger.error(f"[DEBUG] Exception in _ensure_authenticated: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"[DEBUG] Full traceback in _ensure_authenticated: {traceback.format_exc()}")
+            
+            error_msg = str(e).lower()
+            if "event loop is closed" in error_msg or "connection" in error_msg or "network" in error_msg:
+                logger.warning(f"Nintendo Switch appears to be offline: {e}")
+                raise ValueError("Nintendo Switch is not connected to the internet. Please connect the device and try again.")
+            else:
+                logger.error(f"Failed to authenticate with Nintendo: {e}")
+                raise
 
     async def get_daily_usage(self, device_id=None):
         """Get daily usage time for Nintendo Switch devices"""
-        await self._ensure_authenticated()
+        logger.info(f"[DEBUG] Starting get_daily_usage with device_id={device_id}")
         
-        if not self.control.devices:
-            return {"error": "No Nintendo Switch devices found"}
-        
-        usage_data = []
-        
-        if device_id:
-            # Usage pour un appareil spécifique
-            device = self.control.devices.get(device_id)
-            if not device:
-                return {"error": f"Device with ID {device_id} not found"}
+        try:
+            logger.info("[DEBUG] Calling _ensure_authenticated()")
+            await self._ensure_authenticated()
+            logger.info("[DEBUG] Authentication completed successfully")
             
-            await device.update()
-            usage_data.append({
-                "device_id": device.device_id,
-                "device_name": device.name,
-                "today_playing_time_minutes": device.today_playing_time,
-                "daily_limit_minutes": device.limit_time,
-                "remaining_time_minutes": max(0, device.limit_time - device.today_playing_time) if device.limit_time is not None and device.limit_time > 0 else ("unlimited" if device.limit_time is None else "blocked")
-            })
-        else:
-            # Usage pour tous les appareils
-            for device in self.control.devices.values():
+            if not self.control.devices:
+                logger.warning("[DEBUG] No Nintendo Switch devices found after authentication")
+                return {"error": "No Nintendo Switch devices found"}
+            
+            logger.info(f"[DEBUG] Found {len(self.control.devices)} devices: {list(self.control.devices.keys())}")
+            
+            usage_data = []
+            
+            if device_id:
+                logger.info(f"[DEBUG] Getting usage for specific device: {device_id}")
+                # Usage pour un appareil spécifique
+                device = self.control.devices.get(device_id)
+                if not device:
+                    logger.error(f"[DEBUG] Device with ID {device_id} not found in devices: {list(self.control.devices.keys())}")
+                    return {"error": f"Device with ID {device_id} not found"}
+                
+                logger.info(f"[DEBUG] Found device: {device.name}, calling device.update()")
                 await device.update()
+                logger.info(f"[DEBUG] Device update completed for {device.name}")
+                
+                # Log complet des attributs de l'objet device
+                device_attrs = {}
+                for attr in dir(device):
+                    if not attr.startswith('_') and not callable(getattr(device, attr)):
+                        try:
+                            value = getattr(device, attr)
+                            device_attrs[attr] = value
+                        except Exception as e:
+                            device_attrs[attr] = f"Error getting attribute: {e}"
+                
+                logger.info(f"[DEBUG] Complete device object for {device.name}: {device_attrs}")
+                
+                # Calculer le temps total disponible aujourd'hui (limite + extra time)
+                daily_limit = device.limit_time if device.limit_time is not None else 0
+                extra_time = 0
+                total_time_available = daily_limit
+                
+                # Extraire le temps extra si disponible
+                if hasattr(device, 'extra') and device.extra and 'extraPlayingTime' in device.extra:
+                    extra_playing_time = device.extra.get('extraPlayingTime', {})
+                    in_one_day = extra_playing_time.get('inOneDay', {})
+                    if in_one_day.get('isInfinity', False):
+                        extra_time = "unlimited"
+                        total_time_available = "unlimited"
+                    else:
+                        extra_time = in_one_day.get('duration', 0)
+                        total_time_available = daily_limit + extra_time
+                
+                # Calculer le temps restant réel
+                playing_time = device.today_playing_time
+                if total_time_available == "unlimited":
+                    remaining_time = "unlimited"
+                elif daily_limit is None:
+                    remaining_time = "unlimited"
+                elif daily_limit == 0 and extra_time == 0:
+                    remaining_time = "blocked"
+                else:
+                    remaining_time = max(0, total_time_available - playing_time)
+                
                 usage_data.append({
                     "device_id": device.device_id,
                     "device_name": device.name,
-                    "today_playing_time_minutes": device.today_playing_time,
-                    "daily_limit_minutes": device.limit_time,
-                    "remaining_time_minutes": max(0, device.limit_time - device.today_playing_time) if device.limit_time is not None and device.limit_time > 0 else ("unlimited" if device.limit_time is None else "blocked")
+                    "today_playing_time_minutes": playing_time,
+                    "daily_limit_minutes": daily_limit,
+                    "extra_time_minutes": extra_time,
+                    "total_time_available_minutes": total_time_available,
+                    "remaining_time_minutes": remaining_time
                 })
-        
-        return {"devices_usage": usage_data}
+                logger.info(f"[DEBUG] Usage data for device {device.name}: {usage_data[-1]}")
+            else:
+                logger.info("[DEBUG] Getting usage for all devices")
+                # Usage pour tous les appareils
+                for idx, device in enumerate(self.control.devices.values()):
+                    logger.info(f"[DEBUG] Processing device {idx+1}/{len(self.control.devices)}: {device.name}")
+                    await device.update()
+                    logger.info(f"[DEBUG] Device {device.name} updated successfully")
+                    
+                    # Log complet des attributs de l'objet device
+                    device_attrs = {}
+                    for attr in dir(device):
+                        if not attr.startswith('_') and not callable(getattr(device, attr)):
+                            try:
+                                value = getattr(device, attr)
+                                device_attrs[attr] = value
+                            except Exception as e:
+                                device_attrs[attr] = f"Error getting attribute: {e}"
+                    
+                    logger.info(f"[DEBUG] Complete device object for {device.name}: {device_attrs}")
+                    
+                    # Calculer le temps total disponible aujourd'hui (limite + extra time)
+                    daily_limit = device.limit_time if device.limit_time is not None else 0
+                    extra_time = 0
+                    total_time_available = daily_limit
+                    
+                    # Extraire le temps extra si disponible
+                    if hasattr(device, 'extra') and device.extra and 'extraPlayingTime' in device.extra:
+                        extra_playing_time = device.extra.get('extraPlayingTime', {})
+                        in_one_day = extra_playing_time.get('inOneDay', {})
+                        if in_one_day.get('isInfinity', False):
+                            extra_time = "unlimited"
+                            total_time_available = "unlimited"
+                        else:
+                            extra_time = in_one_day.get('duration', 0)
+                            total_time_available = daily_limit + extra_time
+                    
+                    # Calculer le temps restant réel
+                    playing_time = device.today_playing_time
+                    if total_time_available == "unlimited":
+                        remaining_time = "unlimited"
+                    elif daily_limit is None:
+                        remaining_time = "unlimited"
+                    elif daily_limit == 0 and extra_time == 0:
+                        remaining_time = "blocked"
+                    else:
+                        remaining_time = max(0, total_time_available - playing_time)
+                    
+                    usage_data.append({
+                        "device_id": device.device_id,
+                        "device_name": device.name,
+                        "today_playing_time_minutes": playing_time,
+                        "daily_limit_minutes": daily_limit,
+                        "extra_time_minutes": extra_time,
+                        "total_time_available_minutes": total_time_available,
+                        "remaining_time_minutes": remaining_time
+                    })
+                    logger.info(f"[DEBUG] Usage data for device {device.name}: {usage_data[-1]}")
+            
+            logger.info(f"[DEBUG] Final usage data: {usage_data}")
+            return {"devices_usage": usage_data}
+            
+        except Exception as e:
+            logger.error(f"[DEBUG] Exception in get_daily_usage: {type(e).__name__}: {e}")
+            logger.error(f"[DEBUG] Exception details: {str(e)}")
+            import traceback
+            logger.error(f"[DEBUG] Full traceback: {traceback.format_exc()}")
+            raise
 
     async def extend_playtime(self, device_id, minutes):
-        """Extend play time for a specific device"""
-        await self._ensure_authenticated()
-        
-        device = self.control.devices.get(device_id)
-        if not device:
-            return {"error": f"Device with ID {device_id} not found"}
+        """Add extra playing time for a specific device using direct API call"""
+        logger.info(f"[DEBUG] Starting extend_playtime for device {device_id}, minutes={minutes}")
         
         try:
+            logger.info("[DEBUG] Calling _ensure_authenticated() in extend_playtime")
+            await self._ensure_authenticated()
+            logger.info("[DEBUG] Authentication completed in extend_playtime")
+            
+            device = self.control.devices.get(device_id)
+            if not device:
+                logger.error(f"[DEBUG] Device {device_id} not found in extend_playtime")
+                return {"error": f"Device with ID {device_id} not found"}
+            
+            logger.info(f"[DEBUG] Found device {device.name}, getting current state")
             await device.update()
             current_limit = device.limit_time
-            new_limit = current_limit + minutes
+            current_playing_time = device.today_playing_time
+            logger.info(f"[DEBUG] Current limit: {current_limit}, current playing time: {current_playing_time}")
             
-            # Note: La méthode exacte pour modifier la limite peut varier selon l'API
-            # Il faudra peut-être utiliser une autre méthode selon la documentation de pynintendoparental
-            success = await device.set_limit_time(new_limit)
+            # Utiliser directement l'API async_update_extra_playing_time au lieu de add_extra_time
+            logger.info(f"[DEBUG] Calling device._api.async_update_extra_playing_time({device_id}, {minutes})")
+            api_result = await device._api.async_update_extra_playing_time(device_id, minutes)
+            logger.info(f"[DEBUG] API call successful")
             
-            if success:
-                logger.info(f"Extended play time for device {device.name} by {minutes} minutes")
-                return {
-                    "success": True,
-                    "device_id": device_id,
-                    "device_name": device.name,
-                    "previous_limit_minutes": current_limit,
-                    "new_limit_minutes": new_limit,
-                    "extended_by_minutes": minutes
-                }
-            else:
-                return {"error": "Failed to extend play time"}
+            # Extraire seulement les données JSON sérialisables de la réponse
+            api_status = api_result.get('status', 'unknown')
+            api_json = api_result.get('json', {})
+            
+            # Mettre à jour les informations après l'ajout d'extra time
+            logger.info(f"[DEBUG] Updating device {device.name} after extra time addition")
+            await device.update()
+            new_playing_time = device.today_playing_time
+            logger.info(f"[DEBUG] New playing time: {new_playing_time}")
+            
+            result = {
+                "success": True,
+                "device_id": device_id,
+                "device_name": device.name,
+                "current_limit_minutes": current_limit,
+                "previous_playing_time": current_playing_time,
+                "new_playing_time": new_playing_time,
+                "extra_time_added_minutes": minutes,
+                "api_status": api_status,
+                "api_response": api_json
+            }
+            logger.info(f"[DEBUG] extend_playtime completed successfully: {result}")
+            return result
                 
         except Exception as e:
+            logger.error(f"[DEBUG] Exception in extend_playtime: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"[DEBUG] Full traceback in extend_playtime: {traceback.format_exc()}")
+            
             error_msg = str(e).lower()
             if "event loop is closed" in error_msg or "connection" in error_msg or "network" in error_msg:
                 logger.warning(f"Nintendo Switch appears to be offline: {e}")
@@ -335,42 +534,6 @@ Use the appropriate functions to help users manage their Nintendo Switch parenta
                 logger.error(f"Error extending play time: {e}")
                 return {"error": f"Failed to extend play time: {str(e)}"}
 
-    async def reduce_playtime(self, device_id, minutes):
-        """Reduce play time for a specific device"""
-        await self._ensure_authenticated()
-        
-        device = self.control.devices.get(device_id)
-        if not device:
-            return {"error": f"Device with ID {device_id} not found"}
-        
-        try:
-            await device.update()
-            current_limit = device.limit_time
-            new_limit = max(0, current_limit - minutes)
-            
-            success = await device.set_limit_time(new_limit)
-            
-            if success:
-                logger.info(f"Reduced play time for device {device.name} by {minutes} minutes")
-                return {
-                    "success": True,
-                    "device_id": device_id,
-                    "device_name": device.name,
-                    "previous_limit_minutes": current_limit,
-                    "new_limit_minutes": new_limit,
-                    "reduced_by_minutes": minutes
-                }
-            else:
-                return {"error": "Failed to reduce play time"}
-                
-        except Exception as e:
-            error_msg = str(e).lower()
-            if "event loop is closed" in error_msg or "connection" in error_msg or "network" in error_msg:
-                logger.warning(f"Nintendo Switch appears to be offline: {e}")
-                return {"error": "Nintendo Switch is not connected to the internet. Please connect the device and try again."}
-            else:
-                logger.error(f"Error reducing play time: {e}")
-                return {"error": f"Failed to reduce play time: {str(e)}"}
 
     async def list_devices(self):
         """List all Nintendo Switch devices"""
