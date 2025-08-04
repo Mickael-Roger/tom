@@ -156,7 +156,10 @@ class TomLLM():
     if llm == None:
       llm=self.llm
 
-    model=self.llms[self.llm][complexity]
+    model=self.llms[llm][complexity]
+
+    # Log LLM usage for debugging
+    tomlogger.info(f"🤖 Using LLM: {llm} | Model: {model} | Complexity: {complexity}", self.username)
 
     # Rate limiting for Mistral (1.5 seconds between requests)
     if llm == "mistral":
@@ -168,7 +171,7 @@ class TomLLM():
         time.sleep(sleep_time)
       self.mistral_last_request = time.time()
 
-    tomlogger.debug(f"Messages to send: {str(messages)} | Tools available: {str(tools)}", self.username)
+    tomlogger.debug(f"📤 Messages to send: {str(messages)} | Tools available: {str(tools)}", self.username)
 
     if llm == "deepseek":
       if tools: 
@@ -191,7 +194,7 @@ class TomLLM():
         messages = messages,
       )
 
-    tomlogger.debug(f"LLM Response: {str(response)}", self.username)
+    tomlogger.debug(f"📥 LLM Response from {llm}: {str(response)}", self.username)
 
 
     if not response:
@@ -310,6 +313,7 @@ class TomLLM():
   def executeRequest(self, conversation, modules, client_type):
     tools = []
     complexity = 0
+    active_llm_instance = self  # Default to global LLM instance
 
     for mod in set(modules):
       if mod in self.services:
@@ -317,6 +321,13 @@ class TomLLM():
         # Access systemContext dynamically to support @property decorators
         system_context = getattr(self.services[mod]["obj"], 'systemContext', '')
         conversation.append({"role": "system", "content": system_context})
+        
+        # Use the module's LLM instance if it's different from the global one
+        module_llm_instance = self.services[mod].get('llm_instance', self)
+        if module_llm_instance != self:
+          active_llm_instance = module_llm_instance
+          tomlogger.debug(f"🎯 Using custom LLM instance from module {mod}: {module_llm_instance.llm}", self.username)
+        
         try:
           if self.services[mod]["complexity"] > complexity:
             complexity = self.services[mod]["complexity"]
@@ -328,7 +339,7 @@ class TomLLM():
         tomlogger.warning(f"Module '{mod}' not loaded in services, skipping", self.username)
 
     while True:
-      response = self.callLLM(messages=conversation, tools=tools, complexity=complexity)
+      response = active_llm_instance.callLLM(messages=conversation, tools=tools, complexity=complexity)
       
       if response != False:
         if response.choices[0].finish_reason == "stop":

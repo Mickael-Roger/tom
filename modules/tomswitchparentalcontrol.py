@@ -309,6 +309,9 @@ Use the appropriate functions to help users manage their Nintendo Switch parenta
             # Extraire le temps extra si disponible
             if hasattr(device, 'extra') and device.extra and 'extraPlayingTime' in device.extra:
                 extra_playing_time = device.extra.get('extraPlayingTime', {})
+                # Gérer le cas où extra_playing_time est None
+                if extra_playing_time is None:
+                    extra_playing_time = {}
                 in_one_day = extra_playing_time.get('inOneDay', {})
                 if in_one_day.get('isInfinity', False):
                     extra_time = "unlimited"
@@ -350,6 +353,9 @@ Use the appropriate functions to help users manage their Nintendo Switch parenta
                 # Extraire le temps extra si disponible
                 if hasattr(device, 'extra') and device.extra and 'extraPlayingTime' in device.extra:
                     extra_playing_time = device.extra.get('extraPlayingTime', {})
+                    # Gérer le cas où extra_playing_time est None
+                    if extra_playing_time is None:
+                        extra_playing_time = {}
                     in_one_day = extra_playing_time.get('inOneDay', {})
                     if in_one_day.get('isInfinity', False):
                         extra_time = "unlimited"

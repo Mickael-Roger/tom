@@ -401,6 +401,42 @@ class TomCoreModules:
     # In practice, this should be handled by the main application
     pass
 
+  def _get_module_llm_instance(self, service_name, service_config):
+    """Get the appropriate LLM instance for a module"""
+    tomlogger.debug(f"🔍 Checking LLM config for module '{service_name}'", self.user_config['username'])
+    
+    # Always check global services first for LLM configuration
+    module_llm = None
+    if 'services' in self.global_config and service_name in self.global_config['services']:
+      global_service_config = self.global_config['services'][service_name]
+      if isinstance(global_service_config, dict):
+        module_llm = global_service_config.get('llm')
+        tomlogger.debug(f"📋 Found global LLM config for '{service_name}': {module_llm}", self.user_config['username'])
+    
+    # Fallback to module service_config if no global LLM config (for backward compatibility)
+    if not module_llm:
+      module_llm = service_config.get('llm')
+      tomlogger.debug(f"📋 Using service config LLM for '{service_name}': {module_llm}", self.user_config['username'])
+    
+    tomlogger.debug(f"📋 Module '{service_name}' final LLM config: {module_llm} (default: {self.llm_instance.llm})", self.user_config['username'])
+    
+    if module_llm and module_llm != self.llm_instance.llm:
+      # Module wants a different LLM than the default
+      if module_llm in self.llm_instance.llms:
+        # Create a new LLM instance with the specified LLM
+        import copy
+        module_llm_instance = copy.copy(self.llm_instance)
+        module_llm_instance.llm = module_llm
+        tomlogger.info(f"✅ Module '{service_name}' using custom LLM: {module_llm}", self.user_config['username'])
+        return module_llm_instance
+      else:
+        tomlogger.warning(f"❌ Module '{service_name}' requested unavailable LLM '{module_llm}', using default '{self.llm_instance.llm}'. Available LLMs: {list(self.llm_instance.llms.keys())}", self.user_config['username'])
+    else:
+      tomlogger.debug(f"🔄 Module '{service_name}' using default LLM: {self.llm_instance.llm}", self.user_config['username'])
+    
+    # Use default LLM instance
+    return self.llm_instance
+
   def _get_module_config(self, service_name):
     """Get configuration for a module based on its type (global or personal)"""
     if service_name not in self.module_list:
@@ -503,7 +539,9 @@ class TomCoreModules:
                     break
         
         if module_class:
-          module_instance = module_class(service_config, self.llm_instance)
+          # Check if module specifies a custom LLM
+          module_llm_instance = self._get_module_llm_instance(service_name, service_config)
+          module_instance = module_class(service_config, module_llm_instance)
 
           self.services[service_name] = {
             "obj": module_instance,
@@ -512,7 +550,8 @@ class TomCoreModules:
             "tools": getattr(module_instance, 'tools', []),
             "complexity": getattr(module_instance, 'complexity', 0),
             "functions": getattr(module_instance, 'functions', {}),
-            "type": module_info['type']
+            "type": module_info['type'],
+            "llm_instance": module_llm_instance  # Store the LLM instance used for this module
           }
           # Update functions with module metadata
           for func_name, func_data in module_instance.functions.items():
@@ -567,7 +606,9 @@ class TomCoreModules:
                   break
       
       if module_class:
-        module_instance = module_class(service_config, self.llm_instance)
+        # Check if module specifies a custom LLM
+        module_llm_instance = self._get_module_llm_instance(service_name, service_config)
+        module_instance = module_class(service_config, module_llm_instance)
 
         self.services[service_name] = {
           "obj": module_instance,
@@ -576,7 +617,8 @@ class TomCoreModules:
           "tools": getattr(module_instance, 'tools', []),
           "complexity": getattr(module_instance, 'complexity', 0),
           "functions": getattr(module_instance, 'functions', {}),
-          "type": module_info['type']
+          "type": module_info['type'],
+          "llm_instance": module_llm_instance  # Store the LLM instance used for this module
         }
         # Update functions with module metadata
         for func_name, func_data in module_instance.functions.items():
