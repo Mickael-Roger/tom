@@ -4,6 +4,7 @@ import os
 import yaml
 import copy
 import warnings
+import argparse
 from unittest.mock import patch
 
 # Suppress warnings from external libraries
@@ -42,6 +43,12 @@ class TestTomLLMTriageIntegration(unittest.TestCase):
         
         # Build global_config with the expected structure for TomLLM
         global_section = cls.test_config.get_global_config() or {}
+        
+        # Override LLM if provided via command line argument
+        if hasattr(cls, '_override_llm') and cls._override_llm:
+            global_section = global_section.copy()
+            global_section['llm'] = cls._override_llm
+        
         cls.global_config = {'global': global_section}
         
         # Extract available modules from services and user services
@@ -188,5 +195,58 @@ def create_test_methods():
 create_test_methods()
 
 
+def parse_args():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description='Run TomLLM triage integration tests')
+    parser.add_argument('--llm', type=str, help='Override LLM provider (e.g., openai, mistral, deepseek, xai, gemini)')
+    
+    # Parse known args to allow unittest's own arguments to pass through
+    args, unknown = parser.parse_known_args()
+    
+    # Set up sys.argv for unittest.main() with remaining arguments
+    sys.argv = [sys.argv[0]] + unknown
+    
+    return args
+
+
+def get_llm_override():
+    """Get LLM override from environment variable or command line"""
+    # Check environment variable first (for pytest compatibility)
+    llm_override = os.environ.get('TEST_LLM_OVERRIDE')
+    if llm_override:
+        return llm_override
+    
+    # Check command line arguments (for direct execution)
+    for arg in sys.argv:
+        if arg.startswith('--llm='):
+            return arg.split('=', 1)[1]
+    
+    # Check if --llm is followed by a value
+    try:
+        llm_index = sys.argv.index('--llm')
+        if llm_index + 1 < len(sys.argv):
+            return sys.argv[llm_index + 1]
+    except ValueError:
+        pass
+    
+    return None
+
+
+# Check for LLM override when module is loaded (works with both unittest and pytest)
+llm_override = get_llm_override()
+if llm_override:
+    TestTomLLMTriageIntegration._override_llm = llm_override
+    print(f"Overriding LLM provider to: {llm_override}")
+else:
+    TestTomLLMTriageIntegration._override_llm = None
+
+
 if __name__ == '__main__':
+    args = parse_args()
+    
+    # Set override LLM as class attribute if provided (for direct execution)
+    if args.llm:
+        TestTomLLMTriageIntegration._override_llm = args.llm
+        print(f"Overriding LLM provider to: {args.llm}")
+    
     unittest.main()

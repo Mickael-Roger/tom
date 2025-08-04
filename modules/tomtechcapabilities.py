@@ -121,7 +121,6 @@ class TomTechCapabilities:
         "function": {
           "name": "list_tech_tasks",
           "description": "List all technical tasks with their current status",
-          "strict": True,
           "parameters": {
             "type": "object",
             "properties": {

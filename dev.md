@@ -911,6 +911,41 @@ python -m unittest tests.test_tomllm -v
 python -m pytest tests/test_tomllm.py -v
 ```
 
+#### Testing LLM Triage Integration (`test_tomllm_integration.py`)
+
+The LLM triage integration test validates the `triageModules` functionality with real LLM calls. This test supports overriding the LLM provider used during testing.
+
+**Override LLM provider:**
+```bash
+# Direct execution with unittest
+python tests/test_tomllm_integration.py --llm mistral
+python tests/test_tomllm_integration.py --llm deepseek  
+python tests/test_tomllm_integration.py --llm openai
+
+# With pytest (using environment variable)
+TEST_LLM_OVERRIDE=mistral python -m pytest tests/test_tomllm_integration.py -v
+TEST_LLM_OVERRIDE=deepseek python -m pytest tests/test_tomllm_integration.py::TestTomLLMTriageIntegration::test_case_001*
+
+# Docker with pytest (environment variable method - recommended)
+docker run --rm \
+  -e TEST_LLM_OVERRIDE=openrouter-qwen3 \
+  -v $(pwd)/config.yml:/config.yml:ro \
+  -v $(pwd)/data:/app/data \
+  tom-tests tests/test_tomllm_integration.py
+
+# Run without override (uses global.llm from config.yml)
+docker run --rm \
+  -v $(pwd)/config.yml:/config.yml:ro \
+  -v $(pwd)/data:/app/data \
+  tom-tests tests/test_tomllm_integration.py
+```
+
+This feature is useful for:
+- **Testing different LLM behaviors**: Compare how different providers handle module triage
+- **CI/CD pipelines**: Test with cost-effective providers (e.g., DeepSeek)
+- **Development**: Quick testing without modifying configuration files
+- **Performance comparison**: Benchmark triage accuracy across providers
+
 ### Test Dependencies
 
 The following packages are available for testing:

@@ -63,7 +63,6 @@ class TomSwitchParentalControl:
                 "function": {
                     "name": "get_switch_daily_usage",
                     "description": "Get the daily usage time for Nintendo Switch devices. Shows how much time has been played today.",
-                    "strict": True,
                     "parameters": {
                         "type": "object",
                         "properties": {

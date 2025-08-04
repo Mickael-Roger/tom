@@ -11,41 +11,7 @@ import sys
 
 # Logging
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
-try:
-    from tomlogger import logger
-except ImportError:
-    # Fallback logger for testing
-    import logging
-    logger = logging.getLogger('tomcalendar')
-
-# Ensure logger is not None (can happen in tests)
-if logger is None:
-    import logging
-    logger = logging.getLogger('tomcalendar')
-    logger.setLevel(logging.INFO)
-
-# Create a wrapper function to handle both tomlogger and standard logger
-def log_message(level, message, module_name=None):
-    """Wrapper function to handle both tomlogger and standard logger"""
-    global logger
-    try:
-        # First check if logger is a mock (for unit tests)
-        if hasattr(logger, '_mock_name'):
-            # This is a mock object, use it directly
-            getattr(logger, level)(message, module_name=module_name)
-        elif hasattr(logger, 'info') and hasattr(logger.info, '__code__') and 'module_name' in logger.info.__code__.co_varnames:
-            # tomlogger supports module_name parameter
-            getattr(logger, level)(message, module_name=module_name)
-        else:
-            # Standard logger doesn't support module_name
-            if module_name:
-                message = f"[{module_name}] {message}"
-            getattr(logger, level)(message)
-    except (AttributeError, TypeError):
-        # Fallback to basic logging
-        if module_name:
-            message = f"[{module_name}] {message}"
-        getattr(logger, level)(message)
+from tomlogger import logger
 
 
 
@@ -125,14 +91,14 @@ class TomCalendar:
                             self.defaultCalendar = calendar
                             break
                 except Exception as e:
-                    log_message('error', f"Error getting calendar properties: {str(e)}", module_name="calendar")
+                    logger.error(f"Error getting calendar properties: {str(e)}", module_name="calendar")
                     continue
         
         if not self.defaultCalendar:
             raise Exception("No calendars found or accessible")
             
     except Exception as e:
-        log_message('error', f"Error initializing calendar: {str(e)}", module_name="calendar")
+        logger.error(f"Error initializing calendar: {str(e)}", module_name="calendar")
         raise
 
 
@@ -215,7 +181,6 @@ class TomCalendar:
         "function": {
           "name": "calendar_update_event",
           "description": "Update an existing event, appointment or meeting in my calendar. For example when a user asks 'Change this appointment time', 'Update this meeting', 'Modify this event'",
-          "strict": True,
           "parameters": {
             "type": "object",
             "properties": {
@@ -279,11 +244,11 @@ class TomCalendar:
                 for val in vals:
                     self.calendarsContent.append(val)
             except Exception as e:
-                log_message('error', f"Error updating calendar content for calendar: {str(e)}", module_name="calendar")
+                logger.error(f"Error updating calendar content for calendar: {str(e)}", module_name="calendar")
                 continue
                 
     except Exception as e:
-        log_message('error', f"Error during calendar update: {str(e)}", module_name="calendar")
+        logger.error(f"Error during calendar update: {str(e)}", module_name="calendar")
         self.calendarsContent = []
 
 
@@ -299,7 +264,7 @@ class TomCalendar:
             search_from = datetime.strptime(period_from, '%Y-%m-%d').replace(hour=0, minute=0, second=0)
             search_to = datetime.strptime(period_to, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
         except ValueError as e:
-            log_message('error', f"Invalid date format in search: {str(e)}", module_name="calendar")
+            logger.error(f"Invalid date format in search: {str(e)}", module_name="calendar")
             return json.dumps([])
 
         for evt in self.calendarsContent:
@@ -308,16 +273,16 @@ class TomCalendar:
                 if search_from <= evt_start <= search_to:
                     events.append(evt)
             except (ValueError, KeyError) as e:
-                log_message('error', f"Error processing event in search: {str(e)}", module_name="calendar")
+                logger.error(f"Error processing event in search: {str(e)}", module_name="calendar")
                 continue
 
         calendarsContentJson = json.dumps(events)
         
-        log_message('info', f"Found {len(events)} events between {period_from} and {period_to}", module_name="calendar")
+        logger.info(f"Found {len(events)} events between {period_from} and {period_to}", module_name="calendar")
         return calendarsContentJson
         
     except Exception as e:
-        log_message('error', f"Error during calendar search: {str(e)}", module_name="calendar")
+        logger.error(f"Error during calendar search: {str(e)}", module_name="calendar")
         return json.dumps([])
     
 
@@ -330,7 +295,7 @@ class TomCalendar:
         calendar = self.defaultCalendar
     
     if not calendar:
-        log_message('error', "No calendar available for listing events", module_name="calendar")
+        logger.error("No calendar available for listing events", module_name="calendar")
         return []
   
     evts = []
@@ -343,7 +308,7 @@ class TomCalendar:
             start_dt = self.tz.localize(datetime.strptime(start, date_format))
             end_dt = self.tz.localize(datetime.strptime(end, date_format))
         except ValueError as e:
-            log_message('error', f"Invalid date format in listEvent: {str(e)}", module_name="calendar")
+            logger.error(f"Invalid date format in listEvent: {str(e)}", module_name="calendar")
             return []
 
         events = calendar.search(
@@ -370,10 +335,10 @@ class TomCalendar:
                                     alarmdate = component.get("dtstart").dt + alarm.get('trigger').dt
                                     valarms.append(alarmdate.strftime("%Y-%m-%d %H:%M:%S"))
                                 except Exception as e:
-                                    log_message('error', f"Error processing alarm: {str(e)}", module_name="calendar")
+                                    logger.error(f"Error processing alarm: {str(e)}", module_name="calendar")
                                     continue
                     except Exception as e:
-                        log_message('error', f"Error processing alarms: {str(e)}", module_name="calendar")
+                        logger.error(f"Error processing alarms: {str(e)}", module_name="calendar")
 
                     # Safely extract event data
                     try:
@@ -399,18 +364,18 @@ class TomCalendar:
 
                             evts.append(calevent)
                         else:
-                            log_message('error', f"Event missing start or end time: {event_id}", module_name="calendar")
+                            logger.error(f"Event missing start or end time: {event_id}", module_name="calendar")
                             
                     except Exception as e:
-                        log_message('error', f"Error processing event component: {str(e)}", module_name="calendar")
+                        logger.error(f"Error processing event component: {str(e)}", module_name="calendar")
                         continue
                         
             except Exception as e:
-                log_message('error', f"Error processing event: {str(e)}", module_name="calendar")
+                logger.error(f"Error processing event: {str(e)}", module_name="calendar")
                 continue
   
     except Exception as e:
-        log_message('error', f"Error listing events: {str(e)}", module_name="calendar")
+        logger.error(f"Error listing events: {str(e)}", module_name="calendar")
         return []
     
     return evts
@@ -424,7 +389,7 @@ class TomCalendar:
         calendar = self.defaultCalendar
     
     if not calendar:
-        log_message('error', "No calendar available for adding events", module_name="calendar")
+        logger.error("No calendar available for adding events", module_name="calendar")
         return {"status": "error", "message": "No calendar available"}
     
     try:
@@ -444,12 +409,12 @@ class TomCalendar:
                 continue
         
         if start_dt is None or end_dt is None:
-            log_message('error', f"Invalid date format in addEvent. Expected formats: {date_formats}", module_name="calendar")
+            logger.error(f"Invalid date format in addEvent. Expected formats: {date_formats}", module_name="calendar")
             return {"status": "error", "message": f"Invalid date format. Expected formats: {', '.join(date_formats)}"}
         
         # Validate that end is after start
         if end_dt <= start_dt:
-            log_message('error', f"End time must be after start time", module_name="calendar")
+            logger.error(f"End time must be after start time", module_name="calendar")
             return {"status": "error", "message": "End time must be after start time"}
 
         calendar.save_event(
@@ -462,11 +427,11 @@ class TomCalendar:
 
         self.update()
         
-        log_message('info', f"Event '{title}' added from {start} to {end}", module_name="calendar")
+        logger.info(f"Event '{title}' added from {start} to {end}", module_name="calendar")
         return {"status": "success", "message": "Event added"}
         
     except Exception as e:
-        log_message('error', f"Error adding event '{title}': {str(e)}", module_name="calendar")
+        logger.error(f"Error adding event '{title}': {str(e)}", module_name="calendar")
         return {"status": "error", "message": f"Failed to add event: {str(e)}"}
 
 
@@ -476,7 +441,7 @@ class TomCalendar:
         calendar = self.defaultCalendar
     
     if not calendar:
-        log_message('error', "No calendar available for deleting events", module_name="calendar")
+        logger.error("No calendar available for deleting events", module_name="calendar")
         return {"status": "error", "message": "No calendar available"}
     
     try:
@@ -499,11 +464,11 @@ class TomCalendar:
                 if event_to_delete:
                     break
             except Exception as e:
-                log_message('error', f"Error processing event during search: {str(e)}", module_name="calendar")
+                logger.error(f"Error processing event during search: {str(e)}", module_name="calendar")
                 continue
         
         if not event_to_delete:
-            log_message('error', f"Event with ID {event_id} not found", module_name="calendar")
+            logger.error(f"Event with ID {event_id} not found", module_name="calendar")
             return {"status": "error", "message": "Event not found"}
         
         # Delete the event
@@ -511,11 +476,11 @@ class TomCalendar:
         
         self.update()
         
-        log_message('info', f"Event with ID {event_id} deleted successfully", module_name="calendar")
+        logger.info(f"Event with ID {event_id} deleted successfully", module_name="calendar")
         return {"status": "success", "message": "Event deleted"}
         
     except Exception as e:
-        log_message('error', f"Error deleting event {event_id}: {str(e)}", module_name="calendar")
+        logger.error(f"Error deleting event {event_id}: {str(e)}", module_name="calendar")
         return {"status": "error", "message": f"Failed to delete event: {str(e)}"}
 
 
@@ -525,7 +490,7 @@ class TomCalendar:
         calendar = self.defaultCalendar
     
     if not calendar:
-        log_message('error', "No calendar available for updating events", module_name="calendar")
+        logger.error("No calendar available for updating events", module_name="calendar")
         return {"status": "error", "message": "No calendar available"}
     
     try:
@@ -550,11 +515,11 @@ class TomCalendar:
                 if event_to_update:
                     break
             except Exception as e:
-                log_message('error', f"Error processing event during search: {str(e)}", module_name="calendar")
+                logger.error(f"Error processing event during search: {str(e)}", module_name="calendar")
                 continue
         
         if not event_to_update or not event_component:
-            log_message('error', f"Event with ID {event_id} not found", module_name="calendar")
+            logger.error(f"Event with ID {event_id} not found", module_name="calendar")
             return {"status": "error", "message": "Event not found"}
         
         # Validate and parse new dates if provided
@@ -571,7 +536,7 @@ class TomCalendar:
                     continue
             
             if new_start_dt is None:
-                log_message('error', f"Invalid start date format in updateEvent. Expected formats: {date_formats}", module_name="calendar")
+                logger.error(f"Invalid start date format in updateEvent. Expected formats: {date_formats}", module_name="calendar")
                 return {"status": "error", "message": f"Invalid start date format. Expected formats: {', '.join(date_formats)}"}
         
         if end:
@@ -583,12 +548,12 @@ class TomCalendar:
                     continue
             
             if new_end_dt is None:
-                log_message('error', f"Invalid end date format in updateEvent. Expected formats: {date_formats}", module_name="calendar")
+                logger.error(f"Invalid end date format in updateEvent. Expected formats: {date_formats}", module_name="calendar")
                 return {"status": "error", "message": f"Invalid end date format. Expected formats: {', '.join(date_formats)}"}
         
         # If both start and end are provided, validate that end is after start
         if new_start_dt and new_end_dt and new_end_dt <= new_start_dt:
-            log_message('error', f"End time must be after start time", module_name="calendar")
+            logger.error(f"End time must be after start time", module_name="calendar")
             return {"status": "error", "message": "End time must be after start time"}
         
         # If only one of start/end is provided, get the other from existing event
@@ -597,7 +562,7 @@ class TomCalendar:
             if current_end:
                 new_end_dt = current_end.dt
                 if new_end_dt <= new_start_dt:
-                    log_message('error', f"New start time conflicts with existing end time", module_name="calendar")
+                    logger.error(f"New start time conflicts with existing end time", module_name="calendar")
                     return {"status": "error", "message": "New start time must be before existing end time"}
         
         if new_end_dt and not new_start_dt:
@@ -605,7 +570,7 @@ class TomCalendar:
             if current_start:
                 new_start_dt = current_start.dt
                 if new_end_dt <= new_start_dt:
-                    log_message('error', f"New end time conflicts with existing start time", module_name="calendar")
+                    logger.error(f"New end time conflicts with existing start time", module_name="calendar")
                     return {"status": "error", "message": "New end time must be after existing start time"}
         
         # Get current values for fields not being updated
@@ -644,11 +609,11 @@ class TomCalendar:
             changes.append("description")
         
         changes_str = ", ".join(changes) if changes else "no changes"
-        log_message('info', f"Event {event_id} updated: {changes_str}", module_name="calendar")
+        logger.info(f"Event {event_id} updated: {changes_str}", module_name="calendar")
         return {"status": "success", "message": "Event updated"}
         
     except Exception as e:
-        log_message('error', f"Error updating event {event_id}: {str(e)}", module_name="calendar")
+        logger.error(f"Error updating event {event_id}: {str(e)}", module_name="calendar")
         return {"status": "error", "message": f"Failed to update event: {str(e)}"}
 
   
