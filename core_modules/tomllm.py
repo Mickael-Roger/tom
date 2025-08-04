@@ -180,33 +180,63 @@ class TomLLM():
             if not tool["function"]["parameters"]:
               del tool["function"]["parameters"]
 
-    if tools: 
-      response = completion(
-        model = model,
-        temperature = 0,
-        messages = messages,
-        tools = tools,
-        tool_choice = "auto",
-      )
-    else:
-      response = completion(
-        model = model,
-        messages = messages,
-      )
+    # Retry logic for 5xx errors (maximum 2 retries)
+    max_retries = 2
+    retry_count = 0
+    
+    while retry_count <= max_retries:
+      try:
+        if tools: 
+          response = completion(
+            model = model,
+            temperature = 0,
+            messages = messages,
+            tools = tools,
+            tool_choice = "auto",
+          )
+        else:
+          response = completion(
+            model = model,
+            messages = messages,
+          )
 
-    tomlogger.debug(f"📥 LLM Response from {llm}: {str(response)}", self.username)
+        tomlogger.debug(f"📥 LLM Response from {llm}: {str(response)}", self.username)
 
+        if not response:
+          return False
 
-    if not response:
-      return False
+        if not response.choices:
+          return False
 
-    if not response.choices:
-      return False
+        if response.choices[0].finish_reason not in ["tool_calls", "stop"]:
+          return False
 
-    if response.choices[0].finish_reason not in ["tool_calls", "stop"]:
-      return False
-
-    return response
+        return response
+        
+      except Exception as e:
+        # Check if it's a 5xx error
+        error_str = str(e)
+        is_5xx_error = False
+        
+        # Check for common 5xx error patterns in the error message
+        if any(code in error_str for code in ['500', '501', '502', '503', '504', '505', '507', '508', '510', '511']):
+          is_5xx_error = True
+        elif 'Internal Server Error' in error_str or 'Bad Gateway' in error_str or 'Service Unavailable' in error_str:
+          is_5xx_error = True
+        elif 'Gateway Timeout' in error_str or 'HTTP Version Not Supported' in error_str:
+          is_5xx_error = True
+          
+        if is_5xx_error and retry_count < max_retries:
+          retry_count += 1
+          tomlogger.warning(f"5xx error encountered, retrying ({retry_count}/{max_retries}): {error_str}", self.username)
+          time.sleep(0.3)
+          continue
+        else:
+          # Re-raise the exception if it's not a 5xx error or we've exhausted retries
+          tomlogger.error(f"LLM call failed after {retry_count} retries: {error_str}", self.username)
+          raise e
+    
+    return False
 
 
 
