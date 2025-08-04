@@ -29,7 +29,7 @@ class TomReminder:
   def __init__(self, global_config, username) -> None:
     self.tom_config = tom_config
 
-    db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], "all")
+    db_path = global_config['global']['all_datadir']
     os.makedirs(db_path, exist_ok=True)
 
     self.db = os.path.join(db_path, "reminders.sqlite")

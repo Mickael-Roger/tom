@@ -22,9 +22,8 @@ from tomllm import TomLLM
 from tomcorebehavior import TomBehavior
 from tomcorememory import TomMemory
 from tomcorereminder import TomReminder
+from tomcoremessage import TomMessage
 from tomlogger import logger, set_log_context, init_logger
-#from tomcoreremember import TomRemember
-#from tomcoremorningroutine import TomMorning
 from tomcorebackground import TomBackground
 
 
@@ -580,32 +579,26 @@ for username, module_manager in module_managers.items():
       "module_name": "reminder"
     }
 
+  message_obj = TomMessage(global_config, username)
+  userList[username].services['message'] = {
+    "obj": message_obj,
+    "description": message_obj.tom_config["description"], 
+    "systemContext": "",
+    "tools": [],
+    "complexity": 0,
+    "functions": {}, 
+  }
+  userList[username].services['message']['tools'] = userList[username].services['message']['obj'].tools
+  userList[username].services['message']['complexity'] = userList[username].services['message']['obj'].complexity
+  userList[username].services['message']['systemContext'] = userList[username].services['message']['obj'].systemContext
+  # Update functions with module metadata for message module
+  for func_name, func_data in userList[username].services['message']['obj'].functions.items():
+    userList[username].functions[func_name] = {
+      "function": func_data['function'] if isinstance(func_data, dict) else func_data,
+      "module_name": "message"
+    }
+
   userList[username].tasks = TomBackground(global_config, username, userList[username].services, userList[username])
-#  userList[username].services['remember'] = {
-#    "obj": TomRemember(global_config, username),
-#    "description": "This module is used to manage store user-provided information permanently, indefinitely or enven temporarly. It is about to retain, list or delete facts, data, or context provided by the user for future reference. This is not tied to any specific time but serves as a knowledge repository. You may use these functions to store both permanent information, such as a credit card code, and temporary information that will be useful to the user later, such as remembering where the car was parked or where the keys were placed. This module is used for example when user request is: 'Remember that I parked my car here', 'I left my keys here', 'Where are my keys?', 'Remember my PIN Code is', 'Remember today ...' or even 'Where is my car parked?'", 
-#    "tools": [],
-#    "complexity": 0,
-#    "service_context": "",
-#    "functions": {}, 
-#  }
-#  userList[username].services['remember']['tools'] = userList[username].services['remember']['obj'].tools
-#  userList[username].services['remember']['complexity'] = userList[username].services['remember']['obj'].complexity
-#  userList[username].services['remember']['service_context'] = userList[username].services['remember']['obj'].systemContext
-#  userList[username].functions = userList[username].functions | userList[username].services['remember']['obj'].functions
-
-
-  #userList[username].services['morningroutine'] = {
-  #  "obj": TomMorning(global_config, username),
-  #  "description": "", 
-  #  "tools": [],
-  #  "complexity": 0,
-  #  "functions": {}, 
-  #}
-  #userList[username].services['morningroutine']['tools'] = userList[username].services['morningroutine']['obj'].tools
-  #userList[username].services['morningroutine']['complexity'] = userList[username].services['morningroutine']['obj'].complexity
-  #userList[username].services['morningroutine']['description'] = userList[username].services['morningroutine']['obj'].systemContext
-  #userList[username].functions = userList[username].functions | userList[username].services['morningroutine']['obj'].functions
 
 # Print module loading status summary
 TomCoreModules.print_modules_status_summary(module_managers)

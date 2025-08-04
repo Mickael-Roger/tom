@@ -75,7 +75,7 @@ class TomLLM():
 
     self.tts = None
 
-    self.tom_context = f'''Your name is Tom, and you are my personal assistant. You have access to numerous external functionalities via function calls. Since you have access to more functions than your memory can hold, they are grouped into modules. A module is a logical grouping of functions within a specific scope. One of your primary tasks will be "triage," which involves identifying the modules to load to fulfill the user's request.
+    self.base_tom_context = f'''Your name is Tom, and you are my personal assistant. You have access to numerous external functionalities via function calls. Since you have access to more functions than your memory can hold, they are grouped into modules. A module is a logical grouping of functions within a specific scope. One of your primary tasks will be "triage," which involves identifying the modules to load to fulfill the user's request.
 
     When the user provides you with information, if you think it should be stored in memory, suggest doing so.
 
@@ -87,8 +87,22 @@ class TomLLM():
 
     {self.user_context}
     '''
+    
+    self.tom_context = self.base_tom_context
 
 
+
+  def update_behavior_context(self):
+    """Update tom_context with behavioral instructions from behavior module"""
+    behavior_content = ""
+    if 'behavior' in self.services and hasattr(self.services['behavior']['obj'], 'get_behavior_content'):
+      behavior_obj = self.services['behavior']['obj']
+      behavior_obj.llm = self  # Set LLM reference for behavior modification
+      behavior_content = behavior_obj.get_behavior_content()
+      if behavior_content:
+        behavior_content = f"\n\n{behavior_content}"
+    
+    self.tom_context = self.base_tom_context + behavior_content
 
   def reset(self):
     tomlogger.info(f"History cleaning", self.username)
@@ -124,16 +138,14 @@ class TomLLM():
     weeknumber = datetime.now().isocalendar().week
     todayMsg = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
 
-    behaviors = self.services['behavior']['obj'].behavior_get()
-  
+    # Update behavioral context before generating prompt
+    self.update_behavior_context()
+
     if self.history: 
       self.history[0] = todayMsg
     else:
       self.history.append(todayMsg)
       self.history.append({"role": "system", "content": self.tom_context})
-
-      if behaviors:
-        self.history.append({"role": "system", "content": f"\n{behaviors}"})
   
     self.history.append({"role": "user", "content": input})
 
