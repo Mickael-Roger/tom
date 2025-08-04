@@ -4,6 +4,7 @@ from timezonefinder import TimezoneFinder
 from datetime import datetime
 import copy
 import time
+import yaml
 
 # LitLLM
 from litellm import completion
@@ -21,6 +22,9 @@ class TomLLM():
   def __init__(self, user_config, global_config) -> None:
 
     self.llms = {}
+    
+    # Store global config for log file path
+    self.global_config = global_config
     
     # Rate limiting for Mistral (1 QPS)
     self.mistral_last_request = 0
@@ -89,6 +93,10 @@ class TomLLM():
     '''
     
     self.tom_context = self.base_tom_context
+    
+    # Initialize call log tracking
+    self.current_user_input = None
+    self.current_function_calls = []
 
 
 
@@ -103,6 +111,78 @@ class TomLLM():
         behavior_content = f"\n\n{behavior_content}"
     
     self.tom_context = self.base_tom_context + behavior_content
+
+  def log_function_call_to_file(self):
+    """Log current user input and function calls to call_logs.yml"""
+    if not self.current_user_input:
+      return
+      
+    try:
+      # Get log file path
+      all_datadir = self.global_config['global'].get('all_datadir', './data/all/')
+      log_file = os.path.join(all_datadir, 'call_logs.yml')
+      
+      # Ensure directory exists
+      os.makedirs(all_datadir, exist_ok=True)
+      
+      # Parse function calls into structured format
+      functions_called = []
+      for func_call in self.current_function_calls:
+        # Extract function name and parameters from "function_name{ param1="value1", param2="value2" }"
+        if '{' in func_call and '}' in func_call:
+          func_name = func_call.split('{')[0].strip()
+          params_part = func_call.split('{')[1].split('}')[0].strip()
+          
+          # Parse parameters
+          params = {}
+          if params_part:
+            # Simple parsing for key="value" format
+            import re
+            param_matches = re.findall(r'(\w+)="([^"]*)"', params_part)
+            for key, value in param_matches:
+              params[key] = value
+          
+          functions_called.append({
+            'function': func_name,
+            'parameters': params
+          })
+        else:
+          # Fallback for simple function names
+          functions_called.append({
+            'function': func_call,
+            'parameters': {}
+          })
+      
+      # Create log entry
+      log_entry = {
+        'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'username': self.username,
+        'input': self.current_user_input,
+        'functions_called': functions_called
+      }
+      
+      # Load existing data or create new list
+      log_data = []
+      if os.path.exists(log_file):
+        try:
+          with open(log_file, 'r', encoding='utf-8') as f:
+            log_data = yaml.safe_load(f) or []
+        except:
+          log_data = []
+      
+      # Append new entry
+      log_data.append(log_entry)
+      
+      # Write back to file
+      with open(log_file, 'w', encoding='utf-8') as f:
+        yaml.dump(log_data, f, default_flow_style=False, allow_unicode=True)
+        
+    except Exception as e:
+      tomlogger.error(f"Failed to log function calls: {str(e)}", self.username)
+    finally:
+      # Reset tracking
+      self.current_user_input = None
+      self.current_function_calls = []
 
   def reset(self):
     tomlogger.info(f"History cleaning", self.username)
@@ -374,6 +454,8 @@ class TomLLM():
       if response != False:
         if response.choices[0].finish_reason == "stop":
           self.history.append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
+          # Log function calls when request is complete
+          self.log_function_call_to_file()
           return response.choices[0].message.content
 
         elif response.choices[0].finish_reason == "tool_calls":
@@ -384,6 +466,10 @@ class TomLLM():
             function_params = json.loads(tool_call.function.arguments)
 
             tomlogger.info(f"Calling function: {function_name} with {function_params}", self.username)
+            
+            # Track function call for logging
+            params_str = ", ".join([f'{k}="{v}"' for k, v in function_params.items()])
+            self.current_function_calls.append(f"{function_name}{{ {params_str} }}")
 
             if function_name in self.functions:
               function_data = self.functions[function_name]
@@ -401,6 +487,8 @@ class TomLLM():
 
             if function_result is False:
               self.history.append({"role": 'assistant', "content": "Error while executing the function call"})
+              # Log function calls even on error
+              self.log_function_call_to_file()
               return False
 
             self.history.append({"role": 'system', "content": json.dumps(function_result)})
@@ -411,6 +499,10 @@ class TomLLM():
         return False
 
   def processRequest(self, input, lang, position, client_type):
+    
+    # Start tracking this request for logging
+    self.current_user_input = input
+    self.current_function_calls = []
   
     self.generateContextPrompt(input, lang, position, client_type)
 
@@ -446,6 +538,8 @@ class TomLLM():
       response = self.callLLM(messages=conversation)
       if response != False and response.choices[0].finish_reason == "stop":
         self.history.append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
+        # Log function calls when request is complete (even if no functions called)
+        self.log_function_call_to_file()
         return response.choices[0].message.content
       
       return False
