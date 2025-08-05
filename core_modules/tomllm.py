@@ -418,6 +418,9 @@ class TomLLM():
       self.reset()
       return ["reset_performed"]  # Special indicator for reset
     
+    # Remove duplicates from the modules list
+    load_modules = list(set(load_modules))
+    
     return load_modules
 
   def executeRequest(self, conversation, modules, client_type):
