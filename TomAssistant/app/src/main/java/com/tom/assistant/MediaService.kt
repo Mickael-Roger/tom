@@ -3,9 +3,13 @@ package com.tom.assistant
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
-import android.widget.Toast
+import android.util.Log
 
 class MediaService : Service() {
+    
+    companion object {
+        private const val TAG = "MediaService"
+    }
     
     override fun onBind(intent: Intent?): IBinder? {
         return null
@@ -13,16 +17,16 @@ class MediaService : Service() {
     
     override fun onCreate() {
         super.onCreate()
-        Toast.makeText(this, "MediaService créé", Toast.LENGTH_SHORT).show()
+        Log.d(TAG, "MediaService created")
     }
     
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Toast.makeText(this, "MediaService démarré", Toast.LENGTH_SHORT).show()
+        Log.d(TAG, "MediaService started")
         return START_STICKY // Redémarre automatiquement si tué
     }
     
     override fun onDestroy() {
         super.onDestroy()
-        Toast.makeText(this, "MediaService détruit", Toast.LENGTH_SHORT).show()
+        Log.d(TAG, "MediaService destroyed")
     }
 }

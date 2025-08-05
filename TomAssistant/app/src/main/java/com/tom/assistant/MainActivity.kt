@@ -731,8 +731,6 @@ class MainActivity : AppCompatActivity() {
             else -> "OTHER($keyCode)"
         }
         
-        Toast.makeText(this, "KeyDown: $keyName détecté!", Toast.LENGTH_LONG).show()
-        
         // Log de debug pour voir TOUS les événements clavier
         Log.d("MainActivity", "onKeyDown: keyCode=$keyCode, keyName=$keyName, event=$event")
         
@@ -742,7 +740,7 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_HEADSETHOOK,
             KeyEvent.KEYCODE_MEDIA_PLAY,
             KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                Toast.makeText(this, "Bouton casque → Enregistrement vocal!", Toast.LENGTH_LONG).show()
+                Log.d("MainActivity", "Bluetooth headset button pressed - triggering voice input")
                 toggleVoiceInputFromHeadset()
                 return true
             }
