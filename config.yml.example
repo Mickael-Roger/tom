@@ -1,5 +1,6 @@
 global:
   llm: openai
+  llm_tts: openai  # LLM utilisé pour synthétiser les réponses TTS
   log_level: INFO
   
   # Nouvelle structure recommandée : Configuration des LLMs sous global.llms

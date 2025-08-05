@@ -1,7 +1,8 @@
 package com.tom.assistant.models
 
 data class ProcessResponse(
-    val response: String
+    val response: String,
+    val response_tts: String? = null
 )
 
 data class TasksResponse(

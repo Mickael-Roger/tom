@@ -201,6 +201,76 @@ class TomLLM():
     self.history = []
     return True
 
+  def synthesize_tts_response(self, text_response, lang="fr"):
+    """
+    Synthesize a TTS-friendly version of the response using the configured LLM
+    """
+    try:
+      # Get TTS LLM from configuration (fallback to main LLM if not configured)
+      tts_llm = self.global_config['global'].get('llm_tts', self.llm)
+      
+      # Prepare TTS synthesis prompt (always in English but preserve original language)
+      tts_prompt = f"""You must synthesize the following response to make it suitable for voice reading by a text-to-speech (TTS) system.
+
+Original response:
+{text_response}
+
+TTS synthesis guidelines:
+- IMPORTANT: Keep the same language as the original text (French/English/etc.)
+- Remove all Markdown formatting (links, bold, italic, lists, etc.)
+- Convert lists into short, natural sentences
+- Replace URLs with simple descriptions like "link" or "website"
+- Keep only essential information
+- Limit to 1-2 sentences maximum
+- Write short, fluid sentences for voice reading
+- Use informal tone ("tu" form in French, casual in English)
+- Remove polite endings like "let me know if you want to know more" or "tell me if you want me to do this or that"
+- For ACTION requests: respond with brief confirmation like "C'est fait" (French) or "Done" (English)
+- For INFORMATION requests: provide brief summary without "C'est fait", for example "Tu as 13 news, dont 4 en sciences, 6 en cyber et 3 en blog" or "You have 5 emails, 3 urgent"
+- Be direct and concise, avoid unnecessary politeness formulas
+- Use relative time references: say "demain" instead of "demain, le jeudi 12 septembre 2025", "aujourd'hui" instead of full dates
+- Avoid redundant temporal information
+
+Respond only with the text to be read, without explanation or formatting."""
+
+      # Create messages for TTS synthesis
+      tts_messages = [
+        {"role": "system", "content": "You are a text synthesis assistant specialized in creating TTS-friendly content."},
+        {"role": "user", "content": tts_prompt}
+      ]
+      
+      # Call LLM for TTS synthesis (use complexity 0 for speed)
+      tts_response = self.callLLM(messages=tts_messages, complexity=0, llm=tts_llm)
+      
+      if tts_response and tts_response.choices[0].finish_reason == "stop":
+        tts_text = tts_response.choices[0].message.content.strip()
+        tomlogger.debug(f"TTS synthesis successful: {len(tts_text)} chars", self.username)
+        return tts_text
+      else:
+        tomlogger.warning(f"TTS synthesis failed, using fallback", self.username)
+        # Fallback: simple text cleaning
+        import re
+        clean_text = re.sub(r'\[.*?\]', '', text_response)  # Remove markdown links
+        clean_text = re.sub(r'[*_`#]', '', clean_text)     # Remove markdown formatting
+        clean_text = re.sub(r'\n+', ' ', clean_text)       # Replace newlines with spaces
+        clean_text = clean_text.strip()
+        # Limit to first 200 characters
+        if len(clean_text) > 200:
+          clean_text = clean_text[:200].rsplit(' ', 1)[0] + "..."
+        return clean_text
+        
+    except Exception as e:
+      tomlogger.error(f"Error during TTS synthesis: {str(e)}", self.username)
+      # Simple fallback
+      import re
+      clean_text = re.sub(r'\[.*?\]', '', text_response)
+      clean_text = re.sub(r'[*_`#]', '', clean_text)
+      clean_text = re.sub(r'\n+', ' ', clean_text)
+      clean_text = clean_text.strip()
+      if len(clean_text) > 200:
+        clean_text = clean_text[:200].rsplit(' ', 1)[0] + "..."
+      return clean_text
+
 
 
   def generateContextPrompt(self, input, lang, position, client_type):
@@ -423,7 +493,7 @@ class TomLLM():
     
     return load_modules
 
-  def executeRequest(self, conversation, modules, client_type):
+  def executeRequest(self, conversation, modules, client_type, sound_enabled=False, lang="fr"):
     tools = []
     complexity = 0
     active_llm_instance = self  # Default to global LLM instance
@@ -456,10 +526,19 @@ class TomLLM():
       
       if response != False:
         if response.choices[0].finish_reason == "stop":
-          self.history.append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
+          response_content = response.choices[0].message.content
+          self.history.append({"role": response.choices[0].message.role, "content": response_content})
           # Log function calls when request is complete
           self.log_function_call_to_file()
-          return response.choices[0].message.content
+          
+          if sound_enabled:
+            tts_response = self.synthesize_tts_response(response_content, lang)
+            return {
+              "text_display": response_content,
+              "text_tts": tts_response
+            }
+          else:
+            return response_content
 
         elif response.choices[0].finish_reason == "tool_calls":
           conversation.append(response.choices[0].message.to_dict())
@@ -501,7 +580,7 @@ class TomLLM():
       else: 
         return False
 
-  def processRequest(self, input, lang, position, client_type):
+  def processRequest(self, input, lang, position, client_type, sound_enabled=False):
     
     # Start tracking this request for logging
     self.current_user_input = input
@@ -528,11 +607,20 @@ class TomLLM():
         # Generate a simple greeting response after reset
         greeting_response = "Salut ! Comment puis-je t'aider ?" if lang == "fr" else "Hello! How can I help you?"
         self.history.append({"role": "assistant", "content": greeting_response})
-        return greeting_response
+        
+        if sound_enabled:
+          # For reset/greeting, use simple TTS response
+          tts_response = "Salut" if lang == "fr" else "Hi"
+          return {
+            "text_display": greeting_response,
+            "text_tts": tts_response
+          }
+        else:
+          return greeting_response
       else:
         tomlogger.debug(f"Load modules: {str(required_modules)}", self.username)
         # Phase 2: Execute request with identified modules
-        return self.executeRequest(conversation, required_modules, client_type)
+        return self.executeRequest(conversation, required_modules, client_type, sound_enabled, lang)
     else:
       # If no modules identified, try to answer directly
       response_context = self.set_response_context(client_type)
@@ -540,9 +628,18 @@ class TomLLM():
       
       response = self.callLLM(messages=conversation)
       if response != False and response.choices[0].finish_reason == "stop":
-        self.history.append({"role": response.choices[0].message.role, "content": response.choices[0].message.content})
+        response_content = response.choices[0].message.content
+        self.history.append({"role": response.choices[0].message.role, "content": response_content})
         # Log function calls when request is complete (even if no functions called)
         self.log_function_call_to_file()
-        return response.choices[0].message.content
+        
+        if sound_enabled:
+          tts_response = self.synthesize_tts_response(response_content, lang)
+          return {
+            "text_display": response_content,
+            "text_tts": tts_response
+          }
+        else:
+          return response_content
       
       return False

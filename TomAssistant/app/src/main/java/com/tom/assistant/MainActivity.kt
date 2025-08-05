@@ -371,7 +371,7 @@ class MainActivity : AppCompatActivity() {
             request = message,
             lang = sessionManager.getLanguage(),
             position = currentPosition,
-            tts = true,
+            sound_enabled = sessionManager.isSoundEnabled(),
             client_type = "android"
         )
 
@@ -390,8 +390,9 @@ class MainActivity : AppCompatActivity() {
 
                         // Lire la réponse avec TTS si activé
                         if (sessionManager.isSoundEnabled()) {
-                            val cleanText = cleanTextForTTS(processResponse.response)
-                            audioManager.speak(cleanText, sessionManager.getLanguage())
+                            // Utiliser response_tts si disponible (synthétisé par le serveur), sinon fallback
+                            val textToSpeak = processResponse.response_tts ?: cleanTextForTTS(processResponse.response)
+                            audioManager.speak(textToSpeak, sessionManager.getLanguage())
                         }
                     }
                 } else {

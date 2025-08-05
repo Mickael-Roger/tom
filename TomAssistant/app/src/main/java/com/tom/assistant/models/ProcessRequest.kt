@@ -4,7 +4,7 @@ data class ProcessRequest(
     val request: String,
     val lang: String,
     val position: Position?,
-    val tts: Boolean,
+    val sound_enabled: Boolean,
     val client_type: String = "android"
 )
 

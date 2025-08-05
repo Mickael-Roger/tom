@@ -228,6 +228,7 @@ class TomWebService:
     lang = input_json.get('lang')
     position = input_json.get('position')
     client_type = input_json.get('client_type', 'pwa')
+    sound_enabled = input_json.get('sound_enabled', False)
     username = cherrypy.session['username']
 
     # Set logging context for this request
@@ -236,11 +237,19 @@ class TomWebService:
     logger.user_request(user_input, username, client_type)
 
     session_instance = self.get_session_instance()
-    response = session_instance.processRequest(input=user_input, lang=lang, position=position, client_type=client_type)
+    response = session_instance.processRequest(input=user_input, lang=lang, position=position, client_type=client_type, sound_enabled=sound_enabled)
 
     if response:
-      logger.user_response(response, username, client_type)
-      return {"response": response} 
+      # Handle both old format (string) and new format (dict with text_display/text_tts)
+      if isinstance(response, dict) and "text_display" in response and "text_tts" in response:
+        logger.user_response(response["text_display"], username, client_type)
+        return {
+          "response": response["text_display"],
+          "response_tts": response["text_tts"]
+        }
+      else:
+        logger.user_response(response, username, client_type)
+        return {"response": response}
     else:
       logger.error(f"Failed to process request: {user_input}", username, client_type)
       raise cherrypy.HTTPError(500, response)

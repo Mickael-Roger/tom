@@ -146,7 +146,8 @@ document.addEventListener("DOMContentLoaded", () => {
             request: message,
             lang: selectedLanguage,
             position: userPosition,
-            client_type: clientType
+            client_type: clientType,
+            sound_enabled: soundEnabled
         };
     
         // Envoyer la requête à /process sans attendre sa réponse
@@ -178,8 +179,9 @@ document.addEventListener("DOMContentLoaded", () => {
     
                             // Use local TTS if enabled
                             if (soundEnabled && isTTSAvailable()) {
-                                const sanitizedText = sanitizeText(data.response);
-                                speakText(sanitizedText, selectedLanguage);
+                                // Use response_tts if available (server-synthesized), otherwise fallback to sanitized response
+                                const textToSpeak = data.response_tts || sanitizeText(data.response);
+                                speakText(textToSpeak, selectedLanguage);
                             }
                         }
                     })
