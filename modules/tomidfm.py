@@ -79,6 +79,13 @@ class TomIdfm:
           PRIMARY KEY (line_id, station_id)
       )
       ''')
+      cursor.execute('''
+      create table if not exists station_cache (
+          station_id TEXT PRIMARY KEY,
+          station_name TEXT NOT NULL,
+          city TEXT
+      )
+      ''')
       dbconn.commit()
       dbconn.close()
 
@@ -140,6 +147,9 @@ class TomIdfm:
           dbconn.commit()
 
         dbconn.close()
+
+    # Load station cache
+    self.station_cache = self._load_station_cache()
 
     self.tools = [
       {
@@ -241,9 +251,7 @@ class TomIdfm:
       },
     ]
 
-
-
-    self.systemContext = ""
+    self.systemContext = self._get_cache_summary()
     self.complexity = tom_config.get("complexity", 0)
 
     self.functions = {
@@ -265,6 +273,75 @@ class TomIdfm:
     }
 
 
+
+
+  def _load_station_cache(self):
+    """Load station cache from database"""
+    try:
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute('SELECT station_id, station_name, city FROM station_cache')
+      rows = cursor.fetchall()
+      dbconn.close()
+      
+      cache = {}
+      for row in rows:
+        cache[row[1].lower()] = {
+          "station_id": row[0],
+          "station_name": row[1],
+          "city": row[2] or ""
+        }
+      return cache
+    except:
+      return {}
+
+  def _save_station_to_cache(self, station_id, station_name, city=""):
+    """Save a station to cache"""
+    try:
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute('INSERT OR REPLACE INTO station_cache (station_id, station_name, city) VALUES (?, ?, ?)', 
+                     (station_id, station_name, city))
+      dbconn.commit()
+      dbconn.close()
+      
+      # Update in-memory cache
+      self.station_cache[station_name.lower()] = {
+        "station_id": station_id,
+        "station_name": station_name,
+        "city": city
+      }
+    except Exception as e:
+      logger.error(f"Error saving station to cache: {e}")
+
+  def _get_cache_summary(self):
+    """Returns a cache summary for system context as JSON"""
+    # Load fresh data from station_cache table
+    try:
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute('SELECT station_id, station_name, city FROM station_cache')
+      rows = cursor.fetchall()
+      dbconn.close()
+      
+      if not rows:
+        cache_instruction = 'Station cache: {}\n\nIMPORTANT: The station cache is empty. Always use search_station to find station identifiers.'
+      else:
+        cache_json = {}
+        for row in rows:
+          station_id, station_name, city = row
+          cache_json[station_name] = {
+            "station_id": station_id,
+            "city": city or ""
+          }
+        
+        cache_instruction = f'Station cache: {json.dumps(cache_json, ensure_ascii=False)}\n\nIMPORTANT: Before calling search_station, check if you already have the station_id in the cache above. If the station is in the cache, use the station_id directly. Only call search_station if the station is NOT in the cache or if you need to search for a new station.'
+      
+      return cache_instruction
+      
+    except Exception as e:
+      logger.error(f"Error loading cache for system context: {e}")
+      return 'Station cache: {}\n\nIMPORTANT: Cache unavailable. Use search_station to find station identifiers.'
 
 
   def get_city(self, latitude, longitude):
@@ -328,7 +405,16 @@ class TomIdfm:
         for line in lines:
           current_lines.append({"line_id": line[0], "line_name": line[1]})
 
-        search_stations.append({"station_id": id, "station_name": place['stop_area']['name'], "lines": current_lines})
+        # Get city from database if available
+        city = list_stations.get(id, "")
+        station_name = place['stop_area']['name']
+        
+        # Save to cache if not already cached
+        cache_key = station_name.lower()
+        if cache_key not in self.station_cache:
+          self._save_station_to_cache(id, station_name, city)
+        
+        search_stations.append({"station_id": id, "station_name": station_name, "lines": current_lines})
 
     return search_stations
 
