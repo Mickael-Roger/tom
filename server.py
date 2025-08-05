@@ -23,6 +23,7 @@ from tomcorebehavior import TomBehavior
 from tomcorememory import TomMemory
 from tomcorereminder import TomReminder
 from tomcoremessage import TomMessage
+from tomcoremorningreminder import TomCoreMorningReminder
 from tomlogger import logger, set_log_context, init_logger
 from tomcorebackground import TomBackground
 
@@ -596,6 +597,27 @@ for username, module_manager in module_managers.items():
     userList[username].functions[func_name] = {
       "function": func_data['function'] if isinstance(func_data, dict) else func_data,
       "module_name": "message"
+    }
+
+  morning_reminder_obj = TomCoreMorningReminder(global_config, username)
+  # Set LLM reference after creation
+  morning_reminder_obj.llm = userList[username]
+  userList[username].services['morningreminder'] = {
+    "obj": morning_reminder_obj,
+    "description": morning_reminder_obj.tom_config["description"], 
+    "systemContext": "",
+    "tools": [],
+    "complexity": 0,
+    "functions": {}, 
+  }
+  userList[username].services['morningreminder']['tools'] = userList[username].services['morningreminder']['obj'].tools
+  userList[username].services['morningreminder']['complexity'] = userList[username].services['morningreminder']['obj'].complexity
+  userList[username].services['morningreminder']['systemContext'] = userList[username].services['morningreminder']['obj'].systemContext
+  # Update functions with module metadata for morning reminder module
+  for func_name, func_data in userList[username].services['morningreminder']['obj'].functions.items():
+    userList[username].functions[func_name] = {
+      "function": func_data['function'] if isinstance(func_data, dict) else func_data,
+      "module_name": "morningreminder"
     }
 
   userList[username].tasks = TomBackground(global_config, username, userList[username].services, userList[username])
