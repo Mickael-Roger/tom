@@ -42,6 +42,7 @@ class HeadsetButtonManager(
         Log.d("HeadsetButtonManager", "Setting up MediaSession...")
         
         mediaSession = MediaSession(context, "TomAssistant").apply {
+            @Suppress("DEPRECATION")
             setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS)
 
             val stateBuilder = PlaybackState.Builder()
@@ -60,7 +61,12 @@ class HeadsetButtonManager(
                 }
                 
                 override fun onMediaButtonEvent(mediaButtonEvent: Intent): Boolean {
-                    val event = mediaButtonEvent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+                    val event = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        mediaButtonEvent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        mediaButtonEvent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+                    }
                     Log.d("HeadsetButtonManager", "onMediaButtonEvent: $event")
                     
                     if (event != null && event.action == KeyEvent.ACTION_DOWN) {
@@ -102,6 +108,7 @@ class HeadsetButtonManager(
                 startSilentPlayback()
             }
         } else {
+            @Suppress("DEPRECATION")
             val focusResult = audioManager?.requestAudioFocus(
                 { focusChange -> 
                     Log.d("HeadsetButtonManager", "onAudioFocusChange: $focusChange")
@@ -169,6 +176,7 @@ class HeadsetButtonManager(
                 audioManager?.abandonAudioFocusRequest(it)
             }
         } else {
+            @Suppress("DEPRECATION")
             audioManager?.abandonAudioFocus { }
         }
     }

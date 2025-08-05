@@ -39,8 +39,8 @@ object ApiClient {
             try {
                 for (cookie in cookies) {
                     val httpCookie = java.net.HttpCookie(cookie.name, cookie.value).apply {
-                        domain = cookie.domain ?: url.host
-                        path = cookie.path ?: "/"
+                        domain = cookie.domain.ifEmpty { url.host }
+                        path = cookie.path.ifEmpty { "/" }
                         isHttpOnly = cookie.httpOnly
                         secure = cookie.secure
                         // Force une longue durée de vie pour les sessions
