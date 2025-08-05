@@ -222,7 +222,8 @@ TTS synthesis guidelines:
 - Replace URLs with simple descriptions like "link" or "website"
 - Keep only essential information
 - Limit to 1-2 sentences maximum
-- Write short, fluid sentences for voice reading
+- IMPORTANT: Write as short as you can
+- Use fluid sentences for voice reading
 - Use informal tone ("tu" form in French, casual in English)
 - Remove polite endings like "let me know if you want to know more" or "tell me if you want me to do this or that"
 - For ACTION requests: respond with brief confirmation like "C'est fait" (French) or "Done" (English)
