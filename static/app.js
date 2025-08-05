@@ -34,7 +34,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
     let userPosition = null;
-    let currentAudio = null; // Reference to the currently playing audio
     let isSpeaking = false; // Flag for TTS state
     let autoSubmitEnabled = false; // Auto-submit state
     let selectedLanguage = "fr"; // Default language
@@ -147,7 +146,6 @@ document.addEventListener("DOMContentLoaded", () => {
             request: message,
             lang: selectedLanguage,
             position: userPosition,
-            tts: isTTSAvailable(),
             client_type: clientType
         };
     
@@ -178,10 +176,8 @@ document.addEventListener("DOMContentLoaded", () => {
                         if (data.response) {
                             addMessageToChat("bot", data.response);
     
-                            // Jouer l'audio si disponible
-                            if (soundEnabled && data.voice && !payload.tts) {
-                                playAudioFromBase64(data.voice);
-                            } else if (soundEnabled && payload.tts) {
+                            // Use local TTS if enabled
+                            if (soundEnabled && isTTSAvailable()) {
                                 const sanitizedText = sanitizeText(data.response);
                                 speakText(sanitizedText, selectedLanguage);
                             }
@@ -277,107 +273,15 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // Play Base64 MP3 and stop if speak button is clicked
-    function playAudioFromBase64(base64Audio) {
-        if (currentAudio) {
-            currentAudio.pause(); // Stop current audio if playing
-            currentAudio = null;
-        }
 
-        currentAudio = new Audio("data:audio/mp3;base64," + base64Audio);
-        currentAudio.play().catch(error => {
-            console.error("Erreur de lecture audio :", error);
-        });
-
-        currentAudio.onended = () => {
-            currentAudio = null; // Reset when the audio finishes
-        };
-    }
-
-    // Use local TTS to speech
-//    function speakText(text, language) {
-//        if (isSpeaking) {
-//            window.speechSynthesis.cancel(); // Stop any ongoing TTS
-//            isSpeaking = false;
-//        }
-//
-//        const utterance = new SpeechSynthesisUtterance(text);
-//        utterance.lang = language === "fr" ? "fr-FR" : "en-US";
-//
-//        utterance.onstart = () => {
-//            isSpeaking = true;
-//        };
-//
-//        utterance.onend = () => {
-//            isSpeaking = false;
-//        };
-//
-//        window.speechSynthesis.speak(utterance);
-//    }
-
-    function speakText(text, language) {
-        if (isSpeaking) {
-            // Arrêter tout TTS en cours
-            if (window.speechSynthesis) {
-                window.speechSynthesis.cancel();
-            }
-            if (window.AndroidTTS) {
-                // AndroidTTS ne dispose pas de fonction pour annuler, mais on peut gérer via isSpeaking
-                console.log("Stopping Android TTS...");
-            }
-            isSpeaking = false;
-        }
-
-        // Utilisation de SpeechSynthesis si disponible
-        if (window.speechSynthesis) {
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = language === "fr" ? "fr-FR" : "en-US";
-
-            utterance.onstart = () => {
-                isSpeaking = true;
-            };
-
-            utterance.onend = () => {
-                isSpeaking = false;
-            };
-
-            window.speechSynthesis.speak(utterance);
-        } 
-        // Sinon, utilisation de l'API AndroidTTS
-        else if (window.AndroidTTS) {
-            const androidLanguage = language === "fr" ? "fr-FR" : "en-US";
-
-            try {
-                isSpeaking = true; // Marquer comme en cours de parole
-                // Utilisation de AndroidTTS avec les paramètres textuels et linguistiques
-                window.AndroidTTS.speak(text, androidLanguage);
-                console.log(`Android TTS: Speaking "${text}" in ${androidLanguage}`);
-
-                // Simuler les événements onstart et onend avec un délai basé sur la longueur du texte
-                setTimeout(() => {
-                    isSpeaking = false; // Fin du TTS
-                    console.log("Android TTS finished speaking.");
-                }, Math.max(1000, text.length * 100)); // Estimation du temps basé sur 100 ms par caractère
-            } catch (error) {
-                console.error("Error with Android TTS:", error);
-                isSpeaking = false;
-            }
-        } else {
-            console.error("No TTS engine available.");
-        }
-    }
 
     // Handle Speak button click
     speakButton.addEventListener("click", () => {
-        // Stop audio playback if active
-        if (currentAudio) {
-            currentAudio.pause();
-            currentAudio = null;
-        }
-    
         // Stop TTS if active
         if (isSpeaking) {
-            window.speechSynthesis.cancel();
+            if (window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+            }
             isSpeaking = false;
         }
     
@@ -467,11 +371,63 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // Function to check if TTS is available
-    function isTTSAvailable() {
-        return 'speechSynthesis' in window  || 'AndroidTTS' in window;;
+    // Use local TTS to speech
+    function speakText(text, language) {
+        if (isSpeaking) {
+            // Arrêter tout TTS en cours
+            if (window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+            }
+            if (window.AndroidTTS) {
+                // AndroidTTS ne dispose pas de fonction pour annuler, mais on peut gérer via isSpeaking
+                console.log("Stopping Android TTS...");
+            }
+            isSpeaking = false;
+        }
+
+        // Utilisation de SpeechSynthesis si disponible
+        if (window.speechSynthesis) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = language === "fr" ? "fr-FR" : "en-US";
+
+            utterance.onstart = () => {
+                isSpeaking = true;
+            };
+
+            utterance.onend = () => {
+                isSpeaking = false;
+            };
+
+            window.speechSynthesis.speak(utterance);
+        } 
+        // Sinon, utilisation de l'API AndroidTTS
+        else if (window.AndroidTTS) {
+            const androidLanguage = language === "fr" ? "fr-FR" : "en-US";
+
+            try {
+                isSpeaking = true; // Marquer comme en cours de parole
+                // Utilisation de AndroidTTS avec les paramètres textuels et linguistiques
+                window.AndroidTTS.speak(text, androidLanguage);
+                console.log(`Android TTS: Speaking "${text}" in ${androidLanguage}`);
+
+                // Simuler les événements onstart et onend avec un délai basé sur la longueur du texte
+                setTimeout(() => {
+                    isSpeaking = false; // Fin du TTS
+                    console.log("Android TTS finished speaking.");
+                }, Math.max(1000, text.length * 100)); // Estimation du temps basé sur 100 ms par caractère
+            } catch (error) {
+                console.error("Error with Android TTS:", error);
+                isSpeaking = false;
+            }
+        } else {
+            console.error("No TTS engine available.");
+        }
     }
 
+    // Function to check if TTS is available
+    function isTTSAvailable() {
+        return 'speechSynthesis' in window || 'AndroidTTS' in window;
+    }
 
     // Toggle tasks box visibility
     function toggleTasksBox() {

@@ -227,7 +227,6 @@ class TomWebService:
     user_input = input_json.get('request')
     lang = input_json.get('lang')
     position = input_json.get('position')
-    localTTS = input_json.get('tts')
     client_type = input_json.get('client_type', 'pwa')
     username = cherrypy.session['username']
 
@@ -439,7 +438,7 @@ class TomWebService:
 
     # Add or Update user token
 
-    db_path = os.path.join(os.getcwd(), global_config['global']['user_datadir'], "all")
+    db_path = global_config['global']['all_datadir']
     db_notifs = os.path.join(db_path, "reminders.sqlite")
 
     dbconn = sqlite3.connect(db_notifs)
