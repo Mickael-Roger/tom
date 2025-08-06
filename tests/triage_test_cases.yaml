@@ -15,17 +15,17 @@ test_cases:
     expected_modules: ["calendar"]
     description: "Calendar modification"
 
-  # Grocery-related prompts
+  # Grocery-related prompts (now handled by todo module)
   - prompt: "Add milk and bread to my shopping list"
-    expected_modules: ["groceries"]
+    expected_modules: ["todo"]
     description: "Basic grocery list addition"
 
   - prompt: "What's on my grocery list?"
-    expected_modules: ["groceries"]
+    expected_modules: ["todo"]
     description: "Grocery list query"
 
   - prompt: "Remove tomatoes from my shopping list"
-    expected_modules: ["groceries"]
+    expected_modules: ["todo"]
     description: "Grocery list removal"
 
   # IDFM (transport) related prompts
@@ -69,11 +69,11 @@ test_cases:
 
   # Multiple modules needed
   - prompt: "Add 'buy groceries' to my todo list and also add milk to my shopping list"
-    expected_modules: ["todo", "groceries"]
+    expected_modules: ["todo"]
     description: "Combined todo and grocery action"
 
   - prompt: "What's my schedule for tomorrow and what's on my shopping list?"
-    expected_modules: ["calendar", "groceries"]
+    expected_modules: ["calendar", "todo"]
     description: "Multiple information queries"
 
   - prompt: "Schedule a meeting for 2pm and start the vacuum cleaner"
@@ -86,7 +86,7 @@ test_cases:
 
   # Complex multi-module scenarios
   - prompt: "Plan my day: check my schedule, review my todo list, and see what groceries I need"
-    expected_modules: ["calendar", "todo", "groceries"]
+    expected_modules: ["calendar", "todo"]
     description: "Daily planning with multiple modules"
 
   # No modules needed (general conversation)
@@ -104,7 +104,7 @@ test_cases:
     description: "French calendar query"
 
   - prompt: "Ajoute du lait à ma liste de courses"
-    expected_modules: ["groceries"]
+    expected_modules: ["todo"]
     description: "French grocery addition"
 
   - prompt: "Comment aller de Châtelet à République ?"

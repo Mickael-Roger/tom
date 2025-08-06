@@ -81,6 +81,8 @@ class TomLLM():
 
     self.base_tom_context = f'''Your name is Tom, and you are my personal assistant. You have access to numerous external functionalities via function calls. Since you have access to more functions than your memory can hold, they are grouped into modules. A module is a logical grouping of functions within a specific scope. One of your primary tasks will be "triage," which involves identifying the modules to load to fulfill the user's request.
 
+    IMPORTANT: You must always respond in the same language that the user uses to address you. If they speak French, respond in French. If they speak English, respond in English. Automatically detect the language and match it.
+
     When the user provides you with information, if you think it should be stored in memory, suggest doing so.
 
     It is important to be precise and not make assumptions. If the request is unclear, ask for clarification.
@@ -201,7 +203,7 @@ class TomLLM():
     self.history = []
     return True
 
-  def synthesize_tts_response(self, text_response, lang="fr"):
+  def synthesize_tts_response(self, text_response):
     """
     Synthesize a TTS-friendly version of the response using the configured LLM
     """
@@ -274,7 +276,7 @@ Respond only with the text to be read, without explanation or formatting."""
 
 
 
-  def generateContextPrompt(self, input, lang, position, client_type):
+  def generateContextPrompt(self, input, position, client_type):
   
     gps = "" 
 
@@ -494,7 +496,7 @@ Respond only with the text to be read, without explanation or formatting."""
     
     return load_modules
 
-  def executeRequest(self, conversation, modules, client_type, sound_enabled=False, lang="fr"):
+  def executeRequest(self, conversation, modules, client_type, sound_enabled=False):
     tools = []
     complexity = 0
     active_llm_instance = self  # Default to global LLM instance
@@ -533,7 +535,7 @@ Respond only with the text to be read, without explanation or formatting."""
           self.log_function_call_to_file()
           
           if sound_enabled:
-            tts_response = self.synthesize_tts_response(response_content, lang)
+            tts_response = self.synthesize_tts_response(response_content)
             return {
               "text_display": response_content,
               "text_tts": tts_response
@@ -581,13 +583,13 @@ Respond only with the text to be read, without explanation or formatting."""
       else: 
         return False
 
-  def processRequest(self, input, lang, position, client_type, sound_enabled=False):
+  def processRequest(self, input, position, client_type, sound_enabled=False):
     
     # Start tracking this request for logging
     self.current_user_input = input
     self.current_function_calls = []
   
-    self.generateContextPrompt(input, lang, position, client_type)
+    self.generateContextPrompt(input, position, client_type)
 
     available_tools = []
     modules_name_list = []
@@ -605,13 +607,13 @@ Respond only with the text to be read, without explanation or formatting."""
       # Check if reset was performed
       if required_modules == ["reset_performed"]:
         tomlogger.debug(f"Reset performed, generating greeting response", self.username)
-        # Generate a simple greeting response after reset
-        greeting_response = "Salut ! Comment puis-je t'aider ?" if lang == "fr" else "Hello! How can I help you?"
+        # Generate a simple greeting response after reset (French by default, but will adapt to user language)
+        greeting_response = "Salut ! Comment puis-je t'aider ?"
         self.history.append({"role": "assistant", "content": greeting_response})
         
         if sound_enabled:
           # For reset/greeting, use simple TTS response
-          tts_response = "Salut" if lang == "fr" else "Hi"
+          tts_response = "Salut"
           return {
             "text_display": greeting_response,
             "text_tts": tts_response
@@ -621,7 +623,7 @@ Respond only with the text to be read, without explanation or formatting."""
       else:
         tomlogger.debug(f"Load modules: {str(required_modules)}", self.username)
         # Phase 2: Execute request with identified modules
-        return self.executeRequest(conversation, required_modules, client_type, sound_enabled, lang)
+        return self.executeRequest(conversation, required_modules, client_type, sound_enabled)
     else:
       # If no modules identified, try to answer directly
       response_context = self.set_response_context(client_type)
@@ -635,7 +637,7 @@ Respond only with the text to be read, without explanation or formatting."""
         self.log_function_call_to_file()
         
         if sound_enabled:
-          tts_response = self.synthesize_tts_response(response_content, lang)
+          tts_response = self.synthesize_tts_response(response_content)
           return {
             "text_display": response_content,
             "text_tts": tts_response

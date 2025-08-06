@@ -8,8 +8,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const configBox = document.getElementById("config-box");
     const autoSubmitConfig = document.getElementById("auto-submit-config");
     const soundConfig = document.getElementById("sound-config");
-    const languageConfigEn = document.getElementById("language-config-en");
-    const languageConfigFr = document.getElementById("language-config-fr");
     const tasksBox = document.getElementById("tasks-box");
     const tasksList = document.getElementById("tasks-list");
     const tasksIconHeader = document.getElementById("tasks-icon-header");
@@ -36,14 +34,12 @@ document.addEventListener("DOMContentLoaded", () => {
     let userPosition = null;
     let isSpeaking = false; // Flag for TTS state
     let autoSubmitEnabled = false; // Auto-submit state
-    let selectedLanguage = "fr"; // Default language
     let soundEnabled = true; // Sound state (default: enabled)
 
     // Settings persistence functions
     function saveSettings() {
         const settings = {
             autoSubmitEnabled,
-            selectedLanguage,
             soundEnabled
         };
         localStorage.setItem('tomAppSettings', JSON.stringify(settings));
@@ -55,14 +51,12 @@ document.addEventListener("DOMContentLoaded", () => {
             try {
                 const settings = JSON.parse(saved);
                 autoSubmitEnabled = settings.autoSubmitEnabled !== undefined ? settings.autoSubmitEnabled : false;
-                selectedLanguage = settings.selectedLanguage || "fr";
                 soundEnabled = settings.soundEnabled !== undefined ? settings.soundEnabled : true;
                 
                 // Update UI to reflect loaded settings
                 autoSubmitConfig.classList.toggle("active", autoSubmitEnabled);
                 soundConfig.classList.toggle("active", soundEnabled);
                 soundConfig.textContent = soundEnabled ? "🔊 Sound" : "🔇 Mute";
-                updateLanguageConfig();
             } catch (e) {
                 console.error("Error loading settings:", e);
             }
@@ -89,30 +83,11 @@ document.addEventListener("DOMContentLoaded", () => {
         saveSettings();
     });
 
-    // Handle language configuration
-    languageConfigEn.addEventListener("click", () => {
-        selectedLanguage = "en";
-        updateLanguageConfig();
-        saveSettings();
-    });
 
-    languageConfigFr.addEventListener("click", () => {
-        selectedLanguage = "fr";
-        updateLanguageConfig();
-        saveSettings();
-    });
-
-    // Update language configuration appearance
-    function updateLanguageConfig() {
-        languageConfigEn.classList.toggle("active", selectedLanguage === "en");
-        languageConfigFr.classList.toggle("active", selectedLanguage === "fr");
-    }
 
     // Load saved settings and update UI
     loadSettings();
     
-    // Initial updates
-    updateLanguageConfig();
 
     // Activate/deactivate send button based on input
     promptInput.addEventListener("input", () => {
@@ -144,7 +119,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const payload = {
             request: message,
-            lang: selectedLanguage,
             position: userPosition,
             client_type: clientType,
             sound_enabled: soundEnabled
@@ -181,7 +155,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             if (soundEnabled && isTTSAvailable()) {
                                 // Use response_tts if available (server-synthesized), otherwise fallback to sanitized response
                                 const textToSpeak = data.response_tts || sanitizeText(data.response);
-                                speakText(textToSpeak, selectedLanguage);
+                                speakText(textToSpeak);
                             }
                         }
                     })
@@ -193,7 +167,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             .then(response => response.json())
                             .then(data => {
                                 if (data.success) {
-                                    const failureMessage = selectedLanguage === "en" ? "Failure" : "Échec";
+                                    const failureMessage = "Échec";
                                     addMessageToChat("bot", failureMessage);
                                 } else {
                                     console.error("Échec du reset :", data.message);
@@ -289,7 +263,7 @@ document.addEventListener("DOMContentLoaded", () => {
     
         // Start speech recognition
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        recognition.lang = selectedLanguage === "fr" ? "fr-FR" : "en-US";
+        recognition.lang = "fr-FR";
         recognition.start();
     
         // Change button color to orange when recording starts
@@ -374,7 +348,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Use local TTS to speech
-    function speakText(text, language) {
+    function speakText(text) {
         if (isSpeaking) {
             // Arrêter tout TTS en cours
             if (window.speechSynthesis) {
@@ -390,7 +364,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // Utilisation de SpeechSynthesis si disponible
         if (window.speechSynthesis) {
             const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = language === "fr" ? "fr-FR" : "en-US";
+            utterance.lang = "fr-FR";
 
             utterance.onstart = () => {
                 isSpeaking = true;
@@ -404,7 +378,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } 
         // Sinon, utilisation de l'API AndroidTTS
         else if (window.AndroidTTS) {
-            const androidLanguage = language === "fr" ? "fr-FR" : "en-US";
+            const androidLanguage = "fr-FR";
 
             try {
                 isSpeaking = true; // Marquer comme en cours de parole

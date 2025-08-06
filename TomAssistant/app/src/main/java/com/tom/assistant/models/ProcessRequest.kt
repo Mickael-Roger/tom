@@ -2,7 +2,6 @@ package com.tom.assistant.models
 
 data class ProcessRequest(
     val request: String,
-    val lang: String,
     val position: Position?,
     val sound_enabled: Boolean,
     val client_type: String = "android"

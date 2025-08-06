@@ -40,6 +40,12 @@ class TestTomTodoIntegration(unittest.TestCase):
         # Get module configuration using unified config
         self.todo_config = get_module_config_for_test('todo', self.global_config, is_personal=True, username=self.username)
         
+        # Ensure new config format is used
+        if 'list' in self.todo_config and 'todo_list' not in self.todo_config:
+            # Convert legacy config for testing
+            self.todo_config['todo_list'] = self.todo_config['list']
+            self.todo_config['groceries_list'] = self.todo_config.get('groceries_list', self.todo_config['list'])
+        
         # Create TomTodo instance with real config but mock logger
         with patch('tomtodo.logger') as mock_logger:
             try:
@@ -56,7 +62,10 @@ class TestTomTodoIntegration(unittest.TestCase):
         self.assertIn('url', self.todo_config, "URL should be in config")
         self.assertIn('user', self.todo_config, "User should be in config")
         self.assertIn('password', self.todo_config, "Password should be in config")
-        self.assertIn('list', self.todo_config, "List should be in config")
+        self.assertTrue(
+            'todo_list' in self.todo_config or 'list' in self.todo_config, 
+            "todo_list or list should be in config"
+        )
     
     def test_caldav_connection(self):
         """Test CalDAV server connection"""
@@ -67,133 +76,198 @@ class TestTomTodoIntegration(unittest.TestCase):
         self.assertIsNotNone(self.todo.client, "CalDAV client should be created")
         self.assertIsNotNone(self.todo.todoCal, "Todo calendar should be found")
         self.assertEqual(self.todo.date_format, "%Y-%m-%d %H:%M:%S")
+        
+        # Test new config attributes
+        self.assertIsNotNone(self.todo.defaultTodoListName, "Default todo list name should be set")
+        self.assertIsNotNone(self.todo.defaultGroceriesListName, "Default groceries list name should be set")
+        self.assertIsInstance(self.todo.todoCalendars, dict, "Todo calendars should be a dict")
     
-    def test_real_list_tasks(self):
-        """Test listing tasks with real CalDAV server"""
+    def test_list_available_lists(self):
+        """Test listing available lists with real CalDAV server"""
         if not self.integration_available:
             self.skipTest("CalDAV server not available")
         
-        result = self.todo.listTasks()
+        result = self.todo.listAvailableLists()
+        
+        self.assertEqual(result['status'], 'success', "Should return success status")
+        self.assertIn('lists', result, "Result should contain lists")
+        self.assertIsInstance(result['lists'], list, "Lists should be a list")
+        
+        # Should contain at least the default todo list
+        self.assertIn(self.todo.defaultTodoListName, result['lists'], 
+                      f"Should contain default todo list '{self.todo.defaultTodoListName}'")
+    
+    def test_list_items_todo_list(self):
+        """Test listing items from the todo list"""
+        if not self.integration_available:
+            self.skipTest("CalDAV server not available")
+        
+        result = self.todo.listItems(self.todo.defaultTodoListName)
         
         self.assertIsInstance(result, list, "Result should be a list")
         
-        # Check structure of tasks if any exist
-        for task in result:
-            self.assertIn('name', task, "Task should have name")
-            self.assertIn('due', task, "Task should have due (can be None)")
-            self.assertIn('priority', task, "Task should have priority (can be None)")
-            self.assertIn('id', task, "Task should have id")
-            self.assertIsInstance(task['name'], str, "Task name should be string")
-            self.assertIsInstance(task['id'], str, "Task ID should be string")
+        # Check structure of items if any exist
+        for item in result:
+            self.assertIn('name', item, "Item should have name")
+            self.assertIn('due', item, "Item should have due (can be None)")
+            self.assertIn('priority', item, "Item should have priority (can be None)")
+            self.assertIn('id', item, "Item should have id")
+            self.assertIsInstance(item['name'], str, "Item name should be string")
+            self.assertIsInstance(item['id'], str, "Item ID should be string")
     
-    @patch('tomtodo.logger')
-    def test_real_create_and_close_task(self, mock_logger):
-        """Test creating and then closing a task"""
+    def test_list_items_groceries_list(self):
+        """Test listing items from the groceries list"""
         if not self.integration_available:
             self.skipTest("CalDAV server not available")
         
-        # Create a test task
-        test_task_name = f"Integration Test Task {datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        result = self.todo.listItems(self.todo.defaultGroceriesListName)
+        
+        self.assertIsInstance(result, list, "Result should be a list")
+        
+        # Check structure of items if any exist
+        for item in result:
+            self.assertIn('name', item, "Item should have name")
+            self.assertIn('id', item, "Item should have id")
+            self.assertIsInstance(item['name'], str, "Item name should be string")
+            self.assertIsInstance(item['id'], str, "Item ID should be string")
+    
+    def test_list_items_nonexistent_list(self):
+        """Test listing items from non-existent list"""
+        if not self.integration_available:
+            self.skipTest("CalDAV server not available")
+        
+        result = self.todo.listItems('NonExistentList')
+        
+        self.assertIsInstance(result, dict, "Result should be a dict for error")
+        self.assertEqual(result['status'], 'error', "Should return error status")
+        self.assertIn('not found', result['message'], "Should indicate list not found")
+    
+    @patch('tomtodo.logger')
+    def test_create_list(self, mock_logger):
+        """Test creating a new list"""
+        if not self.integration_available:
+            self.skipTest("CalDAV server not available")
+        
+        test_list_name = f"TestList_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
         # Test creation
-        create_result = self.todo.create(test_task_name)
+        result = self.todo.createList(test_list_name)
         
-        self.assertEqual(create_result['status'], 'success')
-        self.assertEqual(create_result['message'], 'Todo task added')
+        self.assertEqual(result['status'], 'success', "Should create list successfully")
+        self.assertIn(test_list_name, result['message'], "Message should mention list name")
         
-        # Verify task was created by listing tasks
-        tasks = self.todo.listTasks()
-        created_task = None
-        for task in tasks:
-            if task['name'] == test_task_name:
-                created_task = task
-                break
+        # Verify list was created
+        self.assertIn(test_list_name, self.todo.todoCalendars, "List should be in todoCalendars")
         
-        self.assertIsNotNone(created_task, "Created task should be found in task list")
-        self.assertEqual(created_task['name'], test_task_name)
+        # Verify it appears in available lists
+        available_lists = self.todo.listAvailableLists()
+        self.assertIn(test_list_name, available_lists['lists'], "List should be in available lists")
         
-        # Test closing the task
-        close_result = self.todo.close(created_task['id'])
-        
-        # Check if close was successful (could be True/False or success dict)
-        if isinstance(close_result, dict):
-            self.assertEqual(close_result['status'], 'success')
-            self.assertEqual(close_result['message'], 'Todo task removed')
-        elif close_result is False:
-            self.fail("Failed to close the created task")
-        # else: close_result could be True for successful completion
-        
-        # Verify task was closed (should not appear in active tasks anymore)
-        # Note: Depending on CalDAV server, completed tasks might still be listed
-        # but with a different status. We just verify the close operation succeeded.
+        # Verify we can list items from the new empty list
+        items = self.todo.listItems(test_list_name)
+        self.assertIsInstance(items, list, "Should return empty list for new list")
+        self.assertEqual(len(items), 0, "New list should be empty")
     
     @patch('tomtodo.logger')
-    def test_real_create_task_with_priority(self, mock_logger):
-        """Test creating a task with priority"""
+    def test_add_to_list_basic_todo(self, mock_logger):
+        """Test adding a basic item to todo list"""
         if not self.integration_available:
             self.skipTest("CalDAV server not available")
         
-        test_task_name = f"Priority Test Task {datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        test_priority = 2
+        test_item_name = f"Integration Test Todo {datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        # Create task with priority
-        result = self.todo.create(test_task_name, priority=test_priority)
+        # Test creation
+        result = self.todo.addToList(test_item_name, self.todo.defaultTodoListName)
         
-        self.assertEqual(result['status'], 'success')
-        self.assertEqual(result['message'], 'Todo task added')
+        self.assertEqual(result['status'], 'success', "Should add item successfully")
+        self.assertIn(self.todo.defaultTodoListName, result['message'], "Message should mention list name")
         
-        # Verify task was created with correct priority
-        tasks = self.todo.listTasks()
-        created_task = None
-        for task in tasks:
-            if task['name'] == test_task_name:
-                created_task = task
+        # Verify item was created by listing items
+        items = self.todo.listItems(self.todo.defaultTodoListName)
+        created_item = None
+        for item in items:
+            if item['name'] == test_item_name:
+                created_item = item
                 break
         
-        self.assertIsNotNone(created_task, "Created task should be found")
-        self.assertEqual(created_task['priority'], test_priority)
+        self.assertIsNotNone(created_item, "Created item should be found in list")
+        self.assertEqual(created_item['name'], test_item_name)
         
         # Clean up
-        if created_task:
+        if created_item:
             try:
                 with patch('tomtodo.logger'):
-                    self.todo.close(created_task['id'])
+                    self.todo.removeFromList(created_item['id'], self.todo.defaultTodoListName)
             except Exception as e:
-                print(f"Warning: Failed to clean up task {created_task['id']}: {e}")
+                print(f"Warning: Failed to clean up item {created_item['id']}: {e}")
     
     @patch('tomtodo.logger')
-    def test_real_create_task_with_due_date(self, mock_logger):
-        """Test creating a task with due date"""
+    def test_add_to_list_basic_grocery(self, mock_logger):
+        """Test adding a basic item to groceries list"""
         if not self.integration_available:
             self.skipTest("CalDAV server not available")
         
-        test_task_name = f"Due Date Test Task {datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        test_item_name = f"Integration Test Grocery {datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Test creation
+        result = self.todo.addToList(test_item_name, self.todo.defaultGroceriesListName)
+        
+        self.assertEqual(result['status'], 'success', "Should add item successfully")
+        self.assertIn(self.todo.defaultGroceriesListName, result['message'], "Message should mention list name")
+        
+        # Verify item was created by listing items
+        items = self.todo.listItems(self.todo.defaultGroceriesListName)
+        created_item = None
+        for item in items:
+            if item['name'] == test_item_name:
+                created_item = item
+                break
+        
+        self.assertIsNotNone(created_item, "Created item should be found in list")
+        self.assertEqual(created_item['name'], test_item_name)
+        
+        # Clean up
+        if created_item:
+            try:
+                with patch('tomtodo.logger'):
+                    self.todo.removeFromList(created_item['id'], self.todo.defaultGroceriesListName)
+            except Exception as e:
+                print(f"Warning: Failed to clean up item {created_item['id']}: {e}")
+    
+    @patch('tomtodo.logger')
+    def test_add_to_list_with_priority_and_due(self, mock_logger):
+        """Test adding an item with priority and due date"""
+        if not self.integration_available:
+            self.skipTest("CalDAV server not available")
+        
+        test_item_name = f"Priority Test Todo {datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        test_priority = 2
         
         # Set due date to tomorrow at 14:30
         tomorrow = datetime.now() + timedelta(days=1)
         due_date = tomorrow.replace(hour=14, minute=30, second=0, microsecond=0)
         due_date_str = due_date.strftime("%Y-%m-%d %H:%M:%S")
         
-        # Create task with due date
-        result = self.todo.create(test_task_name, due=due_date_str)
+        # Create item with priority and due date
+        result = self.todo.addToList(test_item_name, self.todo.defaultTodoListName, 
+                                    priority=test_priority, due=due_date_str)
         
-        self.assertEqual(result['status'], 'success')
-        self.assertEqual(result['message'], 'Todo task added')
+        self.assertEqual(result['status'], 'success', "Should add item successfully")
         
-        # Verify task was created with correct due date
-        tasks = self.todo.listTasks()
-        created_task = None
-        for task in tasks:
-            if task['name'] == test_task_name:
-                created_task = task
+        # Verify item was created with correct attributes
+        items = self.todo.listItems(self.todo.defaultTodoListName)
+        created_item = None
+        for item in items:
+            if item['name'] == test_item_name:
+                created_item = item
                 break
         
-        self.assertIsNotNone(created_task, "Created task should be found")
-        self.assertIsNotNone(created_task['due'], "Task should have due date")
+        self.assertIsNotNone(created_item, "Created item should be found")
+        self.assertEqual(created_item['priority'], test_priority)
+        self.assertIsNotNone(created_item['due'], "Item should have due date")
         
         # Parse the returned due date and compare
-        # Note: Due date format might vary slightly due to timezone handling
-        returned_due = datetime.strptime(created_task['due'], "%Y-%m-%d %H:%M:%S")
+        returned_due = datetime.strptime(created_item['due'], "%Y-%m-%d %H:%M:%S")
         expected_due = datetime.strptime(due_date_str, "%Y-%m-%d %H:%M:%S")
         
         # Allow for small time differences due to timezone/server processing
@@ -201,87 +275,98 @@ class TestTomTodoIntegration(unittest.TestCase):
         self.assertLess(time_diff, 60, "Due dates should be within 1 minute of each other")
         
         # Clean up
-        if created_task:
+        if created_item:
             try:
                 with patch('tomtodo.logger'):
-                    self.todo.close(created_task['id'])
+                    self.todo.removeFromList(created_item['id'], self.todo.defaultTodoListName)
             except Exception as e:
-                print(f"Warning: Failed to clean up task {created_task['id']}: {e}")
+                print(f"Warning: Failed to clean up item {created_item['id']}: {e}")
     
     @patch('tomtodo.logger')
-    def test_real_create_task_complete(self, mock_logger):
-        """Test creating a task with all parameters"""
+    def test_add_and_remove_item_cycle(self, mock_logger):
+        """Test complete cycle of adding and removing an item"""
         if not self.integration_available:
             self.skipTest("CalDAV server not available")
         
-        test_task_name = f"Complete Test Task {datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        test_priority = 1
+        test_item_name = f"Cycle Test Item {datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        # Set due date to next week
-        next_week = datetime.now() + timedelta(days=7)
-        due_date = next_week.replace(hour=9, minute=0, second=0, microsecond=0)
-        due_date_str = due_date.strftime("%Y-%m-%d %H:%M:%S")
+        # Create item
+        create_result = self.todo.addToList(test_item_name, self.todo.defaultTodoListName)
+        self.assertEqual(create_result['status'], 'success')
         
-        # Create task with all parameters
-        result = self.todo.create(test_task_name, priority=test_priority, due=due_date_str)
-        
-        self.assertEqual(result['status'], 'success')
-        self.assertEqual(result['message'], 'Todo task added')
-        
-        # Verify task was created correctly
-        tasks = self.todo.listTasks()
-        created_task = None
-        for task in tasks:
-            if task['name'] == test_task_name:
-                created_task = task
+        # Find the created item
+        items = self.todo.listItems(self.todo.defaultTodoListName)
+        created_item = None
+        for item in items:
+            if item['name'] == test_item_name:
+                created_item = item
                 break
         
-        self.assertIsNotNone(created_task, "Created task should be found")
-        self.assertEqual(created_task['name'], test_task_name)
-        self.assertEqual(created_task['priority'], test_priority)
-        self.assertIsNotNone(created_task['due'], "Task should have due date")
+        self.assertIsNotNone(created_item, "Created item should be found")
         
-        # Clean up
-        if created_task:
-            try:
-                with patch('tomtodo.logger'):
-                    self.todo.close(created_task['id'])
-            except Exception as e:
-                print(f"Warning: Failed to clean up task {created_task['id']}: {e}")
+        # Remove the item
+        remove_result = self.todo.removeFromList(created_item['id'], self.todo.defaultTodoListName)
+        
+        # Check if remove was successful
+        if isinstance(remove_result, dict):
+            self.assertEqual(remove_result['status'], 'success')
+            self.assertIn(self.todo.defaultTodoListName, remove_result['message'])
+        else:
+            self.fail("Remove operation should return success dict")
     
     @patch('tomtodo.logger')
-    def test_close_nonexistent_task(self, mock_logger):
-        """Test closing a task that doesn't exist"""
+    def test_add_to_nonexistent_list(self, mock_logger):
+        """Test adding item to non-existent list"""
         if not self.integration_available:
             self.skipTest("CalDAV server not available")
         
-        # Try to close a task with a non-existent ID
-        result = self.todo.close('non-existent-uid-12345')
+        result = self.todo.addToList("Test Item", "NonExistentList")
         
-        # Should return False for non-existent task
-        self.assertFalse(result, "Closing non-existent task should return False")
-        
-        # Verify error was logged
-        mock_logger.error.assert_called_once()
-        
-        # Check that the error message contains information about the task not being found
-        call_args = mock_logger.error.call_args[0][0]
-        self.assertIn("non-existent-uid-12345", call_args)
-        self.assertIn("Error closing task", call_args)
+        self.assertEqual(result['status'], 'error', "Should return error status")
+        self.assertIn('not found', result['message'], "Should indicate list not found")
     
-    def test_calendar_selection_logic(self):
-        """Test that the correct calendar is selected"""
+    @patch('tomtodo.logger')
+    def test_remove_from_nonexistent_list(self, mock_logger):
+        """Test removing item from non-existent list"""
         if not self.integration_available:
             self.skipTest("CalDAV server not available")
         
-        # Verify that the correct calendar was selected based on config
-        self.assertIsNotNone(self.todo.todoCal, "Todo calendar should be selected")
+        result = self.todo.removeFromList('fake-id', 'NonExistentList')
         
-        # The calendar should be the one matching the configured list name
-        # We can't easily test this without knowing the server structure,
-        # but we can verify basic properties
-        self.assertTrue(hasattr(self.todo.todoCal, 'todos'), "Selected calendar should have todos method")
-        self.assertTrue(hasattr(self.todo.todoCal, 'save_event'), "Selected calendar should have save_event method")
+        self.assertEqual(result['status'], 'error', "Should return error status")
+        self.assertIn('not found', result['message'], "Should indicate list not found")
+    
+    @patch('tomtodo.logger')
+    def test_remove_nonexistent_item(self, mock_logger):
+        """Test removing an item that doesn't exist"""
+        if not self.integration_available:
+            self.skipTest("CalDAV server not available")
+        
+        result = self.todo.removeFromList('non-existent-uid-12345', self.todo.defaultTodoListName)
+        
+        self.assertEqual(result['status'], 'error', "Should return error status")
+        # Different CalDAV servers may behave differently:
+        # - Some return None (our code returns "Item not found")
+        # - Some raise NotFoundError (our code returns "Failed to remove item: NotFoundError...")
+        self.assertTrue(
+            result['message'] == 'Item not found' or 'Failed to remove item:' in result['message'],
+            f"Should indicate item not found, got: {result['message']}"
+        )
+    
+    def test_system_context_contains_list_names(self):
+        """Test that system context contains the configured list names"""
+        if not self.integration_available:
+            self.skipTest("CalDAV server not available")
+        
+        # System context should mention the configured list names
+        self.assertIn(self.todo.defaultTodoListName, self.todo.systemContext,
+                      "System context should contain todo list name")
+        self.assertIn(self.todo.defaultGroceriesListName, self.todo.systemContext,
+                      "System context should contain groceries list name")
+        self.assertIn('TODO List', self.todo.systemContext,
+                      "System context should mention TODO List")
+        self.assertIn('Groceries List', self.todo.systemContext,
+                      "System context should mention Groceries List")
     
     def test_timezone_handling(self):
         """Test timezone handling"""
@@ -294,18 +379,189 @@ class TestTomTodoIntegration(unittest.TestCase):
         # Test custom timezone
         with patch('tomtodo.logger'):
             todo_ny = TomTodo(self.todo_config, None, tz='America/New_York')
-            self.assertEqual(todo_ny.tz.zone, 'America/New_York')
+            if todo_ny.client:  # Only test if connection succeeded
+                self.assertEqual(todo_ny.tz.zone, 'America/New_York')
     
-    def test_module_configuration(self):
-        """Test module configuration attributes"""
+    def test_module_tools_structure(self):
+        """Test that module tools are properly structured"""
         if not self.integration_available:
             self.skipTest("CalDAV server not available")
         
-        self.assertEqual(self.todo.date_format, "%Y-%m-%d %H:%M:%S")
-        self.assertEqual(self.todo.complexity, 0)
-        self.assertEqual(self.todo.systemContext, "")
-        self.assertIsInstance(self.todo.tasks, list)
+        self.assertIsInstance(self.todo.tools, list, "Tools should be a list")
+        self.assertEqual(len(self.todo.tools), 6, "Should have 6 tools")
+        
+        expected_functions = [
+            'list_available_lists',
+            'create_list', 
+            'add_to_list',
+            'list_items',
+            'remove_from_list',
+            'update_item_priority'
+        ]
+        
+        for i, tool in enumerate(self.todo.tools):
+            self.assertEqual(tool['type'], 'function')
+            self.assertIn('function', tool)
+            self.assertEqual(tool['function']['name'], expected_functions[i])
+            self.assertIn('description', tool['function'])
+            self.assertIn('parameters', tool['function'])
     
+    def test_module_functions_structure(self):
+        """Test that module functions are properly structured"""
+        if not self.integration_available:
+            self.skipTest("CalDAV server not available")
+        
+        expected_functions = [
+            'list_available_lists',
+            'create_list',
+            'add_to_list', 
+            'list_items',
+            'remove_from_list',
+            'update_item_priority'
+        ]
+        
+        for func_name in expected_functions:
+            self.assertIn(func_name, self.todo.functions, f"Should have {func_name} function")
+            self.assertIn('function', self.todo.functions[func_name])
+            self.assertTrue(callable(self.todo.functions[func_name]['function']))
+    
+    @patch('tomtodo.logger')
+    def test_update_item_priority_complete_cycle(self, mock_logger):
+        """Test complete cycle of creating item, updating priority, and cleaning up"""
+        if not self.integration_available:
+            self.skipTest("CalDAV server not available")
+        
+        test_item_name = f"Priority Update Test {datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Create item without priority
+        create_result = self.todo.addToList(test_item_name, self.todo.defaultTodoListName)
+        self.assertEqual(create_result['status'], 'success')
+        
+        # Find the created item
+        items = self.todo.listItems(self.todo.defaultTodoListName)
+        created_item = None
+        for item in items:
+            if item['name'] == test_item_name:
+                created_item = item
+                break
+        
+        self.assertIsNotNone(created_item, "Created item should be found")
+        
+        # Update priority to high (1)
+        update_result = self.todo.updateItemPriority(created_item['id'], self.todo.defaultTodoListName, 1)
+        self.assertEqual(update_result['status'], 'success')
+        self.assertIn('Priority updated to 1', update_result['message'])
+        
+        # Verify priority was updated
+        items_after_update = self.todo.listItems(self.todo.defaultTodoListName)
+        updated_item = None
+        for item in items_after_update:
+            if item['id'] == created_item['id']:
+                updated_item = item
+                break
+        
+        self.assertIsNotNone(updated_item, "Updated item should still exist")
+        self.assertEqual(updated_item['priority'], 1, "Priority should be updated to 1")
+        
+        # Update priority to medium (5)
+        update_result2 = self.todo.updateItemPriority(created_item['id'], self.todo.defaultTodoListName, 5)
+        self.assertEqual(update_result2['status'], 'success')
+        self.assertIn('Priority updated to 5', update_result2['message'])
+        
+        # Verify priority was updated again
+        items_after_update2 = self.todo.listItems(self.todo.defaultTodoListName)
+        updated_item2 = None
+        for item in items_after_update2:
+            if item['id'] == created_item['id']:
+                updated_item2 = item
+                break
+        
+        self.assertIsNotNone(updated_item2, "Updated item should still exist")
+        self.assertEqual(updated_item2['priority'], 5, "Priority should be updated to 5")
+        
+        # Update priority to low (9)
+        low_priority_result = self.todo.updateItemPriority(created_item['id'], self.todo.defaultTodoListName, 9)
+        self.assertEqual(low_priority_result['status'], 'success')
+        self.assertIn('Priority updated to 9', low_priority_result['message'])
+        
+        # Verify priority was updated to low
+        items_after_low_update = self.todo.listItems(self.todo.defaultTodoListName)
+        final_item = None
+        for item in items_after_low_update:
+            if item['id'] == created_item['id']:
+                final_item = item
+                break
+        
+        self.assertIsNotNone(final_item, "Item should still exist after priority update")
+        self.assertEqual(final_item['priority'], 9, "Priority should be updated to 9")
+        
+        # Clean up
+        try:
+            with patch('tomtodo.logger'):
+                self.todo.removeFromList(created_item['id'], self.todo.defaultTodoListName)
+        except Exception as e:
+            print(f"Warning: Failed to clean up item {created_item['id']}: {e}")
+    
+    @patch('tomtodo.logger')
+    def test_update_priority_nonexistent_item(self, mock_logger):
+        """Test updating priority for non-existent item"""
+        if not self.integration_available:
+            self.skipTest("CalDAV server not available")
+        
+        result = self.todo.updateItemPriority('non-existent-uid-12345', self.todo.defaultTodoListName, 2)
+        
+        self.assertEqual(result['status'], 'error', "Should return error status")
+        # Different CalDAV servers may behave differently, similar to remove_nonexistent_item test
+        self.assertTrue(
+            result['message'] == 'Item not found' or 'Failed to update priority:' in result['message'],
+            f"Should indicate item not found, got: {result['message']}"
+        )
+    
+    @patch('tomtodo.logger')
+    def test_update_priority_nonexistent_list(self, mock_logger):
+        """Test updating priority in non-existent list"""
+        if not self.integration_available:
+            self.skipTest("CalDAV server not available")
+        
+        result = self.todo.updateItemPriority('some-uid', 'NonExistentList', 2)
+        
+        self.assertEqual(result['status'], 'error', "Should return error status")
+        self.assertIn('not found', result['message'], "Should indicate list not found")
+    
+    @patch('tomtodo.logger')
+    def test_update_priority_groceries_item(self, mock_logger):
+        """Test that priority can be set on groceries items (even though it's unusual)"""
+        if not self.integration_available:
+            self.skipTest("CalDAV server not available")
+        
+        test_item_name = f"Priority Grocery Test {datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Create item in groceries list
+        create_result = self.todo.addToList(test_item_name, self.todo.defaultGroceriesListName)
+        self.assertEqual(create_result['status'], 'success')
+        
+        # Find the created item
+        items = self.todo.listItems(self.todo.defaultGroceriesListName)
+        created_item = None
+        for item in items:
+            if item['name'] == test_item_name:
+                created_item = item
+                break
+        
+        self.assertIsNotNone(created_item, "Created item should be found")
+        
+        # Update priority (unusual for groceries, but should work)
+        update_result = self.todo.updateItemPriority(created_item['id'], self.todo.defaultGroceriesListName, 3)
+        self.assertEqual(update_result['status'], 'success')
+        self.assertIn('Priority updated to 3', update_result['message'])
+        
+        # Clean up
+        try:
+            with patch('tomtodo.logger'):
+                self.todo.removeFromList(created_item['id'], self.todo.defaultGroceriesListName)
+        except Exception as e:
+            print(f"Warning: Failed to clean up item {created_item['id']}: {e}")
+
 
 if __name__ == '__main__':
     unittest.main()

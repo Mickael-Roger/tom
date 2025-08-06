@@ -9,6 +9,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Toast
 import android.animation.ObjectAnimator
 import android.view.animation.LinearInterpolator
@@ -70,6 +71,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Empêcher la mise en veille de l'écran
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         // Initialiser ApiClient avec le contexte pour les cookies persistants
         ApiClient.initialize(this)
@@ -174,15 +178,6 @@ class MainActivity : AppCompatActivity() {
             toggleTasksPanel()
         }
 
-        // Language buttons
-        binding.btnLanguageFr.setOnClickListener {
-            selectLanguage("fr")
-        }
-
-        binding.btnLanguageEn.setOnClickListener {
-            selectLanguage("en")
-        }
-
         // Sound switch
         binding.switchSound.setOnCheckedChangeListener { _, isChecked ->
             sessionManager.saveSoundEnabled(isChecked)
@@ -273,7 +268,7 @@ class MainActivity : AppCompatActivity() {
             binding.btnVoice.setBackgroundResource(android.R.drawable.ic_btn_speak_now)
         } else {
             // Démarrer l'enregistrement
-            audioManager.startListening(sessionManager.getLanguage())
+            audioManager.startListening()
             // Changer la couleur du bouton pendant l'écoute
             binding.btnVoice.setBackgroundResource(R.drawable.voice_button_background)
         }
@@ -326,33 +321,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadSettings() {
-        val language = sessionManager.getLanguage()
-        selectLanguage(language, false)
-        
         binding.switchSound.isChecked = sessionManager.isSoundEnabled()
         binding.switchAutoSubmit.isChecked = sessionManager.isAutoSubmitEnabled()
     }
 
-    private fun selectLanguage(language: String, save: Boolean = true) {
-        if (save) {
-            sessionManager.saveLanguage(language)
-        }
-
-        // Mettre à jour l'UI
-        binding.btnLanguageFr.isSelected = language == "fr"
-        binding.btnLanguageEn.isSelected = language == "en"
-        
-        // Mettre à jour les couleurs des boutons
-        val selectedColor = ContextCompat.getColor(this, R.color.primary_color)
-        val defaultColor = ContextCompat.getColor(this, android.R.color.darker_gray)
-        
-        binding.btnLanguageFr.setBackgroundColor(if (language == "fr") selectedColor else defaultColor)
-        binding.btnLanguageEn.setBackgroundColor(if (language == "en") selectedColor else defaultColor)
-    }
-
     private fun startVoiceInput() {
         audioManager.stopSpeaking()
-        audioManager.startListening(sessionManager.getLanguage())
+        audioManager.startListening()
         
         // Changer la couleur du bouton pendant l'écoute
         binding.btnVoice.setBackgroundResource(R.drawable.voice_button_background)
@@ -369,7 +344,6 @@ class MainActivity : AppCompatActivity() {
         // Créer la requête
         val request = ProcessRequest(
             request = message,
-            lang = sessionManager.getLanguage(),
             position = currentPosition,
             sound_enabled = sessionManager.isSoundEnabled(),
             client_type = "android"
@@ -392,7 +366,7 @@ class MainActivity : AppCompatActivity() {
                         if (sessionManager.isSoundEnabled()) {
                             // Utiliser response_tts si disponible (synthétisé par le serveur), sinon fallback
                             val textToSpeak = processResponse.response_tts ?: cleanTextForTTS(processResponse.response)
-                            audioManager.speak(textToSpeak, sessionManager.getLanguage())
+                            audioManager.speak(textToSpeak)
                         }
                     }
                 } else {

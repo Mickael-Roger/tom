@@ -225,7 +225,6 @@ class TomWebService:
     input_json = cherrypy.request.json
 
     user_input = input_json.get('request')
-    lang = input_json.get('lang')
     position = input_json.get('position')
     client_type = input_json.get('client_type', 'pwa')
     sound_enabled = input_json.get('sound_enabled', False)
@@ -237,7 +236,7 @@ class TomWebService:
     logger.user_request(user_input, username, client_type)
 
     session_instance = self.get_session_instance()
-    response = session_instance.processRequest(input=user_input, lang=lang, position=position, client_type=client_type, sound_enabled=sound_enabled)
+    response = session_instance.processRequest(input=user_input, position=position, client_type=client_type, sound_enabled=sound_enabled)
 
     if response:
       # Handle both old format (string) and new format (dict with text_display/text_tts)

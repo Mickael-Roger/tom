@@ -19,27 +19,29 @@ test_cases:
           end: "*"
 
   - description: "Ajouter des articles à la liste de courses"
-    modules: ["tomgroceries"]
+    modules: ["tomtodo"]
     prompt: "Ajoute du pain, du lait et des oeufs a ma liste de course"
     expected_calls:
-      - function: "grocery_list_add"
+      - function: "add_to_list"
         parameters:
-          product: "pain"
-      - function: "grocery_list_add"
+          item_name: "pain"
+          list_name: "*groceries_list*"
+      - function: "add_to_list"
         parameters:
-          product: "lait"
-      - function: "grocery_list_add"
+          item_name: "lait"
+          list_name: "*groceries_list*"
+      - function: "add_to_list"
         parameters:
-          product: "oeufs"
-
-
+          item_name: "oeufs"
+          list_name: "*groceries_list*"
 
   - description: "Consulter la liste de courses"
-    modules: ["tomgroceries"]
+    modules: ["tomtodo"]
     prompt: "Qu'y a-t-il sur la liste de courses ?"
     expected_calls:
-      - function: "grocery_list_content"
-        parameters: {}
+      - function: "list_items"
+        parameters:
+          list_name: "*groceries_list*"
 
 
   - description: "Démarrer l'aspirateur"
@@ -62,19 +64,79 @@ test_cases:
     modules: ["tomtodo"]
     prompt: "Ajoute 'appeler le plombier' à ma liste de tâches"
     expected_calls:
-      - function: "todo_create_task"
+      - function: "add_to_list"
         parameters:
-          task_name: "*"
+          item_name: "*"
+          list_name: "*todo_list*"
 
   - description: "Ajouter une tâche prioritaire"
     modules: ["tomtodo"]
     prompt: "Ajoute une tâche urgente : finir le rapport pour demain"
     expected_calls:
-      - function: "todo_create_task"
+      - function: "add_to_list"
         parameters:
-          task_name: "*"
+          item_name: "*"
+          list_name: "*todo_list*"
           priority: 1
           due: "*"
+
+  - description: "Consulter la liste des tâches"
+    modules: ["tomtodo"]
+    prompt: "Qu'est-ce que j'ai à faire ?"
+    expected_calls:
+      - function: "list_items"
+        parameters:
+          list_name: "*todo_list*"
+
+  - description: "Lister toutes les listes disponibles"
+    modules: ["tomtodo"]
+    prompt: "Quelles sont toutes mes listes ?"
+    expected_calls:
+      - function: "list_available_lists"
+        parameters: {}
+
+  - description: "Créer une nouvelle liste"
+    modules: ["tomtodo"]
+    prompt: "Crée une nouvelle liste appelée 'Projets'"
+    expected_calls:
+      - function: "create_list"
+        parameters:
+          list_name: "Projets"
+
+  - description: "Marquer une tâche comme terminée"
+    modules: ["tomtodo"]
+    prompt: "J'ai terminé la première tâche de ma liste"
+    expected_calls:
+      - function: "list_items"
+        parameters:
+          list_name: "*todo_list*"
+      - function: "remove_from_list"
+        parameters:
+          id: "*"
+          list_name: "*todo_list*"
+
+  - description: "Changer la priorité d'une tâche"
+    modules: ["tomtodo"]
+    prompt: "Change la priorité de ma première tâche à urgente"
+    expected_calls:
+      - function: "list_items"
+        parameters:
+          list_name: "*todo_list*"
+      - function: "update_item_priority"
+        parameters:
+          id: "*"
+          list_name: "*todo_list*"
+          priority: 1
+
+  - description: "Diminuer la priorité d'une tâche"
+    modules: ["tomtodo"]
+    prompt: "Mets cette tâche en priorité faible"
+    expected_calls:
+      - function: "update_item_priority"
+        parameters:
+          id: "*"
+          list_name: "*todo_list*"
+          priority: "*"
 
   - description: "Rechercher un contact"
     modules: ["tomcontacts"]

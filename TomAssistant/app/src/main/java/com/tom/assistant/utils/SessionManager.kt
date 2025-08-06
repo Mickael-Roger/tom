@@ -14,7 +14,6 @@ class SessionManager(context: Context) {
         private const val KEY_IS_LOGGED_IN = "isLoggedIn"
         private const val KEY_USERNAME = "username"
         private const val KEY_SERVER_URL = "serverUrl"
-        private const val KEY_LANGUAGE = "language"
         private const val KEY_SOUND_ENABLED = "soundEnabled"
         private const val KEY_AUTO_SUBMIT = "autoSubmit"
         private const val DEFAULT_SERVER_URL = "https://server.taila2494.ts.net:8444/"
@@ -48,16 +47,6 @@ class SessionManager(context: Context) {
     fun saveServerUrl(url: String) {
         val editor = sharedPreferences.edit()
         editor.putString(KEY_SERVER_URL, url)
-        editor.apply()
-    }
-    
-    fun getLanguage(): String {
-        return sharedPreferences.getString(KEY_LANGUAGE, "fr") ?: "fr"
-    }
-    
-    fun saveLanguage(language: String) {
-        val editor = sharedPreferences.edit()
-        editor.putString(KEY_LANGUAGE, language)
         editor.apply()
     }
     

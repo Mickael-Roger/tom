@@ -44,29 +44,19 @@ class AudioManager(
         }
     }
 
-    fun speak(text: String, language: String) {
+    fun speak(text: String) {
         if (!isTtsReady) return
 
-        val locale = when (language) {
-            "en" -> Locale.ENGLISH
-            "fr" -> Locale.FRENCH
-            else -> Locale.FRENCH
-        }
-
-        textToSpeech?.language = locale
+        textToSpeech?.language = Locale.FRENCH
         textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
     }
 
-    fun startListening(language: String) {
+    fun startListening() {
         if (speechRecognizer == null || isListening) return
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, when (language) {
-                "en" -> "en-US"
-                "fr" -> "fr-FR"
-                else -> "fr-FR"
-            })
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "fr-FR")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         }
 
@@ -81,11 +71,11 @@ class AudioManager(
         }
     }
     
-    fun toggleListening(language: String = "fr") {
+    fun toggleListening() {
         if (isListening) {
             stopListening()
         } else {
-            startListening(language)
+            startListening()
         }
     }
     
