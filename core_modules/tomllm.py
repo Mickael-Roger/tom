@@ -26,6 +26,9 @@ class TomLLM():
     # Store global config for log file path
     self.global_config = global_config
     
+    # Store user config for tuning access
+    self.user_config = user_config
+    
     # Rate limiting for Mistral (1 QPS)
     self.mistral_last_request = 0
 
@@ -113,6 +116,25 @@ class TomLLM():
         behavior_content = f"\n\n{behavior_content}"
     
     self.tom_context = self.base_tom_context + behavior_content
+
+  def load_user_tuning(self):
+    """Load user-specific module tuning configurations from tuning.yml"""
+    try:
+      user_datadir = self.global_config['global'].get('user_datadir', './data/users/')
+      username = self.username
+      tuning_file = os.path.join(user_datadir, username, 'tuning.yml')
+      
+      if os.path.exists(tuning_file):
+        with open(tuning_file, 'r', encoding='utf-8') as f:
+          tuning_config = yaml.safe_load(f)
+          if tuning_config:
+            tomlogger.debug(f"Loaded tuning configuration: {list(tuning_config.keys())}", self.username)
+            return tuning_config
+      
+      return {}
+    except Exception as e:
+      tomlogger.warning(f"Failed to load user tuning configuration: {str(e)}", self.username)
+      return {}
 
   def log_function_call_to_file(self):
     """Log current user input and function calls to call_logs.yml"""
@@ -500,6 +522,9 @@ Respond only with the text to be read, without explanation or formatting."""
     tools = []
     complexity = 0
     active_llm_instance = self  # Default to global LLM instance
+    
+    # Load user tuning configuration
+    tuning_config = self.load_user_tuning()
 
     for mod in set(modules):
       if mod in self.services:
@@ -507,6 +532,12 @@ Respond only with the text to be read, without explanation or formatting."""
         # Access systemContext dynamically to support @property decorators
         system_context = getattr(self.services[mod]["obj"], 'systemContext', '')
         conversation.append({"role": "system", "content": system_context})
+        
+        # Add user tuning prompt for this module if available
+        if mod in tuning_config and tuning_config[mod]:
+          tuning_prompt = tuning_config[mod]
+          conversation.append({"role": "system", "content": tuning_prompt})
+          tomlogger.debug(f"Added tuning prompt for module {mod}", self.username)
         
         # Use the module's LLM instance if it's different from the global one
         module_llm_instance = self.services[mod].get('llm_instance', self)
@@ -607,13 +638,35 @@ Respond only with the text to be read, without explanation or formatting."""
       # Check if reset was performed
       if required_modules == ["reset_performed"]:
         tomlogger.debug(f"Reset performed, generating greeting response", self.username)
-        # Generate a simple greeting response after reset (French by default, but will adapt to user language)
-        greeting_response = "Salut ! Comment puis-je t'aider ?"
+        
+        # Try to use morning reminder module for enhanced greeting response
+        morning_greeting_response = None
+        if "coremorningreminder" in self.services:
+          try:
+            morning_reminder = self.services["coremorningreminder"]["instance"]
+            morning_greeting = morning_reminder.handle_greeting_response()
+            
+            if morning_greeting.get("override_greeting", False):
+              morning_greeting_response = {
+                "text_display": morning_greeting.get("text_response", "Salut ! Comment puis-je t'aider ?"),
+                "text_tts": morning_greeting.get("tts_response", "Salut")
+              }
+              tomlogger.info("Using morning reminder enhanced greeting response", self.username)
+          except Exception as e:
+            tomlogger.error(f"Error getting morning reminder greeting: {str(e)}", self.username)
+        
+        # Use morning reminder response or fall back to default
+        if morning_greeting_response:
+          greeting_response = morning_greeting_response["text_display"]
+          tts_response = morning_greeting_response["text_tts"]
+        else:
+          # Default greeting response
+          greeting_response = "Salut ! Comment puis-je t'aider ?"
+          tts_response = "Salut"
+        
         self.history.append({"role": "assistant", "content": greeting_response})
         
         if sound_enabled:
-          # For reset/greeting, use simple TTS response
-          tts_response = "Salut"
           return {
             "text_display": greeting_response,
             "text_tts": tts_response

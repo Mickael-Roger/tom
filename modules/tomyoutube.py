@@ -64,7 +64,8 @@ class TomYoutube:
         publication DATETIME,
         title TEXT,
         uri TEXT,
-        viewed BOOLEAN DEFAULT 0
+        viewed BOOLEAN DEFAULT 0,
+        video_type TEXT DEFAULT 'video'
     )
     ''')
     dbconn.commit()
@@ -195,7 +196,8 @@ class TomYoutube:
           if video['id'] not in all_videos:
             dbconn = sqlite3.connect(self.db)
             cursor = dbconn.cursor()
-            cursor.execute("INSERT INTO videos (video_id, channel_id, channel_name, publication, title, uri) VALUES (?, ?, ?, ?, ?, ?) ", (video['id'], id, name, datetime.fromtimestamp(time.mktime(video['published_parsed'])).strftime("%Y-%m-%d %H:%M:%S"), video['title'], video['link']))
+            video_type = 'short' if '/shorts/' in video['link'] else 'video'
+            cursor.execute("INSERT INTO videos (video_id, channel_id, channel_name, publication, title, uri, video_type) VALUES (?, ?, ?, ?, ?, ?, ?) ", (video['id'], id, name, datetime.fromtimestamp(time.mktime(video['published_parsed'])).strftime("%Y-%m-%d %H:%M:%S"), video['title'], video['link'], video_type))
             dbconn.commit()
             dbconn.close()
 
@@ -231,7 +233,7 @@ class TomYoutube:
 
     dbconn = sqlite3.connect(self.db)
     cursor = dbconn.cursor()
-    cursor.execute("SELECT id, channel_name, title, uri  FROM videos WHERE viewed = 0")
+    cursor.execute("SELECT id, channel_name, title, uri, video_type FROM videos WHERE viewed = 0")
     allvideos = cursor.fetchall()
     dbconn.close()
 
@@ -242,8 +244,9 @@ class TomYoutube:
       channel = video[1]
       title = video[2]
       uri = video[3]
+      video_type = video[4] if len(video) > 4 else 'video'
 
-      videos['videos'].append({"video_id": id, "channel": channel, "title": title, "url": uri, "viewed": False})
+      videos['videos'].append({"video_id": id, "channel": channel, "title": title, "url": uri, "video_type": video_type, "viewed": False})
 
     logger.debug(videos)
     
