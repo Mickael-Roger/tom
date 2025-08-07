@@ -1,4 +1,6 @@
 import json
+import re
+import threading
 from zoneinfo import ZoneInfo
 from timezonefinder import TimezoneFinder
 from datetime import datetime
@@ -127,9 +129,57 @@ class TomLLM():
       if os.path.exists(tuning_file):
         with open(tuning_file, 'r', encoding='utf-8') as f:
           tuning_config = yaml.safe_load(f)
-          if tuning_config:
-            tomlogger.debug(f"Loaded tuning configuration: {list(tuning_config.keys())}", self.username)
-            return tuning_config
+          
+          # Handle empty file or None result
+          if not tuning_config:
+            tomlogger.debug(f"Tuning file exists but is empty or contains no valid YAML", self.username)
+            return {}
+          
+          # Ensure tuning_config is a dictionary
+          if not isinstance(tuning_config, dict):
+            tomlogger.warning(f"Tuning file contains non-dictionary content: {type(tuning_config)}", self.username)
+            return {}
+          
+          # Validate and clean tuning configuration
+          validated_config = {}
+          for module_name, tuning_prompt in tuning_config.items():
+            # Ensure module_name is a string
+            if not isinstance(module_name, str):
+              tomlogger.warning(f"Skipping non-string module name: {module_name} ({type(module_name)})", self.username)
+              continue
+              
+            if isinstance(tuning_prompt, str):
+              # Clean up the prompt to ensure JSON serialization compatibility
+              clean_prompt = str(tuning_prompt).strip()
+              # Remove any potential problematic characters
+              clean_prompt = clean_prompt.replace('\x00', '').replace('\r\n', '\n')
+              if clean_prompt:
+                validated_config[module_name] = clean_prompt
+            elif isinstance(tuning_prompt, dict):
+              # Handle dictionary structure (e.g., with behavioral_instructions key)
+              if 'behavioral_instructions' in tuning_prompt:
+                behavioral_text = tuning_prompt['behavioral_instructions']
+                if isinstance(behavioral_text, str) and behavioral_text.strip():
+                  clean_prompt = str(behavioral_text).strip()
+                  clean_prompt = clean_prompt.replace('\x00', '').replace('\r\n', '\n')
+                  validated_config[module_name] = clean_prompt
+                  tomlogger.debug(f"Extracted behavioral_instructions for module {module_name}", self.username)
+                else:
+                  tomlogger.warning(f"Empty or invalid behavioral_instructions for module {module_name}", self.username)
+              else:
+                # Convert entire dict to string as fallback
+                tomlogger.warning(f"Dictionary structure for module {module_name} without behavioral_instructions key, converting to string", self.username)
+                dict_str = str(tuning_prompt).strip()
+                if dict_str and dict_str != '{}':
+                  validated_config[module_name] = dict_str
+            elif tuning_prompt is not None:
+              tomlogger.warning(f"Invalid tuning prompt type for module {module_name}: {type(tuning_prompt)}, converting to string", self.username)
+              validated_config[module_name] = str(tuning_prompt).strip()
+          
+          tomlogger.debug(f"Loaded tuning configuration: {list(validated_config.keys())}", self.username)
+          return validated_config
+      else:
+        tomlogger.debug(f"Tuning file does not exist: {tuning_file}", self.username)
       
       return {}
     except Exception as e:
@@ -161,7 +211,6 @@ class TomLLM():
           params = {}
           if params_part:
             # Simple parsing for key="value" format
-            import re
             param_matches = re.findall(r'(\w+)="([^"]*)"', params_part)
             for key, value in param_matches:
               params[key] = value
@@ -208,8 +257,159 @@ class TomLLM():
       self.current_user_input = None
       self.current_function_calls = []
 
+  def analyze_tuning_async(self, history, available_tools):
+    """Analyze session for tuning insights and update tuning.yml asynchronously"""
+    
+    def analyze_tuning_thread():
+      try:
+        # Load current tuning configuration
+        current_tuning = self.load_user_tuning()
+        
+        # Prepare conversation history as text
+        conversation_text = ""
+        for msg in history:
+          if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
+            if msg['role'] in ['user', 'assistant'] and isinstance(msg['content'], str):
+              # Truncate very long messages to avoid API limits
+              content = msg['content']
+              if len(content) > 1000:
+                content = content[:1000] + "..."
+              conversation_text += f"{msg['role']}: {content}\n"
+        
+        # Skip analysis if no meaningful conversation content
+        if len(conversation_text.strip()) < 50:
+          tomlogger.debug(f"Conversation too short for tuning analysis, skipping", self.username)
+          return
+        
+        # Prepare modules description from available tools
+        modules_description = ""
+        for tool in available_tools:
+          if isinstance(tool, dict) and 'module_name' in tool and 'module_description' in tool:
+            modules_description += f"- {tool['module_name']}: {tool['module_description']}\n"
+        
+        # Current tuning content as YAML text
+        current_tuning_text = yaml.dump(current_tuning, default_flow_style=False, allow_unicode=True) if current_tuning else "# No current tuning configuration"
+        
+        # Limit conversation text size to avoid API limits
+        if len(conversation_text) > 3000:
+          conversation_text = conversation_text[-3000:]  # Keep only the last 3000 chars
+          conversation_text = "...\n" + conversation_text
+        
+        # Create analysis prompt
+        tuning_prompt = f"""Analyze the following conversation to identify any information that would be useful for tuning module behavior. Based on the conversation content, available modules, and current tuning configuration, determine if any updates to the tuning.yml file would be beneficial.
+
+Available modules and their descriptions:
+{modules_description}
+
+Current tuning configuration:
+```yaml
+{current_tuning_text}
+```
+
+Conversation history:
+{conversation_text}
+
+Instructions:
+1. Look for user preferences, specific requirements, or behavioral adjustments mentioned in the conversation
+2. Identify which modules could benefit from these insights
+3. Consider adding new tuning entries for modules not currently configured
+4. Consider modifying existing tuning entries if new information contradicts or enhances current settings
+5. Only suggest updates if there's clear, actionable information from the conversation
+6. Respond with a valid YAML configuration or "NO_UPDATE" if no changes are needed
+
+Examples of what to look for:
+- User preferences about response style or format
+- Specific requirements for how certain modules should behave
+- Corrections or feedback about module behavior
+- Contextual information that would improve module responses
+
+Response format requirements:
+- If updates are needed: respond with a complete YAML configuration in this exact format:
+  ```
+  module_name1: "behavioral instruction as a single string"
+  module_name2: "another behavioral instruction as a single string"
+  ```
+- If no updates needed: respond exactly with "NO_UPDATE"
+
+IMPORTANT: Each tuning entry must be a simple string value, not a dictionary or complex structure. The behavioral instructions will be added directly as system context for the modules."""
+
+        # Call LLM for tuning analysis
+        tuning_messages = [
+          {"role": "system", "content": "You are a behavioral tuning analyst specialized in identifying user preferences and module optimization opportunities from conversation history."},
+          {"role": "user", "content": tuning_prompt}
+        ]
+        
+        # Validate message content before sending to LLM
+        for msg in tuning_messages:
+          if not isinstance(msg.get('content'), str):
+            tomlogger.error(f"Invalid message content type in tuning analysis: {type(msg.get('content'))}", self.username)
+            return
+          if len(msg['content']) > 10000:  # Arbitrary limit to prevent API errors
+            msg['content'] = msg['content'][:10000] + "...\n[Content truncated due to length]"
+        
+        response = self.callLLM(messages=tuning_messages, complexity=1)
+        
+        if response and response.choices[0].finish_reason == "stop":
+          analysis_result = response.choices[0].message.content.strip()
+          
+          if analysis_result != "NO_UPDATE":
+            try:
+              # Clean the response from potential markdown formatting
+              yaml_content = analysis_result
+              
+              # Remove yaml code block markers if present
+              if yaml_content.startswith("```yaml"):
+                yaml_content = yaml_content[7:]  # Remove ```yaml
+              elif yaml_content.startswith("```"):
+                yaml_content = yaml_content[3:]   # Remove ```
+              
+              if yaml_content.endswith("```"):
+                yaml_content = yaml_content[:-3]  # Remove closing ```
+              
+              yaml_content = yaml_content.strip()
+              
+              # Parse the cleaned YAML response
+              new_tuning_config = yaml.safe_load(yaml_content)
+              
+              if new_tuning_config and isinstance(new_tuning_config, dict):
+                # Save updated tuning configuration
+                user_datadir = self.global_config['global'].get('user_datadir', './data/users/')
+                username = self.username
+                user_dir = os.path.join(user_datadir, username)
+                os.makedirs(user_dir, exist_ok=True)
+                
+                tuning_file = os.path.join(user_dir, 'tuning.yml')
+                
+                with open(tuning_file, 'w', encoding='utf-8') as f:
+                  yaml.dump(new_tuning_config, f, default_flow_style=False, allow_unicode=True)
+                
+                tomlogger.info(f"Updated tuning configuration with insights from conversation", self.username)
+                tomlogger.debug(f"New tuning config: {new_tuning_config}", self.username)
+              else:
+                tomlogger.debug(f"Invalid tuning config format returned by LLM", self.username)
+            except yaml.YAMLError as e:
+              tomlogger.warning(f"Failed to parse tuning YAML from LLM response: {str(e)}", self.username)
+              tomlogger.debug(f"Raw LLM response was: {analysis_result}", self.username)
+          else:
+            tomlogger.debug(f"No tuning updates needed based on conversation analysis", self.username)
+        else:
+          tomlogger.warning(f"Failed to get tuning analysis response from LLM", self.username)
+          
+      except Exception as e:
+        tomlogger.error(f"Error during tuning analysis: {str(e)}", self.username)
+    
+    # Start analysis in background thread
+    thread = threading.Thread(target=analyze_tuning_thread)
+    thread.daemon = True
+    thread.start()
+
   def reset(self):
     tomlogger.info(f"History cleaning", self.username)
+    
+    # Prepare available tools information for both analyses
+    available_tools = []
+    for module in self.services:
+      available_tools.append({"module_name": module, "module_description": self.services[module]['description']})
     
     # Analyze session for memory before clearing history
     if self.history and 'memory' in self.services:
@@ -221,6 +421,13 @@ class TomLLM():
           memory_service.analyze_session_async(self.history)
       except Exception as e:
         tomlogger.error(f"Error during session memory analysis: {str(e)}", self.username)
+    
+    # Analyze session for tuning insights
+    if self.history and available_tools:
+      try:
+        self.analyze_tuning_async(self.history, available_tools)
+      except Exception as e:
+        tomlogger.error(f"Error during session tuning analysis: {str(e)}", self.username)
     
     self.history = []
     return True
@@ -274,7 +481,6 @@ Respond only with the text to be read, without explanation or formatting."""
       else:
         tomlogger.warning(f"TTS synthesis failed, using fallback", self.username)
         # Fallback: simple text cleaning
-        import re
         clean_text = re.sub(r'\[.*?\]', '', text_response)  # Remove markdown links
         clean_text = re.sub(r'[*_`#]', '', clean_text)     # Remove markdown formatting
         clean_text = re.sub(r'\n+', ' ', clean_text)       # Replace newlines with spaces
@@ -287,7 +493,6 @@ Respond only with the text to be read, without explanation or formatting."""
     except Exception as e:
       tomlogger.error(f"Error during TTS synthesis: {str(e)}", self.username)
       # Simple fallback
-      import re
       clean_text = re.sub(r'\[.*?\]', '', text_response)
       clean_text = re.sub(r'[*_`#]', '', clean_text)
       clean_text = re.sub(r'\n+', ' ', clean_text)
@@ -420,7 +625,7 @@ Respond only with the text to be read, without explanation or formatting."""
     if client_type == 'tui':
       return "Your response will be displayed in a TUI terminal application. You should use markdown to format your answer for better readability. You can use titles, lists, bold text, etc."
     else: # web and pwa
-      return "Your response will be displayed in a web browser or in an mobile app, so it must be concise and free of any markdown formatting, lists, or complex layouts. Use simple text and line breaks for readability. Do not forget in most case, your response will be play using a text to speech feature. Unless the user explicitly ask for it, you must never directly write URL or stuff like that. Instead, you must use the tag [open:PLACE URL HERE]"
+      return "Your response will be displayed in a web browser or in an mobile app that supports markdown. You should use markdown to format your answer for better readability. You can use titles, lists, bold text, etc. Use simple text and line breaks for readability. Unless the user explicitly ask for it, you must never directly write URL or stuff like that. Instead, you must use the tag [open:PLACE URL HERE]"
 
 
 
@@ -534,10 +739,22 @@ Respond only with the text to be read, without explanation or formatting."""
         conversation.append({"role": "system", "content": system_context})
         
         # Add user tuning prompt for this module if available
-        if mod in tuning_config and tuning_config[mod]:
+        if tuning_config and mod in tuning_config and tuning_config.get(mod):
           tuning_prompt = tuning_config[mod]
-          conversation.append({"role": "system", "content": tuning_prompt})
-          tomlogger.debug(f"Added tuning prompt for module {mod}", self.username)
+          
+          # Validate tuning prompt before adding to conversation
+          if isinstance(tuning_prompt, str) and tuning_prompt.strip():
+            try:
+              # Test JSON serialization to ensure compatibility
+              json.dumps({"role": "system", "content": tuning_prompt})
+              conversation.append({"role": "system", "content": tuning_prompt})
+              tomlogger.debug(f"Added tuning prompt for module {mod}", self.username)
+            except (TypeError, ValueError) as e:
+              tomlogger.warning(f"Skipping tuning prompt for module {mod} due to serialization issue: {str(e)}", self.username)
+          else:
+            tomlogger.warning(f"Skipping invalid tuning prompt for module {mod}: {type(tuning_prompt)}", self.username)
+        else:
+          tomlogger.debug(f"No tuning configuration found for module {mod}", self.username)
         
         # Use the module's LLM instance if it's different from the global one
         module_llm_instance = self.services[mod].get('llm_instance', self)
