@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -86,6 +87,10 @@ dependencies {
     
     // Location services
     implementation("com.google.android.gms:play-services-location:21.0.1")
+
+    // Firebase Cloud Messaging
+    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
     
     // Media session for headset buttons
     implementation("androidx.media:media:1.6.0")

@@ -17,6 +17,9 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.KeyEvent
 import android.util.Log
+import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.Dispatchers
+import android.os.Build
 import kotlin.math.abs
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -93,6 +96,7 @@ class MainActivity : AppCompatActivity() {
         setupHeadsetButtons()
         setupLocation()
         setupPermissions()
+        setupFCM()
         
         // Démarrer le service média pour maintenir la MediaSession active
         startService(Intent(this, MediaService::class.java))
@@ -736,6 +740,42 @@ class MainActivity : AppCompatActivity() {
 
     private fun showError(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    private fun setupFCM() {
+        // Demander la permission de notification sur Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), PERMISSION_REQUEST_CODE)
+            }
+        }
+
+        // Obtenir le token FCM actuel et l'envoyer au serveur
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (!task.isSuccessful) {
+                Log.w("FCM", "Fetching FCM registration token failed", task.exception)
+                return@addOnCompleteListener
+            }
+
+            val token = task.result
+            Log.d("FCM", "Current FCM token: $token")
+            sendTokenToServer(token)
+        }
+    }
+
+    private fun sendTokenToServer(token: String?) {
+        if (token.isNullOrBlank()) {
+            return
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val request = com.tom.assistant.models.FCMTokenRequest(token = token, platform = "android_native")
+                ApiClient.tomApiService.sendFCMToken(request)
+                Log.d("FCM", "FCM token sent to server from MainActivity.")
+            } catch (e: Exception) {
+                Log.e("FCM", "Error sending FCM token from MainActivity", e)
+            }
+        }
     }
 
     private fun testTickerWithDummyData() {

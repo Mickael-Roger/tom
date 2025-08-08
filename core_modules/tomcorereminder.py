@@ -158,7 +158,7 @@ class TomReminder:
         cursor = dbconn.cursor()
         cursor.execute("SELECT id, message, sender, recipient FROM notifications WHERE sent = 0 and notification < datetime('now', 'localtime')")
         notifications = cursor.fetchall()
-        cursor.execute("SELECT username, token FROM fcm_tokens WHERE platform = 'android'")
+        cursor.execute("SELECT username, token FROM fcm_tokens WHERE platform LIKE 'android%'")
         tokens = cursor.fetchall()
         dbconn.close()
   

@@ -24,4 +24,7 @@ interface TomApiService {
     
     @POST("reset")
     suspend fun reset(): Response<ResetResponse>
+
+    @POST("fcmtoken")
+    suspend fun sendFCMToken(@Body request: FCMTokenRequest): Response<Void>
 }

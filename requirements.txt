@@ -15,7 +15,7 @@ timezonefinder
 google-generativeai
 firebase_admin
 feedparser
-litellm
+litellm==1.75.0
 paramiko
 watchdog
 deebot-client

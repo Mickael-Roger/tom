@@ -68,7 +68,7 @@ class TomCoreMorningReminder:
                 "type": "function",
                 "function": {
                     "name": "morning_reminder_get_instructions",
-                    "description": "Get the morning briefing prompts that will be executed during the user's daily briefing routine.",
+                    "description": "Get the configured prompts/instructions that define what questions will be asked during the daily briefing. This shows the CONFIGURATION (the prompts), not the generated briefing results.",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -128,7 +128,7 @@ class TomCoreMorningReminder:
                 "type": "function",
                 "function": {
                     "name": "morning_reminder_get_daily_briefing",
-                    "description": "Get the latest generated daily briefing summary from the morning routine.",
+                    "description": "Get the actual generated daily briefing content - the RESULTS of executing the morning routine prompts for today. Use this when user asks for their briefing or routine results.",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -164,7 +164,7 @@ class TomCoreMorningReminder:
                 "type": "function",
                 "function": {
                     "name": "morning_reminder_handle_routine_request",
-                    "description": "Handle explicit requests for morning routine information when user asks about their schedule or morning routine.",
+                    "description": "Handle user requests for their daily briefing results when they ask 'what's my morning routine', 'what's my routine for today', 'what do I have today', etc. Returns the ACTUAL briefing content, not configuration.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -180,7 +180,7 @@ class TomCoreMorningReminder:
             }
         ]
 
-        self.systemContext = "This module manages morning briefing prompts and provides daily routine information. Use this module when the user asks about their schedule, planning, what they have planned for today, their routine, or their agenda. It automatically triggers morning briefing on first greeting of the day after 6 AM. When adding instructions, formulate them as LLM prompts that will be executed to provide daily information."
+        self.systemContext = "This module manages morning briefing prompts and provides daily routine information. Use this module when the user asks about their schedule, planning, what they have planned for today, their routine, or their agenda. IMPORTANT: When user asks 'what's my morning routine' or similar, they want the RESULTS (generated briefing), not the configuration. Use get_daily_briefing or handle_routine_request for results, get_instructions only for showing configuration. It automatically triggers morning briefing on first greeting of the day after 6 AM."
         self.complexity = tom_config.get("complexity", 0)
         
         self.functions = {

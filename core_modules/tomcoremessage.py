@@ -82,7 +82,7 @@ class TomMessage:
       # Get FCM tokens for the recipient
       dbconn = sqlite3.connect(self.db)
       cursor = dbconn.cursor()
-      cursor.execute("SELECT token FROM fcm_tokens WHERE username = ? AND platform = 'android'", (message_recipient,))
+      cursor.execute("SELECT token FROM fcm_tokens WHERE username = ? AND platform LIKE 'android%'", (message_recipient,))
       tokens = cursor.fetchall()
       dbconn.close()
 
