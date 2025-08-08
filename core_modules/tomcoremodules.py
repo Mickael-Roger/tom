@@ -119,13 +119,13 @@ class TomCoreModules:
         "type": "function",
         "function": {
           "name": "toggle_module_status",
-          "description": "Enable or disable a module for a specific user (admin only). This modifies the config.yml file to change the enable status of a module.",
+          "description": "Enable or disable a module. If no username is specified, applies to the current user. Admin users can specify a username to modify another user's modules.",
           "parameters": {
             "type": "object",
             "properties": {
               "username": {
                 "type": "string",
-                "description": "Username for which to toggle the module status"
+                "description": "Optional: Username for which to toggle the module status. If not provided, applies to the current user. Admin privileges required to modify other users' modules."
               },
               "module_name": {
                 "type": "string",
@@ -136,7 +136,7 @@ class TomCoreModules:
                 "description": "True to enable the module, False to disable it"
               }
             },
-            "required": ["username", "module_name", "enable"],
+            "required": ["module_name", "enable"],
             "additionalProperties": False,
           },
         }
@@ -801,16 +801,23 @@ class TomCoreModules:
     
     return status_info
 
-  def toggle_module_status(self, username, module_name, enable):
-    """Enable or disable a module for a specific user (admin only)"""
-    # Check if current user is admin
-    if not self.user_config.get('admin', False):
-      return {
-        "error": "Access denied. Administrator privileges required to modify module status."
-      }
+  def toggle_module_status(self, module_name, enable, username=None):
+    """Enable or disable a module for a user"""
+    current_user = self.user_config['username']
+    is_admin = self.user_config.get('admin', False)
     
-    # Convert username to lowercase for consistency
-    username = username.lower()
+    # If no username specified, use current user
+    if username is None:
+      username = current_user
+    else:
+      # Convert username to lowercase for consistency
+      username = username.lower()
+      
+      # Check if user is trying to modify another user's modules
+      if username != current_user and not is_admin:
+        return {
+          "error": "Access denied. Administrator privileges required to modify other users' module status."
+        }
     
     # Check if module exists in available modules
     if module_name not in self.module_list:
