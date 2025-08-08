@@ -7,6 +7,7 @@ import threading
 import time
 import os
 import sys
+import yt_dlp
 
 # Logging
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
@@ -103,6 +104,31 @@ class TomYoutube:
           },
         },
       },
+      {
+        "type": "function",
+        "function": {
+          "name": "search_youtube_channels",
+          "description": "Search for YouTube channels based on a query term. Returns channel name, description, and channel ID for each result.",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "description": "The search term to find YouTube channels",
+              },
+              "max_results": {
+                "type": "integer",
+                "description": "Maximum number of channels to return (default: 10, max: 20)",
+                "minimum": 1,
+                "maximum": 20
+              }
+            },
+            "required": ["query", "max_results"],
+            "additionalProperties": False,
+          },
+        },
+      },
     ]
 
     self.systemContext = '''
@@ -110,6 +136,11 @@ class TomYoutube:
        - When the user has already wtached the video and wants to remove it from the non viewed video list.
        - When the user ask to mark as seen a video
        - When the user is not interested in watching this video and does not plan to watch it, but still wants to mark it as seen to declutter the non viewed video list.
+    
+    The function 'search_youtube_channels' allows searching for YouTube channels:
+       - Use this when the user wants to find new YouTube channels to follow
+       - Returns channel name, description, and channel ID (format UCxxxxxxx)
+       - The channel ID can later be used to add the channel to the tracking list
     '''
     self.complexity = tom_config.get("complexity", 0)
     self.functions = {
@@ -118,6 +149,9 @@ class TomYoutube:
       },
       "mark_video_as_seen": {
         "function": functools.partial(self.mark_video_as_viewed)
+      },
+      "search_youtube_channels": {
+        "function": functools.partial(self.search_youtube_channels)
       },
     }
 
@@ -254,3 +288,161 @@ class TomYoutube:
       return videos
     else:
       return {"status": "success", "message": "No non viewed video"}
+
+  def search_youtube_channels(self, query, max_results=None):
+    """
+    Search for YouTube channels based on a query term.
+    Inspired by youtube_channel_search.py implementation.
+    
+    Args:
+        query: Search term to find YouTube channels
+        max_results: Maximum number of channels to return (default: 10, max: 20)
+    
+    Returns:
+        List of channels with name, description, and channel_id
+    """
+    if not query or not query.strip():
+      return {"status": "error", "message": "Search query cannot be empty"}
+    
+    # Set default value if not provided
+    if max_results is None:
+      max_results = 10
+    
+    if max_results > 20:
+      max_results = 20
+    elif max_results < 1:
+      max_results = 1
+    
+    try:
+      # Configuration yt-dlp for metadata extraction only
+      ydl_opts = {
+        'quiet': True,
+        'extract_flat': True,
+        'no_warnings': True,
+      }
+      
+      channels = []
+      
+      with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        # Search for videos to find channels
+        search_url = f"ytsearch{max_results * 2}:{query}"
+        
+        # Extract search results
+        search_results = ydl.extract_info(search_url, download=False)
+        
+        if 'entries' not in search_results:
+          return {"status": "success", "channels": []}
+        
+        # Dictionary to avoid channel duplicates
+        seen_channels = {}
+        
+        for entry in search_results['entries']:
+          if entry and len(channels) < max_results:
+            # Extract channel info from video
+            channel_info = self._extract_channel_from_video(entry)
+            if channel_info:
+              channel_id = channel_info.get('channel_id', '')
+              if channel_id and channel_id not in seen_channels:
+                seen_channels[channel_id] = True
+                channels.append(channel_info)
+      
+      logger.info(f"Found {len(channels)} channels for query: {query}")
+      return {"status": "success", "channels": channels}
+      
+    except Exception as e:
+      logger.error(f"Error searching YouTube channels: {e}")
+      return {"status": "error", "message": f"Search failed: {str(e)}"}
+
+  def _extract_channel_from_video(self, entry):
+    """
+    Extract channel information from a video entry.
+    
+    Args:
+        entry: Video entry from search results
+    
+    Returns:
+        Dictionary with channel information or None
+    """
+    try:
+      # Extract channel info from video
+      uploader = entry.get('uploader', entry.get('channel', ''))
+      channel_id = entry.get('channel_id', entry.get('uploader_id', ''))
+      
+      if not uploader or not channel_id:
+        return None
+      
+      # Get real channel description
+      real_description = self._get_channel_about(channel_id) if channel_id else ""
+      
+      # Channel information
+      channel_info = {
+        'name': uploader,
+        'description': real_description,
+        'channel_id': channel_id
+      }
+      
+      return channel_info
+      
+    except Exception as e:
+      logger.error(f"Error extracting channel info: {e}")
+      return None
+
+  def _get_channel_about(self, channel_id):
+    """
+    Get the complete description (About) of a YouTube channel.
+    
+    Args:
+        channel_id: YouTube channel ID (format UCxxxxxxxxx)
+    
+    Returns:
+        Complete channel description or empty string
+    """
+    if not channel_id:
+      return ""
+    
+    try:
+      # Configuration for complete metadata retrieval
+      ydl_opts = {
+        'quiet': True,
+        'extract_flat': False,
+        'no_warnings': True,
+        'skip_download': True
+      }
+      
+      with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        channel_url = f"https://www.youtube.com/channel/{channel_id}/about"
+        
+        # Extract info from channel About page
+        info = ydl.extract_info(channel_url, download=False)
+        
+        if info:
+          # Look for description in different possible fields
+          description = (
+            info.get('description') or 
+            info.get('channel_description') or
+            info.get('uploader_description') or
+            ""
+          )
+          
+          if description and description.strip():
+            return description.strip()
+          
+          # If no description found, try main channel URL
+          channel_main_url = f"https://www.youtube.com/channel/{channel_id}"
+          main_info = ydl.extract_info(channel_main_url, download=False)
+          
+          if main_info:
+            main_description = (
+              main_info.get('description') or
+              main_info.get('channel_description') or
+              main_info.get('uploader_description') or
+              ""
+            )
+            
+            if main_description and main_description.strip():
+              return main_description.strip()
+      
+    except Exception as e:
+      logger.error(f"Error getting channel description for {channel_id}: {e}")
+    
+    return ""
