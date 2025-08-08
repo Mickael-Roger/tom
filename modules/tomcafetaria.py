@@ -1,4 +1,3 @@
-import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs, quote
 import re
@@ -12,9 +11,10 @@ from datetime import datetime, timedelta, date
 import os
 import sys
 
-# Logging
+# Logging and HTTP helper
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'core_modules'))
 from tomlogger import logger
+from tomhttphelper import TomHttpHelper
 
 
 ################################################################################################
@@ -176,8 +176,6 @@ class TomCafetaria:
 
 
   def update(self):
-
-    session = requests.Session()
     
     data = {
       "txtLogin": self.username,
@@ -185,97 +183,94 @@ class TomCafetaria:
       "y": "19"
     }
 
-
     headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0', 'Accept': '*/*', 'Accept-Language': 'en-US,en;q=0.5', 'Accept-Encoding': 'gzip, deflate, br, zstd', 'Referer': 'https://webparent.paiementdp.com/aliAuthentification.php?site=aes00152', 'Origin': 'https://webparent.paiementdp.com'}
 
+    with TomHttpHelper("cafetaria", default_timeout=30) as http_helper:
+      try:
+        http_helper.get('https://webparent.paiementdp.com/aliAuthentification.php?site=aes00152')
+        resp_main = http_helper.post('https://webparent.paiementdp.com/aliAuthentification.php?site=aes00152', data=data, headers=headers)
 
-    session.get('https://webparent.paiementdp.com/aliAuthentification.php?site=aes00152')
-    resp_main = session.post('https://webparent.paiementdp.com/aliAuthentification.php?site=aes00152', data=data, headers=headers)
+        if resp_main.status_code == 200:
+          soup = BeautifulSoup(resp_main.text, 'html.parser')
+          solde = soup.find('label', {'for': 'CLI_ID'}).get_text()
 
-    if resp_main.status_code == 200:
-      soup = BeautifulSoup(resp_main.text, 'html.parser')
-      solde = soup.find('label', {'for': 'CLI_ID'}).get_text()
+          dbconn = sqlite3.connect(self.db)
+          dbconn.execute("""DELETE FROM solde""")
+          dbconn.execute("""INSERT INTO solde (solde) VALUES (?)""", (solde,))
+          dbconn.commit()
+          dbconn.close()
 
-      dbconn = sqlite3.connect(self.db)
-      dbconn.execute("""DELETE FROM solde""")
-      dbconn.execute("""INSERT INTO solde (solde) VALUES (?)""", (solde,))
-      dbconn.commit()
-      dbconn.close()
+          pattern = r"(\d+,\d+)"
+          match = re.search(pattern, solde)
+          if match:
+            amount_str = match.group(1)
+            amount = float(amount_str.replace(',', '.'))
 
-      pattern = r"(\d+,\d+)"
-      match = re.search(pattern, solde)
-      if match:
-        amount_str = match.group(1)
-        amount = float(amount_str.replace(',', '.'))
+            if amount < 10.0:
+              status = f"Only {amount} euros left on cafetaria credit"
+            else:
+              status = None
 
-        if amount < 10.0:
-          status = f"Only {amount} euros left on cafetaria credit"
-        else:
-          status = None
+            if status != self.background_status['status']:
+              self.background_status['ts'] = int(time.time())
+              self.background_status['status'] = status
 
-        if status != self.background_status['status']:
-          self.background_status['ts'] = int(time.time())
-          self.background_status['status'] = status
+          else:
+            logger.error("Could not extract cafetaria credit", module_name="cafetaria")
 
-      else:
-        logger.error("Could not extract cafetaria credit", module_name="cafetaria")
+        resp_res_main = http_helper.get('https://webparent.paiementdp.com/aliReservation.php')
 
+        soup2 = BeautifulSoup(resp_res_main.text, 'html.parser')
+
+        pattern = re.compile(r'^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$')
+
+        tds = soup2.find_all('td', id=pattern)
+
+        resas = []
+
+        for td in tds:
+          day = td.get('id')
+          links = td.find_all('a')
+          if links:
+            link = links[0].get('href')
+            parsed_url = urlparse(link)
+            query_params = parse_qs(parsed_url.query)
+
+            id = query_params.get('date', [None])[0]
+            path = parsed_url.path
+
+            if path == "aliReservationCancel.php":
+              reserved = True
+            elif path == "aliReservationDetail.php":
+              reserved = False
+            else:
+              reserved = None
+
+            if reserved is not None:
+              resas.append({"day": day, "id": id, "is_reserved": reserved})
+
+        for resa in resas:
+          dbconn = sqlite3.connect(self.db)
+          dbconn.execute("""
+            INSERT OR REPLACE INTO cafetaria (date, id, is_reserved) VALUES (?, ?, ?)
+            """, (resa['day'], resa['id'].rstrip(), resa['is_reserved']))
+          dbconn.commit()
+          dbconn.close()
+
+        http_helper.get('https://webparent.paiementdp.com/aliDeconnexion.php')
+
+        self.lastUpdate = datetime.now()
+        logger.info("Cafetaria updated successfully", module_name="cafetaria")
         
-
-
-    resp_res_main = session.get('https://webparent.paiementdp.com/aliReservation.php')
-
-    soup2 = BeautifulSoup(resp_res_main.text, 'html.parser')
-
-    pattern = re.compile(r'^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$')
-
-    tds = soup2.find_all('td', id=pattern)
-
-    resas = []
-
-    for td in tds:
-      day = td.get('id')
-      links = td.find_all('a')
-      if links:
-        link = links[0].get('href')
-        parsed_url = urlparse(link)
-        query_params = parse_qs(parsed_url.query)
-
-        id = query_params.get('date', [None])[0]
-        path = parsed_url.path
-
-        if path == "aliReservationCancel.php":
-          reserved = True
-        elif path == "aliReservationDetail.php":
-          reserved = False
-        else:
-          reserved = None
-
-        if reserved is not None:
-          resas.append({"day": day, "id": id, "is_reserved": reserved})
-
-    for resa in resas:
-      dbconn = sqlite3.connect(self.db)
-      dbconn.execute("""
-        INSERT OR REPLACE INTO cafetaria (date, id, is_reserved) VALUES (?, ?, ?)
-        """, (resa['day'], resa['id'].rstrip(), resa['is_reserved']))
-      dbconn.commit()
-      dbconn.close()
-
-    session.get('https://webparent.paiementdp.com/aliDeconnexion.php')
-
-
-    self.lastUpdate = datetime.now()
-    logger.info("Cafetaria updated", module_name="cafetaria")
+      except Exception as e:
+        logger.error(f"Failed to update cafetaria data: {str(e)}", module_name="cafetaria")
+        return
 
 
 
   def change_reservation(self, action, id):
 
-
     id=quote(id)
-
-    session = requests.Session()
     
     data = {
       "txtLogin": self.username,
@@ -283,67 +278,69 @@ class TomCafetaria:
       "y": "19"
     }
 
-
     headers = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0', 'Accept': '*/*', 'Accept-Language': 'en-US,en;q=0.5', 'Accept-Encoding': 'gzip, deflate, br, zstd', 'Referer': 'https://webparent.paiementdp.com/aliAuthentification.php?site=aes00152', 'Origin': 'https://webparent.paiementdp.com'}
 
+    with TomHttpHelper("cafetaria", default_timeout=30) as http_helper:
+      try:
+        http_helper.get('https://webparent.paiementdp.com/aliAuthentification.php?site=aes00152')
+        http_helper.post('https://webparent.paiementdp.com/aliAuthentification.php?site=aes00152', data=data, headers=headers)
 
-    session.get('https://webparent.paiementdp.com/aliAuthentification.php?site=aes00152')
-    session.post('https://webparent.paiementdp.com/aliAuthentification.php?site=aes00152', data=data, headers=headers)
+        if action == "cancel":
 
-    if action == "cancel":
+          cancel_page = http_helper.get(f"https://webparent.paiementdp.com/aliReservationCancel.php?date={id}", headers=headers)
 
-      cancel_page = session.get(f"https://webparent.paiementdp.com/aliReservationCancel.php?date={id}", headers=headers)
+          if cancel_page.status_code != 200:
+            return False
 
-      if cancel_page.status_code != 200:
+          headers['Referer'] = f"https://webparent.paiementdp.com/aliReservationCancel.php?date={id}"
+
+          values = {
+            "ref": "cancel",
+            "btnOK.x": 42,
+            "btnOK.y": 25,
+            "valide_form": 1
+          }
+
+          cancel = http_helper.post('https://webparent.paiementdp.com/aliReservationCancel.php', headers=headers, data=values)
+
+          if cancel.status_code != 200:
+            return False
+
+          self.update()
+
+          return True
+
+        if action == "add":
+
+          add_page = http_helper.get(f"https://webparent.paiementdp.com/aliReservationDetail.php?date={id}", headers=headers)
+
+          if add_page.status_code != 200:
+            return False
+
+          headers['Referer'] = f"https://webparent.paiementdp.com/aliReservationDetail.php?date={id}"
+
+          values = {
+            "CONS_QUANTITE": 1,
+            "restaurant": 1,
+            "btnOK.x": 69,
+            "btnOK.y": 19,
+            "valide_form": 1
+          }
+
+          add = http_helper.post('https://webparent.paiementdp.com/aliReservationDetail.php', headers=headers, data=values)
+
+          if add.status_code != 200:
+            return False
+
+          http_helper.get('https://webparent.paiementdp.com/aliDeconnexion.php')
+          
+          self.update()
+
+          return True
+          
+      except Exception as e:
+        logger.error(f"Failed to change reservation: {str(e)}", module_name="cafetaria")
         return False
-
-      headers['Referer'] = f"https://webparent.paiementdp.com/aliReservationCancel.php?date={id}"
-
-      values = {
-        "ref": "cancel",
-        "btnOK.x": 42,
-        "btnOK.y": 25,
-        "valide_form": 1
-      }
-
-      cancel = session.post('https://webparent.paiementdp.com/aliReservationCancel.php', headers=headers, data=values)
-
-      if cancel.status_code != 200:
-        return False
-
-      self.update()
-
-      return True
-
-
-    if action == "add":
-
-      add_page = session.get(f"https://webparent.paiementdp.com/aliReservationDetail.php?date={id}", headers=headers)
-
-      if add_page.status_code != 200:
-        return False
-
-      headers['Referer'] = f"https://webparent.paiementdp.com/aliReservationDetail.php?date={id}"
-
-      values = {
-        "CONS_QUANTITE": 1,
-        "restaurant": 1,
-        "btnOK.x": 69,
-        "btnOK.y": 19,
-        "valide_form": 1
-      }
-
-      add = session.post('https://webparent.paiementdp.com/aliReservationDetail.php', headers=headers, data=values)
-
-      if add.status_code != 200:
-        return False
-
-      session.get('https://webparent.paiementdp.com/aliDeconnexion.php')
-      
-      self.update()
-
-      return True
-      return {"status": "success", "message": "Reservation changed"}
 
 
 
