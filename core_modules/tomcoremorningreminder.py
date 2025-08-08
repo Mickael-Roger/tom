@@ -48,6 +48,7 @@ class TomCoreMorningReminder:
         # Set up YAML file path
         self.config_file = os.path.join(user_dir, 'morning_reminder.yml')
         self.briefing_file = os.path.join(user_dir, 'daily_briefing.yml')
+        self.tomorrow_briefing_file = os.path.join(user_dir, 'tomorrow_briefing.yml')
         self.greeting_status_file = os.path.join(user_dir, 'morning_greeting_status.yml')
         
         # Initialize with default configuration if file doesn't exist
@@ -177,6 +178,18 @@ class TomCoreMorningReminder:
                         "additionalProperties": False,
                     },
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "morning_reminder_get_tomorrow_briefing",
+                    "description": "Get the generated briefing for tomorrow.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": False,
+                    },
+                }
             }
         ]
 
@@ -207,6 +220,9 @@ class TomCoreMorningReminder:
             },
             "morning_reminder_handle_routine_request": {
                 "function": functools.partial(self.handle_routine_request)
+            },
+            "morning_reminder_get_tomorrow_briefing": {
+                "function": functools.partial(self.get_tomorrow_briefing)
             },
         }
 
@@ -340,7 +356,7 @@ class TomCoreMorningReminder:
             return {"status": "error", "message": f"Failed to generate briefing: {str(e)}"}
 
     def _run_scheduler(self):
-        """Background scheduler that runs the daily briefing at 6 AM and updates it at 12:30 PM."""
+        """Background scheduler that runs the daily briefing at 6 AM, updates it at 12:30 PM, and generates evening/tomorrow briefing at 5 PM."""
         while True:
             try:
                 now = datetime.now()
@@ -349,6 +365,7 @@ class TomCoreMorningReminder:
                 # Determine next execution time
                 morning_time = time_obj(6, 0)  # 6:00 AM
                 midday_time = time_obj(12, 30)  # 12:30 PM
+                evening_time = time_obj(17, 0)  # 5:00 PM
                 
                 if current_time < morning_time:
                     # Before 6 AM - schedule for 6 AM today
@@ -358,8 +375,12 @@ class TomCoreMorningReminder:
                     # Between 6 AM and 12:30 PM - schedule for 12:30 PM today
                     target_time = now.replace(hour=12, minute=30, second=0, microsecond=0)
                     schedule_type = "midday_update"
+                elif current_time < evening_time:
+                    # Between 12:30 PM and 5 PM - schedule for 5 PM today
+                    target_time = now.replace(hour=17, minute=0, second=0, microsecond=0)
+                    schedule_type = "evening_update"
                 else:
-                    # After 12:30 PM - schedule for 6 AM tomorrow
+                    # After 5 PM - schedule for 6 AM tomorrow
                     target_time = now.replace(hour=6, minute=0, second=0, microsecond=0)
                     target_time = target_time.replace(day=target_time.day + 1)
                     schedule_type = "morning"
@@ -372,13 +393,16 @@ class TomCoreMorningReminder:
                 # Sleep until target time
                 time.sleep(time_diff)
                 
-                # Generate the briefing
+                # Generate the appropriate briefing
                 if schedule_type == "morning":
                     tomlogger.info("Generating scheduled morning briefing at 6 AM", self.username)
                     self._generate_daily_briefing()
-                else:  # midday_update
+                elif schedule_type == "midday_update":
                     tomlogger.info("Updating daily briefing at 12:30 PM", self.username)
                     self._generate_daily_briefing()
+                else:  # evening_update
+                    tomlogger.info("Generating evening update and tomorrow briefing at 5 PM", self.username)
+                    self._generate_evening_and_tomorrow_briefing()
                 
             except Exception as e:
                 tomlogger.error(f"Error in briefing scheduler: {str(e)}", self.username)
@@ -598,3 +622,228 @@ Peux-tu créer une synthèse claire et structurée de ces informations pour pré
         except Exception as e:
             tomlogger.error(f"Error handling routine request: {str(e)}", self.username)
             return {"routine_requested": False}
+
+    def get_tomorrow_briefing(self):
+        """Get the generated briefing for tomorrow."""
+        try:
+            if os.path.exists(self.tomorrow_briefing_file):
+                with open(self.tomorrow_briefing_file, 'r', encoding='utf-8') as f:
+                    briefing_data = yaml.safe_load(f) or {}
+                    return {
+                        "briefing": briefing_data.get('content', 'No tomorrow briefing available'),
+                        "generated_at": briefing_data.get('generated_at', 'Unknown'),
+                        "date": briefing_data.get('date', 'Unknown')
+                    }
+            else:
+                return {"briefing": "No tomorrow briefing available yet", "generated_at": None, "date": None}
+        except Exception as e:
+            tomlogger.error(f"Error reading tomorrow briefing: {str(e)}", self.username)
+            return {"briefing": "Error reading tomorrow briefing", "generated_at": None, "date": None}
+
+    def _generate_evening_and_tomorrow_briefing(self):
+        """Generate evening update (today in past tense) and tomorrow's briefing."""
+        try:
+            if not self.llm:
+                tomlogger.error("LLM not available for evening briefing generation", self.username)
+                return "Error: LLM not available"
+
+            self.load_config()
+            instructions = self.config.get('instructions', []) if self.config.get('instructions') is not None else []
+
+            if not instructions:
+                tomlogger.info("No instructions configured for evening/tomorrow briefing", self.username)
+                return "No instructions configured for briefing"
+
+            tomlogger.info(f"Generating evening update and tomorrow briefing with {len(instructions)} prompts", self.username)
+
+            # Generate evening update (past tense)
+            evening_responses = []
+            for i, instruction in enumerate(instructions):
+                try:
+                    # Modify instruction to past tense for evening update
+                    past_instruction = self._convert_to_past_tense_prompt(instruction)
+                    
+                    tomlogger.debug(f"Executing evening prompt {i+1}/{len(instructions)}: {past_instruction}", self.username)
+                    
+                    response = self.llm.processRequest(
+                        input=past_instruction,
+                        position=None,
+                        client_type="background"
+                    )
+                    
+                    if response:
+                        evening_responses.append({
+                            "prompt": past_instruction,
+                            "response": response
+                        })
+                    else:
+                        evening_responses.append({
+                            "prompt": past_instruction,
+                            "response": "Aucune réponse disponible"
+                        })
+                        
+                except Exception as e:
+                    tomlogger.error(f"Error executing evening prompt {i+1}: {str(e)}", self.username)
+                    evening_responses.append({
+                        "prompt": instruction,
+                        "response": f"Erreur lors de l'exécution: {str(e)}"
+                    })
+
+            # Generate tomorrow briefing  
+            tomorrow_responses = []
+            for i, instruction in enumerate(instructions):
+                try:
+                    # Modify instruction to future tense for tomorrow
+                    future_instruction = self._convert_to_future_tense_prompt(instruction)
+                    
+                    tomlogger.debug(f"Executing tomorrow prompt {i+1}/{len(instructions)}: {future_instruction}", self.username)
+                    
+                    response = self.llm.processRequest(
+                        input=future_instruction,
+                        position=None,
+                        client_type="background"
+                    )
+                    
+                    if response:
+                        tomorrow_responses.append({
+                            "prompt": future_instruction,
+                            "response": response
+                        })
+                    else:
+                        tomorrow_responses.append({
+                            "prompt": future_instruction,
+                            "response": "Aucune réponse disponible"
+                        })
+                        
+                except Exception as e:
+                    tomlogger.error(f"Error executing tomorrow prompt {i+1}: {str(e)}", self.username)
+                    tomorrow_responses.append({
+                        "prompt": instruction,
+                        "response": f"Erreur lors de l'exécution: {str(e)}"
+                    })
+
+            # Create evening synthesis (today in past tense)
+            evening_responses_text = "\\n\\n".join([f"Question: {r['prompt']}\\nRéponse: {r['response']}" for r in evening_responses])
+            
+            evening_synthesis_prompt = f"""Voici un bilan de la journée du {datetime.now().strftime('%A %d %B %Y')} :
+
+{evening_responses_text}
+
+Peux-tu créer une synthèse de ce qui s'est passé aujourd'hui ? Présente les informations au passé en disant "Aujourd'hui tu devais..." ou "Aujourd'hui tu avais..." selon le contexte. Organise par thèmes et sois concis."""
+
+            # Create tomorrow synthesis
+            tomorrow_responses_text = "\\n\\n".join([f"Question: {r['prompt']}\\nRéponse: {r['response']}" for r in tomorrow_responses])
+            
+            tomorrow_date = datetime.now().replace(day=datetime.now().day + 1)
+            tomorrow_synthesis_prompt = f"""Voici les prévisions pour demain {tomorrow_date.strftime('%A %d %B %Y')} :
+
+{tomorrow_responses_text}
+
+Peux-tu créer une synthèse pour demain ? Présente les informations au futur en disant "Demain tu auras..." ou "Demain il y aura..." selon le contexte. Organise par thèmes et sois concis pour bien préparer la journée de demain."""
+
+            try:
+                # Generate evening synthesis
+                tomlogger.debug("Generating evening synthesis", self.username)
+                evening_synthesis = self.llm.processRequest(
+                    input=evening_synthesis_prompt,
+                    position=None,
+                    client_type="background"
+                )
+                
+                # Generate tomorrow synthesis
+                tomlogger.debug("Generating tomorrow synthesis", self.username)
+                tomorrow_synthesis = self.llm.processRequest(
+                    input=tomorrow_synthesis_prompt,
+                    position=None,
+                    client_type="background"
+                )
+                
+                if not evening_synthesis:
+                    evening_synthesis = f"Bilan de la journée du {datetime.now().strftime('%A %d %B %Y')}:\\n\\n" + evening_responses_text
+                
+                if not tomorrow_synthesis:
+                    tomorrow_synthesis = f"Prévisions pour demain {tomorrow_date.strftime('%A %d %B %Y')}:\\n\\n" + tomorrow_responses_text
+                
+            except Exception as e:
+                tomlogger.error(f"Error generating syntheses: {str(e)}", self.username)
+                evening_synthesis = f"Bilan de la journée du {datetime.now().strftime('%A %d %B %Y')}:\\n\\n" + evening_responses_text
+                tomorrow_synthesis = f"Prévisions pour demain {tomorrow_date.strftime('%A %d %B %Y')}:\\n\\n" + tomorrow_responses_text
+
+            # Update today's briefing with past tense
+            today_briefing_data = {
+                'content': evening_synthesis,
+                'generated_at': datetime.now().isoformat(),
+                'date': datetime.now().strftime('%Y-%m-%d'),
+                'type': 'evening_update',
+                'prompts_executed': len(instructions),
+                'raw_responses': evening_responses
+            }
+            
+            with open(self.briefing_file, 'w', encoding='utf-8') as f:
+                yaml.dump(today_briefing_data, f, default_flow_style=False, allow_unicode=True)
+
+            # Save tomorrow's briefing
+            tomorrow_briefing_data = {
+                'content': tomorrow_synthesis,
+                'generated_at': datetime.now().isoformat(),
+                'date': tomorrow_date.strftime('%Y-%m-%d'),
+                'type': 'tomorrow_preview',
+                'prompts_executed': len(instructions),
+                'raw_responses': tomorrow_responses
+            }
+            
+            with open(self.tomorrow_briefing_file, 'w', encoding='utf-8') as f:
+                yaml.dump(tomorrow_briefing_data, f, default_flow_style=False, allow_unicode=True)
+
+            tomlogger.info(f"Evening update and tomorrow briefing generated with {len(instructions)} prompts each", self.username)
+            return f"{evening_synthesis}\\n\\n{tomorrow_synthesis}"
+            
+        except Exception as e:
+            tomlogger.error(f"Error generating evening/tomorrow briefing: {str(e)}", self.username)
+            return f"Error generating evening/tomorrow briefing: {str(e)}"
+
+    def _convert_to_past_tense_prompt(self, instruction):
+        """Convert a prompt to past tense for evening review."""
+        # Simple conversion patterns
+        conversions = {
+            "Quel temps fait-il": "Quel temps a-t-il fait",
+            "Qu'est-ce que j'ai au programme": "Qu'est-ce que j'avais au programme",
+            "Quels sont mes rendez-vous": "Quels étaient mes rendez-vous",
+            "Que dois-je faire": "Qu'est-ce que je devais faire",
+            "programme d'aujourd'hui": "programme d'aujourd'hui (bilan)",
+            "aujourd'hui": "aujourd'hui (bilan de la journée)",
+        }
+        
+        modified_instruction = instruction
+        for present, past in conversions.items():
+            if present in instruction.lower():
+                modified_instruction = modified_instruction.replace(present, past)
+        
+        # Add context for past tense
+        if not any(word in modified_instruction.lower() for word in ["bilan", "était", "avais", "devais"]):
+            modified_instruction = f"Bilan de la journée : {modified_instruction}"
+        
+        return modified_instruction
+
+    def _convert_to_future_tense_prompt(self, instruction):
+        """Convert a prompt to future tense for tomorrow preview."""
+        # Simple conversion patterns
+        conversions = {
+            "Quel temps fait-il": "Quel temps fera-t-il demain",
+            "Qu'est-ce que j'ai au programme": "Qu'est-ce que j'aurai au programme demain",
+            "Quels sont mes rendez-vous": "Quels seront mes rendez-vous demain",
+            "Que dois-je faire": "Que devrai-je faire demain",
+            "programme d'aujourd'hui": "programme de demain",
+            "aujourd'hui": "demain",
+        }
+        
+        modified_instruction = instruction
+        for present, future in conversions.items():
+            if present in instruction.lower():
+                modified_instruction = modified_instruction.replace(present, future)
+        
+        # Add context for future tense if not already present
+        if "demain" not in modified_instruction.lower():
+            modified_instruction = f"Pour demain : {modified_instruction}"
+        
+        return modified_instruction
