@@ -154,6 +154,60 @@ class TomYoutube:
           },
         },
       },
+      {
+        "type": "function",
+        "function": {
+          "name": "list_subscriptions",
+          "description": "List all subscribed YouTube channels with their information including unviewed video count.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+          },
+        },
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "add_subscription",
+          "description": "Add a YouTube channel to subscriptions. Channel name will be auto-detected if not provided.",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "channel_id": {
+                "type": "string",
+                "description": "YouTube channel ID (format UCxxxxxxx)",
+              },
+              "channel_name": {
+                "type": "string",
+                "description": "Optional channel name (will be auto-detected if not provided)"
+              }
+            },
+            "required": ["channel_id", "channel_name"],
+            "additionalProperties": False,
+          },
+        },
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "remove_subscription",
+          "description": "Remove a YouTube channel from subscriptions. Can use either channel ID (UCxxxxxxx) or channel name.",
+          "strict": True,
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "channel_id": {
+                "type": "string",
+                "description": "YouTube channel ID (format UCxxxxxxx) or channel name to remove",
+              }
+            },
+            "required": ["channel_id"],
+            "additionalProperties": False,
+          },
+        },
+      },
     ]
 
     self.systemContext = '''
@@ -172,6 +226,21 @@ class TomYoutube:
        - Requires the channel ID (format UCxxxxxxx) which can be obtained from search_youtube_channels
        - Returns detailed information about recent videos including title, description, publication date, view count, and video type
        - Useful for previewing channel content before deciding to follow it
+    
+    The function 'list_subscriptions' shows all subscribed channels:
+       - Use this to show the user what YouTube channels they are currently following
+       - Returns channel information and count of unviewed videos for each subscription
+    
+    The function 'add_subscription' adds a channel to the user's subscriptions:
+       - Use this after the user has found a channel they want to follow (via search_youtube_channels)
+       - Requires the channel ID (UCxxxxxxx format)
+       - Channel name is auto-detected from the RSS feed if not provided
+       - Prevents duplicate subscriptions
+    
+    The function 'remove_subscription' removes a channel from subscriptions:
+       - Use this when the user wants to unsubscribe from a channel
+       - Can search by channel ID (UCxxxxxxx) or channel name (partial matching supported)
+       - Also removes all associated videos from the local database
     '''
     self.complexity = tom_config.get("complexity", 0)
     self.functions = {
@@ -186,6 +255,15 @@ class TomYoutube:
       },
       "get_channel_recent_videos": {
         "function": functools.partial(self.get_channel_recent_videos)
+      },
+      "list_subscriptions": {
+        "function": functools.partial(self.list_subscriptions)
+      },
+      "add_subscription": {
+        "function": functools.partial(self.add_subscription)
+      },
+      "remove_subscription": {
+        "function": functools.partial(self.remove_subscription)
       },
     }
 
@@ -598,3 +676,176 @@ class TomYoutube:
     except Exception as e:
       logger.error(f"Error fetching channel videos for {channel_id}: {e}")
       return {"status": "error", "message": f"Failed to fetch channel videos: {str(e)}"}
+
+  def list_subscriptions(self):
+    """
+    List all subscribed YouTube channels.
+    
+    Returns:
+        Dictionary with status and list of subscribed channels
+    """
+    try:
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute("SELECT channel_id, channel_name, last_update FROM channels ORDER BY channel_name")
+      channels = cursor.fetchall()
+      dbconn.close()
+      
+      subscriptions = []
+      for channel in channels:
+        channel_id = channel[0]
+        channel_name = channel[1]
+        last_update = channel[2]
+        
+        # Count unviewed videos for this channel
+        dbconn = sqlite3.connect(self.db)
+        cursor = dbconn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM videos WHERE channel_id = ? AND viewed = 0", (channel_id,))
+        unviewed_count = cursor.fetchone()[0]
+        dbconn.close()
+        
+        subscription_info = {
+          'channel_id': channel_id,
+          'channel_name': channel_name,
+          'last_update': last_update,
+          'unviewed_videos': unviewed_count
+        }
+        
+        subscriptions.append(subscription_info)
+      
+      result = {
+        'status': 'success',
+        'subscriptions': subscriptions,
+        'total_channels': len(subscriptions)
+      }
+      
+      logger.info(f"Retrieved {len(subscriptions)} subscribed channels")
+      return result
+      
+    except Exception as e:
+      logger.error(f"Error listing subscriptions: {e}")
+      return {"status": "error", "message": f"Failed to list subscriptions: {str(e)}"}
+
+  def add_subscription(self, channel_id, channel_name=None):
+    """
+    Add a YouTube channel to subscriptions.
+    
+    Args:
+        channel_id: YouTube channel ID (format UCxxxxxxx)
+        channel_name: Optional channel name (will be auto-detected if not provided)
+    
+    Returns:
+        Dictionary with status and message
+    """
+    if not channel_id or not channel_id.strip():
+      return {"status": "error", "message": "Channel ID cannot be empty"}
+    
+    if not channel_id.startswith('UC'):
+      return {"status": "error", "message": "Channel ID must start with 'UC'"}
+    
+    try:
+      # Check if channel is already subscribed
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute("SELECT channel_id FROM channels WHERE channel_id = ?", (channel_id,))
+      existing = cursor.fetchone()
+      dbconn.close()
+      
+      if existing:
+        return {"status": "error", "message": "Channel is already in subscriptions"}
+      
+      # Auto-detect channel name if not provided
+      if not channel_name:
+        try:
+          # Try to get channel info from RSS feed
+          rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+          feed = feedparser.parse(rss_url)
+          
+          if feed and hasattr(feed, 'feed') and feed.feed.get('title'):
+            channel_name = feed.feed.get('title')
+          else:
+            channel_name = f"Channel {channel_id}"
+            
+        except Exception as e:
+          logger.warning(f"Could not auto-detect channel name for {channel_id}: {e}")
+          channel_name = f"Channel {channel_id}"
+      
+      # Add channel to database
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      cursor.execute("""
+        INSERT INTO channels (channel_id, channel_name, last_update) 
+        VALUES (?, ?, datetime('now', 'localtime'))
+      """, (channel_id, channel_name))
+      dbconn.commit()
+      dbconn.close()
+      
+      logger.info(f"Added subscription for channel: {channel_name} ({channel_id})")
+      return {
+        "status": "success", 
+        "message": f"Successfully subscribed to channel: {channel_name}",
+        "channel_id": channel_id,
+        "channel_name": channel_name
+      }
+      
+    except Exception as e:
+      logger.error(f"Error adding subscription for {channel_id}: {e}")
+      return {"status": "error", "message": f"Failed to add subscription: {str(e)}"}
+
+  def remove_subscription(self, channel_id):
+    """
+    Remove a YouTube channel from subscriptions.
+    
+    Args:
+        channel_id: YouTube channel ID (format UCxxxxxxx) or channel name
+    
+    Returns:
+        Dictionary with status and message
+    """
+    if not channel_id or not channel_id.strip():
+      return {"status": "error", "message": "Channel ID or name cannot be empty"}
+    
+    try:
+      dbconn = sqlite3.connect(self.db)
+      cursor = dbconn.cursor()
+      
+      # Try to find channel by ID first, then by name
+      cursor.execute("SELECT channel_id, channel_name FROM channels WHERE channel_id = ?", (channel_id,))
+      channel = cursor.fetchone()
+      
+      if not channel:
+        cursor.execute("SELECT channel_id, channel_name FROM channels WHERE channel_name LIKE ?", (f"%{channel_id}%",))
+        channel = cursor.fetchone()
+      
+      if not channel:
+        dbconn.close()
+        return {"status": "error", "message": f"Channel '{channel_id}' not found in subscriptions"}
+      
+      found_channel_id = channel[0]
+      found_channel_name = channel[1]
+      
+      # Remove channel and all its videos
+      cursor.execute("DELETE FROM channels WHERE channel_id = ?", (found_channel_id,))
+      deleted_channels = cursor.rowcount
+      
+      cursor.execute("DELETE FROM videos WHERE channel_id = ?", (found_channel_id,))
+      deleted_videos = cursor.rowcount
+      
+      dbconn.commit()
+      dbconn.close()
+      
+      if deleted_channels > 0:
+        logger.info(f"Removed subscription for channel: {found_channel_name} ({found_channel_id}), deleted {deleted_videos} videos")
+        return {
+          "status": "success", 
+          "message": f"Successfully unsubscribed from channel: {found_channel_name}",
+          "channel_id": found_channel_id,
+          "channel_name": found_channel_name,
+          "deleted_videos": deleted_videos
+        }
+      else:
+        return {"status": "error", "message": "No channel was removed"}
+      
+    except Exception as e:
+      logger.error(f"Error removing subscription for {channel_id}: {e}")
+      return {"status": "error", "message": f"Failed to remove subscription: {str(e)}"}
