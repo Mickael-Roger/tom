@@ -387,7 +387,11 @@ Use the appropriate functions to help users manage their Nintendo Switch parenta
         return {"devices_usage": usage_data}
 
     async def extend_playtime(self, device_id, minutes):
-        """Add extra playing time for a specific device using direct API call"""
+        """Add extra playing time for a specific device using direct API call
+        
+        The Nintendo API only supports adding 5, 15, or 30 minutes per call.
+        This function handles any requested duration by making multiple API calls as needed.
+        """
         try:
             await self._ensure_authenticated()
             
@@ -399,29 +403,98 @@ Use the appropriate functions to help users manage their Nintendo Switch parenta
             current_limit = device.limit_time
             current_playing_time = device.today_playing_time
             
-            # Utiliser directement l'API async_update_extra_playing_time
-            api_result = await device._api.async_update_extra_playing_time(device_id, minutes)
+            # Calculate how to break down the requested minutes into valid API calls
+            total_minutes_to_add = minutes
+            api_calls_made = []
+            total_added = 0
             
-            # Extraire seulement les données JSON sérialisables de la réponse
-            api_status = api_result.get('status', 'unknown')
-            api_json = api_result.get('json', {})
+            # Handle special cases
+            if minutes < 5:
+                # If less than 5 minutes requested, add 5 minutes (minimum)
+                api_calls_to_make = [(5, "Minimum 5 minutes required by API")]
+                total_minutes_to_add = 5
+            else:
+                # Break down the requested time into valid increments (30, 15, 5)
+                api_calls_to_make = []
+                remaining_minutes = minutes
+                
+                # First, use as many 30-minute blocks as possible
+                while remaining_minutes >= 30:
+                    api_calls_to_make.append((30, "30-minute block"))
+                    remaining_minutes -= 30
+                
+                # Then, use 15-minute blocks
+                while remaining_minutes >= 15:
+                    api_calls_to_make.append((15, "15-minute block"))
+                    remaining_minutes -= 15
+                
+                # Finally, handle remaining time with 5-minute blocks
+                if remaining_minutes > 0:
+                    # Round up to nearest 5 minutes
+                    blocks_of_5 = (remaining_minutes + 4) // 5  # Round up division
+                    for _ in range(blocks_of_5):
+                        api_calls_to_make.append((5, "5-minute block"))
             
-            # Mettre à jour les informations après l'ajout d'extra time
+            # Execute all API calls
+            for duration, description in api_calls_to_make:
+                try:
+                    api_result = await device._api.async_update_extra_playing_time(device_id, duration)
+                    
+                    api_status = api_result.get('status', 'unknown')
+                    api_json = api_result.get('json', {})
+                    
+                    api_calls_made.append({
+                        "duration": duration,
+                        "description": description,
+                        "status": api_status,
+                        "response": api_json
+                    })
+                    total_added += duration
+                    
+                    logger.info(f"Added {duration} minutes to device {device.name} ({description})")
+                    
+                    # Small delay between API calls to avoid rate limiting
+                    if len(api_calls_to_make) > 1:
+                        await asyncio.sleep(0.5)
+                        
+                except Exception as call_error:
+                    logger.error(f"Failed to add {duration} minutes: {call_error}")
+                    api_calls_made.append({
+                        "duration": duration,
+                        "description": description,
+                        "status": "error",
+                        "error": str(call_error)
+                    })
+                    # Continue with remaining calls even if one fails
+            
+            # Update device info after all API calls
             await device.update()
             new_playing_time = device.today_playing_time
             
-            logger.info(f"Extended play time for device {device.name} by {minutes} minutes")
-            return {
-                "success": True,
-                "device_id": device_id,
-                "device_name": device.name,
-                "current_limit_minutes": current_limit,
-                "previous_playing_time": current_playing_time,
-                "new_playing_time": new_playing_time,
-                "extra_time_added_minutes": minutes,
-                "api_status": api_status,
-                "api_response": api_json
-            }
+            # Determine success based on whether any calls succeeded
+            successful_calls = [call for call in api_calls_made if call.get("status") != "error"]
+            
+            if successful_calls:
+                logger.info(f"Successfully extended play time for device {device.name}. Requested: {minutes} minutes, Actually added: {total_added} minutes via {len(successful_calls)} API calls")
+                return {
+                    "success": True,
+                    "device_id": device_id,
+                    "device_name": device.name,
+                    "current_limit_minutes": current_limit,
+                    "previous_playing_time": current_playing_time,
+                    "new_playing_time": new_playing_time,
+                    "requested_minutes": minutes,
+                    "actual_minutes_added": sum(call["duration"] for call in successful_calls if call.get("status") != "error"),
+                    "api_calls_made": len(api_calls_made),
+                    "successful_calls": len(successful_calls),
+                    "api_call_details": api_calls_made
+                }
+            else:
+                logger.error(f"All API calls failed for device {device.name}")
+                return {
+                    "error": "All API calls failed to extend play time",
+                    "api_call_details": api_calls_made
+                }
                 
         except Exception as e:
             error_msg = str(e).lower()
