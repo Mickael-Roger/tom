@@ -102,134 +102,7 @@ class TomTodo:
 
 
 
-    self.tools = [
-      {
-        "type": "function",
-        "function": {
-          "name": "list_available_lists",
-          "description": "List all available lists. Use this when user asks about what lists they have.",
-          "parameters": {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": False,
-          },
-        }
-      },
-      {
-        "type": "function",
-        "function": {
-          "name": "create_list",
-          "description": "Create a new list. Use this when user wants to create a new list.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "list_name": {
-                "type": "string",
-                "description": "Name of the new list to create.",
-              }
-            },
-            "required": ["list_name"],
-            "additionalProperties": False,
-          },
-        }
-      },
-      {
-        "type": "function",
-        "function": {
-          "name": "add_to_list",
-          "description": "Add an item to a list. Use this for adding tasks, products, or any items to lists.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "item_name": {
-                "type": "string",
-                "description": "The name/title of the item to add to the list.",
-              },
-              "list_name": {
-                "type": "string",
-                "description": "Name of the list to add the item to. REQUIRED parameter.",
-              },
-              "priority": {
-                "type": "integer",
-                "description": "Priority from 1-9 (1 is highest). Only for TODO tasks, not for grocery items.",
-              },
-              "due": {
-                "type": "string",
-                "description": "Due date in 'YYYY-MM-DD HH:MM:SS' format. Only for TODO tasks, not for grocery items.",
-              }
-            },
-            "required": ["item_name", "list_name"],
-            "additionalProperties": False,
-          },
-        }
-      },
-      {
-        "type": "function",
-        "function": {
-          "name": "list_items",
-          "description": "List all items in a specific list. Use this to show contents of any list.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "list_name": {
-                "type": "string",
-                "description": "Name of the list to show items from. REQUIRED parameter.",
-              }
-            },
-            "required": ["list_name"],
-            "additionalProperties": False,
-          },
-        }
-      },
-      {
-        "type": "function",
-        "function": {
-          "name": "remove_from_list",
-          "description": "Remove/close an item from a list. Use this to remove items, mark tasks as done, etc.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "description": "The ID of the item to remove. Get this from list_items function.",
-              },
-              "list_name": {
-                "type": "string",
-                "description": "Name of the list containing the item. REQUIRED parameter.",
-              }
-            },
-            "required": ["id", "list_name"],
-            "additionalProperties": False,
-          },
-        }
-      },
-      {
-        "type": "function",
-        "function": {
-          "name": "update_item_priority",
-          "description": "Update the priority of an item in a list. Use this to change task priority (1-9, where 1 is highest priority).",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "description": "The ID of the item to update. Get this from list_items function.",
-              },
-              "list_name": {
-                "type": "string",
-                "description": "Name of the list containing the item. REQUIRED parameter.",
-              },
-              "priority": {
-                "type": "integer",
-                "description": "New priority: 1 (highest/urgent), 5 (medium), 9 (lowest).",
-              }
-            },
-            "required": ["id", "list_name", "priority"],
-            "additionalProperties": False,
-          },
-        }
-      }
-    ]
+    self.tools = self._build_tools()
 
     self.systemContext = f"""You are managing a comprehensive list management system with these capabilities:
 
@@ -283,6 +156,142 @@ Always determine the correct list based on user intent - grocery/shopping reques
 
 
 
+  def _build_tools(self):
+    available_lists = list(self.todoCalendars.keys()) if self.todoCalendars else [self.defaultTodoListName, self.defaultGroceriesListName]
+    
+    return [
+      {
+        "type": "function",
+        "function": {
+          "name": "list_available_lists",
+          "description": "List all available lists. Use this when user asks about what lists they have.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+          },
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "create_list",
+          "description": "Create a new list. Use this when user wants to create a new list.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "list_name": {
+                "type": "string",
+                "description": "Name of the new list to create.",
+              }
+            },
+            "required": ["list_name"],
+            "additionalProperties": False,
+          },
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "add_to_list",
+          "description": "Add an item to a list. Use this for adding tasks, products, or any items to lists.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "item_name": {
+                "type": "string",
+                "description": "The name/title of the item to add to the list.",
+              },
+              "list_name": {
+                "type": "string",
+                "description": "Name of the list to add the item to. REQUIRED parameter.",
+                "enum": available_lists
+              },
+              "priority": {
+                "type": "integer",
+                "description": "Priority from 1-9 (1 is highest). Only for TODO tasks, not for grocery items.",
+              },
+              "due": {
+                "type": "string",
+                "description": "Due date in 'YYYY-MM-DD HH:MM:SS' format. Only for TODO tasks, not for grocery items.",
+              }
+            },
+            "required": ["item_name", "list_name"],
+            "additionalProperties": False,
+          },
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "list_items",
+          "description": "List all items in a specific list. Use this to show contents of any list.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "list_name": {
+                "type": "string",
+                "description": "Name of the list to show items from. REQUIRED parameter.",
+                "enum": available_lists
+              }
+            },
+            "required": ["list_name"],
+            "additionalProperties": False,
+          },
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "remove_from_list",
+          "description": "Remove/close an item from a list. Use this to remove items, mark tasks as done, etc.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "The ID of the item to remove. Get this from list_items function.",
+              },
+              "list_name": {
+                "type": "string",
+                "description": "Name of the list containing the item. REQUIRED parameter.",
+                "enum": available_lists
+              }
+            },
+            "required": ["id", "list_name"],
+            "additionalProperties": False,
+          },
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "update_item_priority",
+          "description": "Update the priority of an item in a list. Use this to change task priority (1-9, where 1 is highest priority).",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "The ID of the item to update. Get this from list_items function.",
+              },
+              "list_name": {
+                "type": "string",
+                "description": "Name of the list containing the item. REQUIRED parameter.",
+                "enum": available_lists
+              },
+              "priority": {
+                "type": "integer",
+                "description": "New priority: 1 (highest/urgent), 5 (medium), 9 (lowest).",
+              }
+            },
+            "required": ["id", "list_name", "priority"],
+            "additionalProperties": False,
+          },
+        }
+      }
+    ]
+
   def getCalendarByName(self, list_name=None):
     if self.client is None:
       return None
@@ -298,6 +307,27 @@ Always determine the correct list based on user intent - grocery/shopping reques
   def listAvailableLists(self):
     if self.client is None:
       return {"status": "error", "message": "CalDAV connection not available"}
+    
+    # Rafraîchir la liste des calendriers depuis le serveur
+    try:
+      principal = self.client.principal()
+      calendars = principal.calendars()
+      
+      self.todoCalendars = {}
+      for calendar in calendars:
+        if calendar.get_properties() is not None:
+          if '{urn:ietf:params:xml:ns:caldav}calendar-timezone' not in calendar.get_properties().keys():
+            display_name = calendar.get_properties([dav.DisplayName()])['{DAV:}displayname']
+            self.todoCalendars[display_name] = calendar
+            if display_name == self.defaultTodoListName:
+              self.todoCal = calendar
+      
+      # Mise à jour dynamique des outils avec les listes rafraîchies
+      self.tools = self._build_tools()
+      
+    except Exception as e:
+      logger.error(f"Error refreshing calendar list: {str(e)}", module_name="todo")
+    
     return {"status": "success", "lists": list(self.todoCalendars.keys())}
 
   def createList(self, list_name):
@@ -311,6 +341,9 @@ Always determine the correct list based on user intent - grocery/shopping reques
       new_calendar.set_properties([dav.DisplayName(list_name)])
       
       self.todoCalendars[list_name] = new_calendar
+      
+      # Mise à jour dynamique des outils avec la nouvelle liste
+      self.tools = self._build_tools()
       
       logger.info(f"New todo list '{list_name}' created successfully.", module_name="todo")
       return {"status": "success", "message": f"Todo list '{list_name}' created"}
