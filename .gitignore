@@ -20,6 +20,7 @@ TomAssistant/.externalNativeBuild/
 TomAssistant/.cxx/
 TomAssistant/*.apk
 TomAssistant/*.aab
+TomAssistant/app/google-services.json
 
 # Android signing keys - SECURITY: Never commit these!
 TomAssistant/app/*.keystore

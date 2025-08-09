@@ -566,19 +566,45 @@ Respond only with the text to be read, without explanation or formatting."""
     
     while retry_count <= max_retries:
       try:
-        if tools: 
-          response = completion(
-            model = model,
-            temperature = 0,
-            messages = messages,
-            tools = tools,
-            tool_choice = "auto",
-          )
+        # Check if model is GPT-5 and its variants
+        is_gpt5 = model.startswith("openai/gpt-5")
+        
+        if tools:
+          if is_gpt5:
+            # GPT-5 models use verbosity and reasoning_effort instead of temperature
+            response = completion(
+              model = model,
+              verbosity = "low",
+              reasoning_effort="minimal",
+              messages = messages,
+              tools = tools,
+              tool_choice = "auto",
+              allowed_openai_params=["reasoning_effort", "verbosity"],
+            )
+          else:
+            response = completion(
+              model = model,
+              temperature = 0,
+              messages = messages,
+              tools = tools,
+              tool_choice = "auto",
+            )
         else:
-          response = completion(
-            model = model,
-            messages = messages,
-          )
+          if is_gpt5:
+            # GPT-5 models use verbosity and reasoning_effort instead of temperature
+            response = completion(
+              model = model,
+              verbosity = "low",
+              reasoning_effort="minimal",
+              messages = messages,
+              allowed_openai_params=["reasoning_effort", "verbosity"],
+            )
+          else:
+            response = completion(
+              model = model,
+              temperature = 0,
+              messages = messages,
+            )
 
         tomlogger.debug(f"📥 LLM Response from {llm}: {str(response)}", self.username)
 
