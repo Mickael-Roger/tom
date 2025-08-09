@@ -54,11 +54,23 @@ def initConf(config_path='/data/config.yml'):
 ################################################################################################
 
 class ConfigChangeNotifier(FileSystemEventHandler):
-  """Handler to log config file changes without reloading"""
+  """Handler to log config file changes and identify modifications"""
   def __init__(self, config_path):
     self.config_path = os.path.abspath(config_path)
     self.last_modified = 0
     self.debounce_time = 2  # 2 seconds to ensure file operations are complete
+    self.previous_config = None
+    self._load_initial_config()
+    
+  def _load_initial_config(self):
+    """Load the initial configuration state"""
+    try:
+      with open(self.config_path, 'r') as file:
+        self.previous_config = yaml.safe_load(file)
+      logger.debug(f"Initial config state loaded for monitoring: {self.config_path}")
+    except Exception as e:
+      logger.error(f"Failed to load initial config state: {e}")
+      self.previous_config = {}
     
   def on_modified(self, event):
     if event.src_path == self.config_path and not event.is_directory:
@@ -71,14 +83,14 @@ class ConfigChangeNotifier(FileSystemEventHandler):
       # Wait a bit more to ensure file is completely written and lock is released
       time.sleep(0.5)
       
-      # Verify we can read the file (no lock)
+      # Verify we can read the file (no lock) and analyze changes
       if self._is_file_accessible():
-        logger.info(f"📝 Configuration file modified: {self.config_path} - Manual restart required to apply changes")
+        self._analyze_and_log_changes()
       else:
         # File might still be locked, try again after a longer delay
         time.sleep(1.5)
         if self._is_file_accessible():
-          logger.info(f"📝 Configuration file modified: {self.config_path} - Manual restart required to apply changes")
+          self._analyze_and_log_changes()
         else:
           logger.warning(f"⚠️  Configuration file modification detected but file appears to be locked: {self.config_path}")
   
@@ -91,6 +103,155 @@ class ConfigChangeNotifier(FileSystemEventHandler):
       return True
     except (IOError, OSError):
       return False
+  
+  def _analyze_and_log_changes(self):
+    """Analyze what changed in the configuration and log details"""
+    try:
+      # Load new config
+      with open(self.config_path, 'r') as file:
+        new_config = yaml.safe_load(file)
+      
+      if self.previous_config is None:
+        logger.info(f"📝 Configuration file modified: {self.config_path} - Unable to determine changes (no previous state)")
+        self.previous_config = new_config
+        return
+      
+      # Analyze changes
+      changes = self._detect_changes(self.previous_config, new_config)
+      
+      if changes:
+        logger.info(f"📝 Configuration file modified: {self.config_path}")
+        for change in changes:
+          logger.info(f"   🔄 {change}")
+        logger.info("   ⚠️  Manual restart required to apply changes")
+      else:
+        logger.info(f"📝 Configuration file modified: {self.config_path} - No structural changes detected")
+      
+      # Update previous config for next comparison
+      self.previous_config = new_config
+      
+    except Exception as e:
+      logger.error(f"Error analyzing config changes: {e}")
+      logger.info(f"📝 Configuration file modified: {self.config_path} - Manual restart required to apply changes")
+  
+  def _detect_changes(self, old_config, new_config):
+    """Detect and describe changes between old and new configuration"""
+    changes = []
+    
+    # Check global config changes
+    old_global = old_config.get('global', {})
+    new_global = new_config.get('global', {})
+    
+    if old_global != new_global:
+      global_changes = self._compare_dicts(old_global, new_global, "global")
+      changes.extend(global_changes)
+    
+    # Check services changes
+    old_services = old_config.get('services', {})
+    new_services = new_config.get('services', {})
+    
+    if old_services != new_services:
+      service_changes = self._compare_dicts(old_services, new_services, "services")
+      changes.extend(service_changes)
+    
+    # Check users changes
+    old_users = {user.get('username', 'unknown'): user for user in old_config.get('users', [])}
+    new_users = {user.get('username', 'unknown'): user for user in new_config.get('users', [])}
+    
+    # Detect user additions/removals
+    added_users = set(new_users.keys()) - set(old_users.keys())
+    removed_users = set(old_users.keys()) - set(new_users.keys())
+    
+    for username in added_users:
+      changes.append(f"User added: '{username}'")
+    
+    for username in removed_users:
+      changes.append(f"User removed: '{username}'")
+    
+    # Check changes in existing users
+    for username in set(old_users.keys()) & set(new_users.keys()):
+      old_user = old_users[username]
+      new_user = new_users[username]
+      
+      if old_user != new_user:
+        user_changes = self._compare_user_config(old_user, new_user, username)
+        changes.extend(user_changes)
+    
+    return changes
+  
+  def _compare_dicts(self, old_dict, new_dict, section_name):
+    """Compare two dictionaries and return list of changes"""
+    changes = []
+    
+    # Check for added/removed keys
+    old_keys = set(old_dict.keys())
+    new_keys = set(new_dict.keys())
+    
+    added_keys = new_keys - old_keys
+    removed_keys = old_keys - new_keys
+    
+    for key in added_keys:
+      changes.append(f"Added to {section_name}: '{key}'")
+    
+    for key in removed_keys:
+      changes.append(f"Removed from {section_name}: '{key}'")
+    
+    # Check for modified values
+    for key in old_keys & new_keys:
+      if old_dict[key] != new_dict[key]:
+        changes.append(f"Modified in {section_name}: '{key}' changed")
+    
+    return changes
+  
+  def _compare_user_config(self, old_user, new_user, username):
+    """Compare user configurations and detect changes"""
+    changes = []
+    
+    # Check basic user properties
+    for key in ['password', 'admin', 'memory']:
+      old_val = old_user.get(key)
+      new_val = new_user.get(key)
+      if old_val != new_val:
+        if key == 'password':
+          changes.append(f"User '{username}': password changed")
+        else:
+          changes.append(f"User '{username}': {key} changed from {old_val} to {new_val}")
+    
+    # Check services changes
+    old_services = old_user.get('services', {})
+    new_services = new_user.get('services', {})
+    
+    if old_services != new_services:
+      # Detect added/removed/modified services for this user
+      old_service_keys = set(old_services.keys())
+      new_service_keys = set(new_services.keys())
+      
+      added_services = new_service_keys - old_service_keys
+      removed_services = old_service_keys - new_service_keys
+      
+      for service in added_services:
+        changes.append(f"User '{username}': service '{service}' added")
+      
+      for service in removed_services:
+        changes.append(f"User '{username}': service '{service}' removed")
+      
+      # Check for modifications in existing services
+      for service in old_service_keys & new_service_keys:
+        old_service_config = old_services[service]
+        new_service_config = new_services[service]
+        
+        if old_service_config != new_service_config:
+          # Check if it's just an enable/disable change
+          if (isinstance(old_service_config, dict) and isinstance(new_service_config, dict) and
+              old_service_config.get('enable') != new_service_config.get('enable')):
+            old_enable = old_service_config.get('enable', True)
+            new_enable = new_service_config.get('enable', True)
+            status = "enabled" if new_enable else "disabled"
+            changes.append(f"User '{username}': service '{service}' {status}")
+          else:
+            changes.append(f"User '{username}': service '{service}' configuration changed")
+    
+    return changes
 
 
 class ConfigWatcher:
