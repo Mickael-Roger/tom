@@ -53,75 +53,61 @@ def initConf(config_path='/data/config.yml'):
 #                                                                                              #
 ################################################################################################
 
-class ConfigFileHandler(FileSystemEventHandler):
-  """Handler for config file changes"""
-  def __init__(self, config_path, user_modules_dict, global_config, userList):
-    self.config_path = config_path
-    self.user_modules_dict = user_modules_dict
-    self.global_config = global_config
-    self.userList = userList
+class ConfigChangeNotifier(FileSystemEventHandler):
+  """Handler to log config file changes without reloading"""
+  def __init__(self, config_path):
+    self.config_path = os.path.abspath(config_path)
     self.last_modified = 0
+    self.debounce_time = 2  # 2 seconds to ensure file operations are complete
     
   def on_modified(self, event):
-    if event.src_path == self.config_path:
+    if event.src_path == self.config_path and not event.is_directory:
       # Debounce: ignore rapid successive events
       current_time = time.time()
-      if current_time - self.last_modified < 1:
+      if current_time - self.last_modified < self.debounce_time:
         return
       self.last_modified = current_time
       
-      logger.info(f"📝 Configuration file changed: {self.config_path}")
-      self._reload_config()
-  
-  def _reload_config(self):
-    """Reload configuration and update modules"""
-    try:
-      with open(self.config_path, 'r') as file:
-        new_config = yaml.safe_load(file)
+      # Wait a bit more to ensure file is completely written and lock is released
+      time.sleep(0.5)
       
-      # Update global config
-      self.global_config.clear()
-      self.global_config.update(new_config)
-      
-      # Update user modules
-      new_users = {user['username']: user for user in new_config.get('users', [])}
-      
-      for username, module_manager in self.user_modules_dict.items():
-        if username in new_users:
-          module_manager.update_modules_config(new_users[username])
+      # Verify we can read the file (no lock)
+      if self._is_file_accessible():
+        logger.info(f"📝 Configuration file modified: {self.config_path} - Manual restart required to apply changes")
+      else:
+        # File might still be locked, try again after a longer delay
+        time.sleep(1.5)
+        if self._is_file_accessible():
+          logger.info(f"📝 Configuration file modified: {self.config_path} - Manual restart required to apply changes")
         else:
-          logger.warning(f"⚠️  User {username} removed from configuration")
-      
-      # Handle new users (not implemented in this version)
-      for username in new_users:
-        if username not in self.user_modules_dict:
-          logger.warning(f"⚠️  New user {username} found in configuration (restart required)")
-      
-      logger.config_reload(success=True)
-      
-    except Exception as e:
-      logger.config_reload(success=False)
-      logger.error(f"Error reloading configuration: {e}")
+          logger.warning(f"⚠️  Configuration file modification detected but file appears to be locked: {self.config_path}")
+  
+  def _is_file_accessible(self):
+    """Check if file is accessible (not locked)"""
+    try:
+      with open(self.config_path, 'r') as f:
+        # Try to read first few bytes to ensure file is accessible
+        f.read(10)
+      return True
+    except (IOError, OSError):
+      return False
 
 
 class ConfigWatcher:
-  """Watches config file for changes"""
-  def __init__(self, config_path, user_modules_dict, global_config, userList):
+  """Watches config file for changes and logs them"""
+  def __init__(self, config_path):
     self.config_path = os.path.abspath(config_path)
     self.config_dir = os.path.dirname(self.config_path)
-    self.user_modules_dict = user_modules_dict
-    self.global_config = global_config
-    self.userList = userList
     self.observer = None
     self.handler = None
     
   def start(self):
     """Start watching the config file"""
-    self.handler = ConfigFileHandler(self.config_path, self.user_modules_dict, self.global_config, self.userList)
+    self.handler = ConfigChangeNotifier(self.config_path)
     self.observer = Observer()
     self.observer.schedule(self.handler, self.config_dir, recursive=False)
     self.observer.start()
-    logger.file_watcher(f"📁 Watching config file: {self.config_path}")
+    logger.file_watcher(f"👀 Watching config file for changes: {self.config_path}")
     
   def stop(self):
     """Stop watching the config file"""
@@ -632,8 +618,8 @@ for username, module_manager in module_managers.items():
 # Print module loading status summary
 TomCoreModules.print_modules_status_summary(module_managers)
 
-# Start config file watcher
-config_watcher = ConfigWatcher(config_file_path, module_managers, global_config, userList)
+# Start config file change notifier (logs changes only, no reload)
+config_watcher = ConfigWatcher(config_file_path)
 config_watcher.start()
 
 
