@@ -528,12 +528,18 @@ class TomWebService:
     session_key = f"{username}_{session_id}"
     
     if session_key not in session_instances:
-      logger.info(f"🏗️  Creating new session instance for {session_key}")
+      # Check if user exists in userList (may have been hot reloaded)
+      if username not in userList:
+        logger.error(f"User {username} not found in userList during session creation")
+        raise cherrypy.HTTPError(500, f"User {username} not available")
       
       # Create a new instance based on the user's base configuration
       base_instance = userList[username]
-      logger.info(f"   📋 Base instance services: {list(base_instance.services.keys())}")
-      logger.info(f"   🔧 Base instance functions: {list(base_instance.functions.keys())}")
+      
+      # Verify the base instance is properly initialized
+      if not hasattr(base_instance, 'services') or not hasattr(base_instance, 'functions'):
+        logger.error(f"Base instance for {username} is not properly initialized")
+        raise cherrypy.HTTPError(500, f"User {username} configuration incomplete")
       
       # Create user config from global config
       user_config = None
@@ -542,20 +548,20 @@ class TomWebService:
           user_config = user
           break
       
+      if not user_config:
+        logger.error(f"User config not found for {username}")
+        raise cherrypy.HTTPError(500, f"User {username} configuration not found")
+      
       # Create new session-specific instance
       session_instance = TomLLM(user_config, global_config)
       session_instance.admin = base_instance.admin
       session_instance.services = base_instance.services
       session_instance.functions = base_instance.functions
-      session_instance.tasks = base_instance.tasks
-      
-      logger.info(f"   ✅ Session instance created with {len(session_instance.services)} services and {len(session_instance.functions)} functions")
-      logger.info(f"   📋 Session services: {list(session_instance.services.keys())}")
-      logger.info(f"   🔧 Session functions: {list(session_instance.functions.keys())}")
+      # Only set tasks if it exists (may not exist during hot reload)
+      if hasattr(base_instance, 'tasks'):
+        session_instance.tasks = base_instance.tasks
       
       session_instances[session_key] = session_instance
-    else:
-      logger.debug(f"♻️  Reusing existing session instance for {session_key}")
     
     return session_instances[session_key]
   
@@ -887,29 +893,6 @@ for user in global_config['users']:
 
 # Print module loading status summary
 TomCoreModules.print_modules_status_summary(module_managers)
-
-# Log detailed information about userList contents after initial loading
-logger.info("=== DETAILED USERLIST ANALYSIS AFTER INITIAL LOADING ===")
-for username in userList:
-  logger.info(f"🔍 Analyzing user: {username}")
-  logger.info(f"   📋 userList[{username}].services keys: {list(userList[username].services.keys())}")
-  logger.info(f"   🔧 userList[{username}].functions keys: {list(userList[username].functions.keys())}")
-  
-  # Log details for each service
-  for service_name, service_data in userList[username].services.items():
-    enabled = service_data.get('enabled', 'N/A')
-    obj_type = type(service_data.get('obj', None)).__name__ if service_data.get('obj') else 'None'
-    logger.info(f"   📦 Service '{service_name}': enabled={enabled}, obj_type={obj_type}")
-  
-  # Log details for each function
-  for func_name, func_data in userList[username].functions.items():
-    module_name = func_data.get('module_name', 'unknown') if isinstance(func_data, dict) else 'legacy'
-    func_type = type(func_data.get('function', None)).__name__ if isinstance(func_data, dict) and func_data.get('function') else type(func_data).__name__
-    logger.info(f"   ⚙️  Function '{func_name}': module={module_name}, type={func_type}")
-  
-  logger.info(f"   📊 Total services: {len(userList[username].services)}, Total functions: {len(userList[username].functions)}")
-
-logger.info("=== END DETAILED USERLIST ANALYSIS ===")
 
 # Start config file change notifier (logs changes only, no reload)
 config_watcher = ConfigWatcher(config_file_path)
