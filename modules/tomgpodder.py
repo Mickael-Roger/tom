@@ -5,6 +5,7 @@ import os
 import sys
 import requests
 import xml.etree.ElementTree as ET
+from datetime import datetime
 from mygpoclient.api import MygPodderClient
 
 # Logging
@@ -69,16 +70,66 @@ class TomGPodder:
             self.sync_thread.daemon = True
             self.sync_thread.start()
 
-        # No tools exposed to LLM for now as requested
-        self.tools = []
+        # Tools exposed to LLM
+        self.tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_podcast_subscriptions",
+                    "description": "List all podcast subscriptions with their information including unread episode count.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_unread_episodes",
+                    "description": "List all unread/unplayed podcast episodes, organized by podcast subscription.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "limit": {
+                                "type": "integer",
+                                "description": "Maximum number of episodes to return (default: 50, max: 200)",
+                                "minimum": 1,
+                                "maximum": 200
+                            }
+                        },
+                        "additionalProperties": False,
+                    },
+                },
+            },
+        ]
         
         self.systemContext = '''
         This module manages podcast subscriptions using gpodder.net service.
-        Currently no functions are available to the LLM.
+        
+        The function 'list_podcast_subscriptions' shows all subscribed podcasts:
+           - Use this to show the user what podcasts they are currently subscribed to
+           - Returns podcast titles, URLs, and count of unread episodes for each subscription
+           - Helps users understand their current podcast library
+        
+        The function 'list_unread_episodes' shows unread/unplayed episodes:
+           - Use this to show the user which podcast episodes they haven't listened to yet
+           - Episodes are organized by podcast for better readability
+           - Includes episode titles, publication dates, descriptions, and URLs
+           - Can limit the number of results to avoid overwhelming the user
+           - Episodes are sorted by publication date (newest first)
         '''
         
         self.complexity = tom_config.get("complexity", 0)
-        self.functions = {}
+        self.functions = {
+            "list_podcast_subscriptions": {
+                "function": self.list_podcast_subscriptions
+            },
+            "list_unread_episodes": {
+                "function": self.list_unread_episodes
+            },
+        }
 
     def _init_database(self):
         """Initialize the SQLite database with required tables."""
@@ -103,6 +154,7 @@ class TomGPodder:
             publication_date TEXT,
             url TEXT NOT NULL,
             description TEXT,
+            status TEXT DEFAULT 'unplayed',
             FOREIGN KEY (subscription_id) REFERENCES subscriptions (id) ON DELETE CASCADE
         )
         ''')
@@ -182,11 +234,15 @@ class TomGPodder:
             logger.error(f"Error syncing subscriptions from GPodder.net: {e}")
 
     def _background_sync(self):
-        """Background thread to sync subscriptions every 60 minutes."""
+        """Background thread to sync subscriptions and episodes every 60 minutes."""
         while True:
             try:
-                logger.info("Starting background sync of GPodder subscriptions...")
+                logger.info("Starting background sync of GPodder data...")
+                # First sync subscriptions, then episodes, then episode status sequentially
                 self._sync_subscriptions()
+                self._sync_episodes()
+                self._sync_episode_status()
+                logger.info("Background sync completed successfully")
             except Exception as e:
                 logger.error(f"Error in background sync: {e}")
             
@@ -211,3 +267,270 @@ class TomGPodder:
             logger.error(f"Error extracting title from RSS feed {sub_url}: {e}")
             # Fallback to URL-based title
             return sub_url.split('/')[-1] if '/' in sub_url else sub_url
+
+    def _sync_episodes(self):
+        """Synchronize episodes from RSS feeds to local database, based on gpodder_checker.py."""
+        if not self.client:
+            return
+            
+        try:
+            dbconn = sqlite3.connect(self.db)
+            cursor = dbconn.cursor()
+            
+            # Get all subscriptions
+            cursor.execute("SELECT id, url FROM subscriptions")
+            subscriptions = cursor.fetchall()
+            
+            for subscription_id, sub_url in subscriptions:
+                try:
+                    logger.debug(f"Syncing episodes for subscription {subscription_id}: {sub_url}")
+                    
+                    # Get RSS feed (same as gpodder_checker.py line 48-50)
+                    response = requests.get(sub_url)
+                    response.raise_for_status()
+                    root = ET.fromstring(response.content)
+                    
+                    # Parse all episodes from RSS feed (same as gpodder_checker.py line 63)
+                    for item in root.findall('./channel/item'):
+                        try:
+                            # Extract episode data (same as gpodder_checker.py line 64-65)
+                            episode_title = item.findtext('title')
+                            episode_url = item.find('enclosure').get('url') if item.find('enclosure') is not None else item.findtext('link')
+                            
+                            if not episode_title or not episode_url:
+                                continue
+                            
+                            # Extract additional episode data
+                            description = item.findtext('description', '')
+                            pub_date_str = item.findtext('pubDate', '')
+                            
+                            # Parse publication date
+                            publication_date = None
+                            if pub_date_str:
+                                try:
+                                    # Try parsing RFC 2822 format (common in RSS)
+                                    from email.utils import parsedate_to_datetime
+                                    publication_date = parsedate_to_datetime(pub_date_str).isoformat()
+                                except:
+                                    # Fallback: store raw date string
+                                    publication_date = pub_date_str
+                            
+                            # Check if episode already exists
+                            cursor.execute("""
+                                SELECT id FROM episodes 
+                                WHERE subscription_id = ? AND url = ?
+                            """, (subscription_id, episode_url))
+                            
+                            if not cursor.fetchone():
+                                # Insert new episode
+                                cursor.execute("""
+                                    INSERT INTO episodes (subscription_id, title, publication_date, url, description)
+                                    VALUES (?, ?, ?, ?, ?)
+                                """, (subscription_id, episode_title, publication_date, episode_url, description))
+                                
+                                logger.debug(f"Added new episode: {episode_title}")
+                            
+                        except Exception as e:
+                            logger.error(f"Error processing episode in {sub_url}: {e}")
+                            continue
+                    
+                except Exception as e:
+                    logger.error(f"Error syncing episodes for subscription {sub_url}: {e}")
+                    continue
+            
+            dbconn.commit()
+            dbconn.close()
+            
+            logger.info("Episodes synchronization completed")
+            
+        except Exception as e:
+            logger.error(f"Error syncing episodes: {e}")
+
+    def _sync_episode_status(self):
+        """Synchronize episode play status based on GPodder episode actions, based on gpodder_checker.py."""
+        if not self.client:
+            return
+            
+        try:
+            # Calculate timestamp for 24 hours ago
+            since_timestamp = int(time.time()) - (24 * 60 * 60)  # 24 hours ago
+            
+            logger.info(f"Syncing episode status for actions since last 24 hours (timestamp: {since_timestamp})")
+            
+            try:
+                # Get episode actions from last 24 hours (same as gpodder_checker.py line 56 but with since parameter)
+                episode_actions = self.client.download_episode_actions(since=since_timestamp)
+                logger.info(f"Retrieved {len(episode_actions.actions)} episode actions from last 24h")
+                
+                if not episode_actions.actions:
+                    logger.info("No recent episode actions to sync")
+                    return
+                
+                dbconn = sqlite3.connect(self.db)
+                cursor = dbconn.cursor()
+                
+                # Process each episode action
+                for action in episode_actions.actions:
+                    try:
+                        episode_url = action.episode
+                        action_type = action.action
+                        
+                        # Same logic as gpodder_checker.py line 57 - check if action is 'play'
+                        if action_type == 'play':
+                            # Update episode status to 'played'
+                            cursor.execute("""
+                                UPDATE episodes 
+                                SET status = 'played' 
+                                WHERE url = ? AND status != 'played'
+                            """, (episode_url,))
+                            
+                            if cursor.rowcount > 0:
+                                logger.debug(f"Marked episode as played: {episode_url}")
+                        
+                        # Handle other possible actions (download, delete, etc.)
+                        elif action_type == 'download':
+                            cursor.execute("""
+                                UPDATE episodes 
+                                SET status = 'downloaded' 
+                                WHERE url = ? AND status = 'unplayed'
+                            """, (episode_url,))
+                            
+                            if cursor.rowcount > 0:
+                                logger.debug(f"Marked episode as downloaded: {episode_url}")
+                                
+                    except Exception as e:
+                        logger.error(f"Error processing episode action {action}: {e}")
+                        continue
+                
+                dbconn.commit()
+                dbconn.close()
+                
+                logger.info("Episode status synchronization completed")
+                
+            except Exception as e:
+                logger.error(f"Error downloading episode actions: {e}")
+                
+        except Exception as e:
+            logger.error(f"Error syncing episode status: {e}")
+
+    def list_podcast_subscriptions(self):
+        """List all podcast subscriptions with unread episode counts."""
+        try:
+            dbconn = sqlite3.connect(self.db)
+            cursor = dbconn.cursor()
+            
+            # Get all subscriptions with unread episode counts
+            cursor.execute("""
+                SELECT s.id, s.title, s.url, 
+                       COUNT(e.id) as total_episodes,
+                       COUNT(CASE WHEN e.status = 'unplayed' THEN 1 END) as unread_count
+                FROM subscriptions s
+                LEFT JOIN episodes e ON s.id = e.subscription_id
+                GROUP BY s.id, s.title, s.url
+                ORDER BY s.title
+            """)
+            
+            subscriptions_data = cursor.fetchall()
+            dbconn.close()
+            
+            subscriptions = []
+            for row in subscriptions_data:
+                sub_id, title, url, total_episodes, unread_count = row
+                
+                subscription_info = {
+                    'id': sub_id,
+                    'title': title,
+                    'url': url,
+                    'total_episodes': total_episodes,
+                    'unread_episodes': unread_count
+                }
+                
+                subscriptions.append(subscription_info)
+            
+            result = {
+                'status': 'success',
+                'subscriptions': subscriptions,
+                'total_subscriptions': len(subscriptions)
+            }
+            
+            logger.info(f"Retrieved {len(subscriptions)} podcast subscriptions")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error listing podcast subscriptions: {e}")
+            return {
+                'status': 'error',
+                'message': f'Failed to list subscriptions: {str(e)}'
+            }
+
+    def list_unread_episodes(self, limit=50):
+        """List all unread podcast episodes, organized by subscription."""
+        try:
+            # Validate limit parameter
+            if limit is None:
+                limit = 50
+            elif limit > 200:
+                limit = 200
+            elif limit < 1:
+                limit = 1
+                
+            dbconn = sqlite3.connect(self.db)
+            cursor = dbconn.cursor()
+            
+            # Get unread episodes with subscription information, ordered by publication date (newest first)
+            cursor.execute("""
+                SELECT s.title as podcast_title, s.url as podcast_url,
+                       e.id, e.title, e.publication_date, e.url, e.description, e.status
+                FROM episodes e
+                JOIN subscriptions s ON e.subscription_id = s.id
+                WHERE e.status = 'unplayed'
+                ORDER BY e.publication_date DESC, e.id DESC
+                LIMIT ?
+            """, (limit,))
+            
+            episodes_data = cursor.fetchall()
+            dbconn.close()
+            
+            # Organize episodes by podcast
+            podcasts = {}
+            for row in episodes_data:
+                podcast_title, podcast_url, ep_id, ep_title, pub_date, ep_url, description, status = row
+                
+                if podcast_title not in podcasts:
+                    podcasts[podcast_title] = {
+                        'podcast_title': podcast_title,
+                        'podcast_url': podcast_url,
+                        'episodes': []
+                    }
+                
+                episode_info = {
+                    'id': ep_id,
+                    'title': ep_title,
+                    'publication_date': pub_date,
+                    'url': ep_url,
+                    'description': description[:300] + '...' if description and len(description) > 300 else description,
+                    'status': status
+                }
+                
+                podcasts[podcast_title]['episodes'].append(episode_info)
+            
+            # Convert to list and count total episodes
+            podcasts_list = list(podcasts.values())
+            total_episodes = sum(len(podcast['episodes']) for podcast in podcasts_list)
+            
+            result = {
+                'status': 'success',
+                'podcasts': podcasts_list,
+                'total_unread_episodes': total_episodes,
+                'limit_applied': limit
+            }
+            
+            logger.info(f"Retrieved {total_episodes} unread episodes across {len(podcasts_list)} podcasts")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error listing unread episodes: {e}")
+            return {
+                'status': 'error',
+                'message': f'Failed to list unread episodes: {str(e)}'
+            }
