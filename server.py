@@ -123,7 +123,28 @@ class ConfigChangeNotifier(FileSystemEventHandler):
         logger.info(f"📝 Configuration file modified: {self.config_path}")
         for change in changes:
           logger.info(f"   🔄 {change}")
-        logger.info("   ⚠️  Manual restart required to apply changes")
+        
+        # Check if changes are hot-reloadable (user service enable/disable)
+        hot_reload_candidates = self._get_hot_reload_candidates(changes)
+        
+        if hot_reload_candidates:
+          logger.info("   🔥 Attempting hot reload for detected changes...")
+          
+          # Update global config first
+          global global_config
+          global_config = new_config
+          
+          # Hot reload affected users
+          for username in hot_reload_candidates:
+            success = reload_user_configuration(username)
+            if success:
+              logger.info(f"   ✅ Hot reload successful for user: {username}")
+            else:
+              logger.error(f"   ❌ Hot reload failed for user: {username}")
+          
+          logger.info("   🎯 Hot reload completed - No restart required!")
+        else:
+          logger.info("   ⚠️  Manual restart required to apply changes")
       else:
         logger.info(f"📝 Configuration file modified: {self.config_path} - No structural changes detected")
       
@@ -133,6 +154,35 @@ class ConfigChangeNotifier(FileSystemEventHandler):
     except Exception as e:
       logger.error(f"Error analyzing config changes: {e}")
       logger.info(f"📝 Configuration file modified: {self.config_path} - Manual restart required to apply changes")
+  
+  def _get_hot_reload_candidates(self, changes):
+    """Identify users that can be hot reloaded based on changes"""
+    hot_reload_users = set()
+    
+    for change in changes:
+      # Look for user service enable/disable changes
+      if "service" in change and ("enabled" in change or "disabled" in change):
+        # Extract username from change message
+        # Format: "User 'username': service 'servicename' enabled/disabled"
+        if "User '" in change:
+          start = change.find("User '") + 6
+          end = change.find("'", start)
+          if start < end:
+            username = change[start:end]
+            hot_reload_users.add(username)
+            logger.debug(f"   🎯 User '{username}' candidate for hot reload due to: {change}")
+      
+      # Look for user service additions/removals  
+      elif "service" in change and ("added" in change or "removed" in change):
+        if "User '" in change:
+          start = change.find("User '") + 6
+          end = change.find("'", start)
+          if start < end:
+            username = change[start:end]
+            hot_reload_users.add(username)
+            logger.debug(f"   🎯 User '{username}' candidate for hot reload due to: {change}")
+    
+    return list(hot_reload_users)
   
   def _detect_changes(self, old_config, new_config):
     """Detect and describe changes between old and new configuration"""
@@ -478,8 +528,12 @@ class TomWebService:
     session_key = f"{username}_{session_id}"
     
     if session_key not in session_instances:
+      logger.info(f"🏗️  Creating new session instance for {session_key}")
+      
       # Create a new instance based on the user's base configuration
       base_instance = userList[username]
+      logger.info(f"   📋 Base instance services: {list(base_instance.services.keys())}")
+      logger.info(f"   🔧 Base instance functions: {list(base_instance.functions.keys())}")
       
       # Create user config from global config
       user_config = None
@@ -495,7 +549,13 @@ class TomWebService:
       session_instance.functions = base_instance.functions
       session_instance.tasks = base_instance.tasks
       
+      logger.info(f"   ✅ Session instance created with {len(session_instance.services)} services and {len(session_instance.functions)} functions")
+      logger.info(f"   📋 Session services: {list(session_instance.services.keys())}")
+      logger.info(f"   🔧 Session functions: {list(session_instance.functions.keys())}")
+      
       session_instances[session_key] = session_instance
+    else:
+      logger.debug(f"♻️  Reusing existing session instance for {session_key}")
     
     return session_instances[session_key]
   
@@ -632,28 +692,29 @@ logger.startup(f"Log level set to: {log_level}")
 
 
 
-userList = {}
-module_managers = {}
-# Session-specific user instances
-session_instances = {}
-
-# First pass: create all module managers
-for user in global_config['users']:
-  username = user['username']
-  llm_instance = TomLLM(user, global_config)
+def create_user_instance(user_config, target_username=None):
+  """Create or recreate a user instance with all modules and services"""
+  username = user_config['username']
+  
+  if target_username and username != target_username:
+    return  # Skip users we're not targeting
+  
+  logger.info(f"🏗️  Creating user instance for: {username}")
+  
+  # Create the base LLM instance
+  llm_instance = TomLLM(user_config, global_config)
   userList[username] = llm_instance
   
   # Set admin status (default: False if not specified)
-  userList[username].admin = user.get('admin', False)
+  userList[username].admin = user_config.get('admin', False)
   
-  # Load modules using TomCoreModules (without module_managers reference initially)
-  module_manager = TomCoreModules(global_config, user, llm_instance)
+  # Load modules using TomCoreModules
+  module_manager = TomCoreModules(global_config, user_config, llm_instance)
   userList[username].services = module_manager.services
   userList[username].functions = module_manager.functions
   module_managers[username] = module_manager
-
-# Second pass: add module_managers reference to each module manager and register services
-for username, module_manager in module_managers.items():
+  
+  # Add module_managers reference to this module manager
   module_manager.module_managers = module_managers
   
   # Register tomcoremodules as a service for user queries
@@ -775,9 +836,80 @@ for username, module_manager in module_managers.items():
     }
 
   userList[username].tasks = TomBackground(global_config, username, userList[username].services, userList[username])
+  
+  logger.info(f"✅ User instance created for {username} with {len(userList[username].services)} services and {len(userList[username].functions)} functions")
+
+
+def reload_user_configuration(username):
+  """Hot reload a specific user's configuration and modules"""
+  logger.info(f"🔄 Hot reloading configuration for user: {username}")
+  
+  # Find the user config in global_config
+  user_config = None
+  for user in global_config['users']:
+    if user['username'] == username:
+      user_config = user
+      break
+      
+  if not user_config:
+    logger.error(f"❌ User {username} not found in configuration")
+    return False
+  
+  # Clean up existing session instances for this user
+  session_keys_to_remove = [key for key in session_instances.keys() if key.startswith(f"{username}_")]
+  for session_key in session_keys_to_remove:
+    del session_instances[session_key]
+    logger.info(f"🧹 Cleaned up session instance: {session_key}")
+  
+  # Remove existing user instance
+  if username in userList:
+    logger.info(f"🗑️  Removing existing user instance for: {username}")
+    del userList[username]
+  
+  if username in module_managers:
+    del module_managers[username]
+  
+  # Recreate the user instance
+  create_user_instance(user_config, target_username=username)
+  
+  logger.info(f"✅ Hot reload completed for user: {username}")
+  return True
+
+
+userList = {}
+module_managers = {}
+# Session-specific user instances
+session_instances = {}
+
+# Create all user instances
+for user in global_config['users']:
+  create_user_instance(user)
 
 # Print module loading status summary
 TomCoreModules.print_modules_status_summary(module_managers)
+
+# Log detailed information about userList contents after initial loading
+logger.info("=== DETAILED USERLIST ANALYSIS AFTER INITIAL LOADING ===")
+for username in userList:
+  logger.info(f"🔍 Analyzing user: {username}")
+  logger.info(f"   📋 userList[{username}].services keys: {list(userList[username].services.keys())}")
+  logger.info(f"   🔧 userList[{username}].functions keys: {list(userList[username].functions.keys())}")
+  
+  # Log details for each service
+  for service_name, service_data in userList[username].services.items():
+    enabled = service_data.get('enabled', 'N/A')
+    obj_type = type(service_data.get('obj', None)).__name__ if service_data.get('obj') else 'None'
+    logger.info(f"   📦 Service '{service_name}': enabled={enabled}, obj_type={obj_type}")
+  
+  # Log details for each function
+  for func_name, func_data in userList[username].functions.items():
+    module_name = func_data.get('module_name', 'unknown') if isinstance(func_data, dict) else 'legacy'
+    func_type = type(func_data.get('function', None)).__name__ if isinstance(func_data, dict) and func_data.get('function') else type(func_data).__name__
+    logger.info(f"   ⚙️  Function '{func_name}': module={module_name}, type={func_type}")
+  
+  logger.info(f"   📊 Total services: {len(userList[username].services)}, Total functions: {len(userList[username].functions)}")
+
+logger.info("=== END DETAILED USERLIST ANALYSIS ===")
 
 # Start config file change notifier (logs changes only, no reload)
 config_watcher = ConfigWatcher(config_file_path)
