@@ -41,6 +41,7 @@ import io.noties.markwon.Markwon
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import retrofit2.HttpException
 import java.io.IOException
 import java.util.regex.Pattern
@@ -60,10 +61,11 @@ class MainActivity : AppCompatActivity() {
     private var isSettingsPanelVisible = false
     private var isTasksPanelVisible = false
     private var tickerAnimator: ObjectAnimator? = null
+    private var connectionRetryJob: Job? = null
 
     companion object {
         private const val PERMISSION_REQUEST_CODE = 1001
-        private val REQUIRED_PERMISSIONS = arrayOf(
+        private val REQUIRED_PERMISSIONS = mutableListOf(
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
@@ -87,6 +89,11 @@ class MainActivity : AppCompatActivity() {
         if (!sessionManager.isLoggedIn()) {
             navigateToLogin()
             return
+        }
+
+        // Add notification permission for Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            REQUIRED_PERMISSIONS.add(Manifest.permission.POST_NOTIFICATIONS)
         }
 
         setupToolbar()
@@ -300,7 +307,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestPermissions() {
-        ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, PERMISSION_REQUEST_CODE)
+        ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS.toTypedArray(), PERMISSION_REQUEST_CODE)
     }
 
     override fun onRequestPermissionsResult(
@@ -380,17 +387,13 @@ class MainActivity : AppCompatActivity() {
                         return@launch
                     }
                     showError("Error: ${response.code()}")
-                    resetConversation()
                 }
             } catch (e: IOException) {
-                showError("Network error")
-                resetConversation()
+                showConnectionLostOverlay()
             } catch (e: HttpException) {
                 showError("HTTP error: ${e.code()}")
-                resetConversation()
             } catch (e: Exception) {
                 showError("Error: ${e.message}")
-                resetConversation()
             }
         }
 
@@ -400,7 +403,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun processCustomCommands(text: String) {
         // Traiter les commandes [open:URL]
-        val openPattern = Pattern.compile("\\[open:(.+?)\\]")
+        val openPattern = Pattern.compile("""\[open:(.+?)\]""")
         val matcher = openPattern.matcher(text)
         
         while (matcher.find()) {
@@ -427,37 +430,63 @@ class MainActivity : AppCompatActivity() {
     private fun cleanTextForTTS(text: String): String {
         // Supprimer les commandes markdown et personnalisées
         return text
-            .replace(Regex("\\[open:.*?\\]"), "")
-            .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1") // Gras
-            .replace(Regex("\\*(.*?)\\*"), "$1") // Italique
-            .replace(Regex("```[\\s\\S]*?```"), "") // Blocs de code
-            .replace(Regex("`(.*?)`"), "$1") // Code inline
+            .replace(Regex("""\[open:.*?\]"""), "")
+            .replace(Regex("""\*\*(.*?)\*\*"""), "$1") // Gras
+            .replace(Regex("""\*(.*?)\*"""), "$1") // Italique
+            .replace(Regex("""```[\s\S]*?```"""), "") // Blocs de code
+            .replace(Regex("""`(.*?)`"""), "$1") // Code inline
             .trim()
     }
 
-    private fun testSessionValidityQuietly() {
-        lifecycleScope.launch {
-            try {
-                // Test silencieux avec getTasks qui ne modifie rien
-                val response = ApiClient.tomApiService.getTasks()
-                if (response.isSuccessful) {
-                    // Session valide, charger les données
-                    response.body()?.let { tasksResponse ->
-                        tasksAdapter.updateTasks(tasksResponse.background_tasks)
-                        updateTasksCounter(tasksResponse.background_tasks.size)
-                    }
-                } else {
-                    // Session invalide, retourner au login
-                    if (response.code() == 302 || response.code() == 401 || response.code() == 403 || response.code() == 500) {
+    private fun showConnectionLostOverlay() {
+        // Cancel any existing retry job
+        connectionRetryJob?.cancel()
+
+        // Show the overlay
+        binding.connectionStatusLayout.visibility = View.VISIBLE
+        binding.mainInterface.visibility = View.GONE
+
+        // Start a new retry job
+        connectionRetryJob = lifecycleScope.launch {
+            while (isActive) {
+                try {
+                    // Test the connection silently
+                    val response = ApiClient.tomApiService.getTasks()
+                    if (response.isSuccessful) {
+                        // Connection restored
+                        hideConnectionLostOverlay()
+                        // Reload initial data
+                        response.body()?.let { tasksResponse ->
+                            tasksAdapter.updateTasks(tasksResponse.background_tasks)
+                            updateTasksCounter(tasksResponse.background_tasks.size)
+                        }
+                        break // Exit loop
+                    } else if (response.code() in listOf(302, 401, 403, 500)) {
+                        // Unrecoverable session error
                         sessionManager.logout()
                         navigateToLogin()
+                        break // Exit loop
                     }
+                } catch (e: Exception) {
+                    // Connection failed, will retry after delay
                 }
-            } catch (e: Exception) {
-                // En cas d'erreur de connexion, on reste sur l'interface
-                // mais on ne redirige pas automatiquement vers login
+                delay(3000)
             }
         }
+    }
+
+    private fun hideConnectionLostOverlay() {
+        // Cancel the retry job
+        connectionRetryJob?.cancel()
+        connectionRetryJob = null
+
+        // Hide the overlay
+        binding.connectionStatusLayout.visibility = View.GONE
+        binding.mainInterface.visibility = View.VISIBLE
+    }
+
+    private fun testSessionValidityQuietly() {
+        showConnectionLostOverlay()
     }
 
     private fun testSessionAndReset() {
@@ -477,10 +506,7 @@ class MainActivity : AppCompatActivity() {
                     showError("Reset failed: ${response.code()}")
                 }
             } catch (e: Exception) {
-                showError("Session test error: ${e.message}")
-                // En cas d'erreur de session, rediriger vers login
-                sessionManager.logout()
-                navigateToLogin()
+                showConnectionLostOverlay()
             }
         }
     }
@@ -501,7 +527,7 @@ class MainActivity : AppCompatActivity() {
                     showError("Reset failed: ${response.code()}")
                 }
             } catch (e: Exception) {
-                showError("Reset error: ${e.message}")
+                showConnectionLostOverlay()
             }
         }
     }
@@ -523,7 +549,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             } catch (e: Exception) {
-                // Ignorer les erreurs de tâches en arrière-plan
+                showConnectionLostOverlay()
             }
         }
     }
@@ -743,13 +769,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupFCM() {
-        // Demander la permission de notification sur Android 13+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), PERMISSION_REQUEST_CODE)
-            }
-        }
-
         // Obtenir le token FCM actuel et l'envoyer au serveur
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
             if (!task.isSuccessful) {
@@ -796,5 +815,6 @@ class MainActivity : AppCompatActivity() {
         audioManager.destroy()
         headsetButtonManager.cleanup()
         tickerAnimator?.cancel()
+        connectionRetryJob?.cancel()
     }
 }

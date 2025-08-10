@@ -7,6 +7,7 @@
 
     <!-- Interface principale -->
     <LinearLayout
+        android:id="@+id/mainInterface"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical">
@@ -267,5 +268,31 @@
         </LinearLayout>
 
     </androidx.cardview.widget.CardView>
+
+    <!-- Connection Status Overlay -->
+    <LinearLayout
+        android:id="@+id/connectionStatusLayout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="20dp"
+        android:background="@drawable/connection_status_background"
+        android:elevation="8dp"
+        android:visibility="gone">
+
+        <ProgressBar
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Connexion ..."
+            android:textColor="@android:color/black"
+            android:textSize="16sp" />
+    </LinearLayout>
 
 </FrameLayout>
