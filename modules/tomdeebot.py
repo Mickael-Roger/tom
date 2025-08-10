@@ -1,8 +1,8 @@
-import functools
-import json
 import time
 import asyncio
 import threading
+import sqlite3
+import os
 
 # Logging
 import sys
@@ -16,19 +16,7 @@ import aiohttp
 # Deebot client imports
 from deebot_client.api_client import ApiClient
 from deebot_client.authentication import Authenticator, create_rest_config
-from deebot_client.commands.json.clean import Clean, CleanAction, CleanArea
-from deebot_client.commands.json.charge import Charge
-from deebot_client.commands.json.work_mode import SetWorkMode
-from deebot_client.commands.json.battery import GetBattery
-from deebot_client.commands.json.stats import GetStats
-from deebot_client.commands.json.clean_logs import GetCleanLogs
-from deebot_client.commands.json.charge_state import GetChargeState
-from deebot_client.commands.json.pos import GetPos
-from deebot_client.commands.json.network import GetNetInfo
-from deebot_client.commands.json.error import GetError
-from deebot_client.commands.json.water_info import GetWaterInfo
-from deebot_client.commands.json.station_state import GetStationState
-from deebot_client.events import BatteryEvent, StateEvent, CleanLogEvent, ErrorEvent, StatsEvent, RoomsEvent, VolumeEvent, AvailabilityEvent, WorkMode
+from deebot_client.events import BatteryEvent, StateEvent, CleanLogEvent, ErrorEvent, StatsEvent, RoomsEvent, VolumeEvent, AvailabilityEvent
 from deebot_client.mqtt_client import MqttClient, create_mqtt_config
 from deebot_client.util import md5
 from deebot_client.device import Device
@@ -92,239 +80,172 @@ class TomDeebot:
         self.mqtt_loop = None
         self.mqtt_thread = None
         
-        # Robot status
-        self.battery_level = None
-        self.robot_status = None
-        self.last_clean_log = None
+        # Database setup
+        all_datadir = config.get('all_datadir', './data/all/')
+        if not os.path.exists(all_datadir):
+            os.makedirs(all_datadir, exist_ok=True)
+        self.db_path = os.path.join(all_datadir, 'deebot_cleaning_history.sqlite')
+        self._init_database()
         
-        # Robot data dict for real-time updates
-        self.robot_data = {
-            "battery_level": None,
-            "status": None,
-            "cleaning_mode": None,
-            "position": None,
-            "rooms": None,
-            "volume": None,
-            "availability": None,
-            "water_info": None,
-            "station_state": None,
-            "last_error": None,
-            "error_history": []
+        # Robot state structure with raw and labeled values
+        self.robot_state = {
+            "battery": {
+                "level": None,
+                "label": None
+            },
+            "status": {
+                "raw": None,
+                "label": None
+            },
+            "cleaning_mode": {
+                "raw": None,
+                "label": None
+            },
+            "position": {
+                "raw": None,
+                "x": None,
+                "y": None,
+                "angle": None
+            },
+            "rooms": {
+                "raw": None,
+                "list": [],
+                "count": 0
+            },
+            "volume": {
+                "raw": None,
+                "level": None
+            },
+            "availability": {
+                "raw": None,
+                "label": None,
+                "online": None
+            },
+            "water_info": {
+                "raw": None,
+                "level": None
+            },
+            "station_state": {
+                "raw": None,
+                "label": None
+            },
+            "last_error": {
+                "timestamp": None,
+                "raw_event": None,
+                "description": None
+            },
+            "error_history": [],
+            "connection": {
+                "last_event_timestamp": None,
+                "last_event_type": None,
+                "device_name": None
+            },
+            "current_cleaning_session": {
+                "session_id": None,
+                "is_cleaning": False,
+                "start_time": None
+            }
         }
         
         self.tools = [
             {
                 "type": "function",
                 "function": {
-                    "name": "get_vacuum_robot_status",
-                    "description": "Get comprehensive status of the vacuum robot combining real-time MQTT data with detailed REST API information including battery, position, cleaning status, errors, and device information.",
+                    "name": "get_deebot_status",
+                    "description": "Get the current status and state of the Deebot robot vacuum including battery level, cleaning status, position, rooms, and connection information.",
                     "parameters": {
                         "type": "object",
                         "properties": {},
+                        "additionalProperties": False
                     },
                 },
             },
             {
                 "type": "function",
                 "function": {
-                    "name": "stop_vacuum_robot",
-                    "description": "Stop the vacuum robot from cleaning and pause its current operation.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "go_to_base_station",
-                    "description": "Send the vacuum robot back to its charging base station to recharge.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "start_vacuum_robot_cleaning",
-                    "description": "Start a cleaning session on the vacuum robot with configurable cleaning type and optional room specification.",
+                    "name": "get_deebot_cleaning_history",
+                    "description": "Get the cleaning history of the Deebot robot vacuum including past cleaning sessions with dates, durations, cleaning types, and battery levels.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "cleaning_type": {
-                                "type": "string",
-                                "enum": ["vacuum_only", "mop_only", "vacuum_then_mop", "vacuum_and_mop"],
-                                "description": "Type of cleaning to perform: vacuum_only (vaccum only), mop_only (mop only), vacuum_then_mop (vaccum then mop), vacuum_and_mop (vaccum and mop at the same time)"
+                            "limit": {
+                                "type": "integer",
+                                "description": "Maximum number of cleaning sessions to return (default: 20, max: 100)",
+                                "minimum": 1,
+                                "maximum": 100
                             },
-                            "room_name": {
+                            "status": {
                                 "type": "string",
-                                "enum": ["Salon", "Cuisine", "Entree"],
-                                "description": "Optional name of the specific room to clean. If not provided, will clean all rooms. Available rooms will be validated against the robot's room mapping."
+                                "enum": ["all", "completed", "interrupted", "started"],
+                                "description": "Filter sessions by status (default: all)"
                             }
                         },
-                        "required": ["cleaning_type"],
-                        "additionalProperties": False,
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_vacuum_robot_rooms",
-                    "description": "Get the list of available rooms that the vacuum robot can clean individually.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
+                        "additionalProperties": False
                     },
                 },
             },
         ]
         
-        self.systemContext = "This module provides comprehensive status monitoring and control of a Deebot robot vacuum. It combines real-time MQTT data with detailed REST API information to give complete device status and allows control commands including starting cleaning with different modes (vacuum only, mop only, vacuum then mop, vacuum and mop simultaneously), stopping cleaning, and returning to base station. It supports both full house cleaning and room-specific cleaning."
+        self.systemContext = "This module monitors Deebot robot vacuum status via MQTT connection and provides status information."
         self.complexity = 0
         
         self.functions = {
-            "get_vacuum_robot_status": {"function": functools.partial(self.get_vacuum_robot_status)},
-            "stop_vacuum_robot": {"function": functools.partial(self.stop_vacuum_robot)},
-            "go_to_base_station": {"function": functools.partial(self.go_to_base_station)},
-            "start_vacuum_robot_cleaning": {"function": functools.partial(self.start_vacuum_robot_cleaning)},
-            "get_vacuum_robot_rooms": {"function": functools.partial(self.get_vacuum_robot_rooms)},
+            "get_deebot_status": {"function": self.get_deebot_status},
+            "get_deebot_cleaning_history": {"function": self.get_deebot_cleaning_history},
         }
         
         # Start MQTT background task
         self._start_mqtt_background_task()
         
+    def _update_event_timestamp(self, event_type):
+        """Update timestamp when an event is received"""
+        self.robot_state["connection"]["last_event_timestamp"] = time.time()
+        self.robot_state["connection"]["last_event_type"] = event_type
+    
     def _get_status_label(self, status_code):
         """Convert numeric status code to human readable label"""
         status_map = {
-            0: "unknown",
-            1: "idle", 
-            2: "cleaning",
-            3: "paused",
-            4: "returning",
-            5: "charging",
-            6: "error",
-            7: "offline",
-            8: "docked",
-            9: "sleeping",
-            10: "manual_cleaning",
-            11: "spot_cleaning",
-            12: "edge_cleaning",
-            13: "zone_cleaning"
+            0: "Unknown",
+            1: "Idle", 
+            2: "Cleaning",
+            3: "Paused",
+            4: "Returning to dock",
+            5: "Charging",
+            6: "Error",
+            7: "Offline",
+            8: "Docked",
+            9: "Sleeping",
+            10: "Manual cleaning",
+            11: "Spot cleaning",
+            12: "Edge cleaning",
+            13: "Zone cleaning"
         }
         
-        # Handle both numeric and string inputs
         if isinstance(status_code, str):
             try:
                 status_code = int(status_code)
             except (ValueError, TypeError):
-                return status_code  # Return as-is if not numeric
+                return status_code
         
-        return status_map.get(status_code, f"status_{status_code}")
+        return status_map.get(status_code, f"Status {status_code}")
     
-    def _format_timestamp(self, timestamp):
-        """Format timestamp to human readable string"""
-        import datetime
-        return datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
-    
-    def _parse_lifespan_event(self, lifespan_str):
-        """Parse LifeSpanEvent string into readable format"""
-        import re
-        try:
-            # Example: LifeSpanEvent(type=<LifeSpan.FILTER: 'heap'>, percent=75.42, remaining=5430)
-            
-            # Extract component type
-            type_match = re.search(r"type=<LifeSpan\.(\w+): '(\w+)'", lifespan_str)
-            component_type = type_match.group(1).lower() if type_match else "unknown"
-            component_name = type_match.group(2) if type_match else "unknown"
-            
-            # Extract percent
-            percent_match = re.search(r"percent=([\d.]+)", lifespan_str)
-            percent = float(percent_match.group(1)) if percent_match else None
-            
-            # Extract remaining
-            remaining_match = re.search(r"remaining=(\d+)", lifespan_str)
-            remaining = int(remaining_match.group(1)) if remaining_match else None
-            
-            return {
-                "component": component_type,
-                "name": component_name,
-                "percent_remaining": percent,
-                "remaining_time": remaining,
-                "status": "good" if percent and percent > 20 else "low" if percent and percent > 5 else "replace"
-            }
-        except Exception as e:
-            logger.debug(f"Error parsing lifespan event: {e}")
-            return None
-
-    def _make_json_serializable(self, obj, _seen=None):
-        """Convert objects to JSON serializable format"""
-        if _seen is None:
-            _seen = set()
+    def _get_cleaning_mode_label(self, mode):
+        """Convert cleaning mode to human readable label"""
+        mode_map = {
+            "vacuum": "Aspiration",
+            "mop": "Serpillière",
+            "vacuum_and_mop": "Aspiration + Serpillière",
+            "sweep": "Balayage",
+            "auto": "Mode automatique",
+            "spot": "Nettoyage localisé",
+            "edge": "Nettoyage des bords",
+            "single_room": "Pièce unique"
+        }
         
-        # Prevent infinite recursion
-        if id(obj) in _seen:
-            return str(obj)
+        if isinstance(mode, str):
+            return mode_map.get(mode.lower(), mode)
+        return mode
         
-        if obj is None:
-            return None
-        elif isinstance(obj, (str, int, float, bool)):
-            return obj
-        elif isinstance(obj, dict):
-            _seen.add(id(obj))
-            try:
-                # Create a snapshot of dict items to avoid "dictionary changed size during iteration"
-                items = list(obj.items())
-                result = {k: self._make_json_serializable(v, _seen) for k, v in items}
-            except (RuntimeError, AttributeError):
-                # Fallback for problematic objects (like MagicMock)
-                result = str(obj)
-            _seen.remove(id(obj))
-            return result
-        elif isinstance(obj, (list, tuple)):
-            _seen.add(id(obj))
-            try:
-                result = [self._make_json_serializable(item, _seen) for item in obj]
-            except (RuntimeError, AttributeError):
-                result = str(obj)
-            _seen.remove(id(obj))
-            return result
-        elif hasattr(obj, '__dict__'):
-            _seen.add(id(obj))
-            try:
-                # Convert object to dict representation
-                obj_dict = obj.__dict__
-                if isinstance(obj_dict, dict):
-                    items = list(obj_dict.items())
-                    result = {k: self._make_json_serializable(v, _seen) for k, v in items}
-                else:
-                    result = str(obj)
-            except (RuntimeError, AttributeError):
-                result = str(obj)
-            _seen.remove(id(obj))
-            return result
-        else:
-            # Fallback to string representation
-            return str(obj)
-    
-    def _get_available_rooms(self):
-        """Get list of available room names"""
-        rooms = self.robot_data.get("rooms", [])
-        room_names = []
-        if isinstance(rooms, list):
-            for room in rooms:
-                if isinstance(room, dict) and room.get("name"):
-                    room_names.append(room.get("name"))
-        
-        # Return sorted list with default rooms if none are detected yet
-        if not room_names:
-            # Default room names commonly found in homes
-            return ["salon", "cuisine", "chambre", "salle_de_bain", "bureau", "entree"]
-        
-        return sorted(room_names)
         
     def _start_mqtt_background_task(self):
         """Start the MQTT background task in a separate thread"""
@@ -397,6 +318,12 @@ class TomDeebot:
             self.bot.events.subscribe(VolumeEvent, self._on_volume_event)
             self.bot.events.subscribe(AvailabilityEvent, self._on_availability_event)
             
+            # Subscribe to MQTT client events for ping monitoring
+            if hasattr(self.mqtt_client, 'on_ping_request'):
+                self.mqtt_client.on_ping_request = self._on_ping_request
+            if hasattr(self.mqtt_client, 'on_ping_response'):
+                self.mqtt_client.on_ping_response = self._on_ping_response
+            
             # Get device name safely
             device_name = "Unknown"
             if hasattr(self.bot, 'device_info') and self.bot.device_info:
@@ -405,11 +332,12 @@ class TomDeebot:
                 elif isinstance(self.bot.device_info, dict) and 'name' in self.bot.device_info:
                     device_name = self.bot.device_info['name']
             
+            # Store device name in robot state
+            self.robot_state["connection"]["device_name"] = device_name
             logger.info(f"Connected to Deebot {device_name}")
             
             # Keep the connection alive
-            while True:
-                await asyncio.sleep(30)
+            await asyncio.sleep(99999999999)  # Wait indefinitely
                 
         except Exception as e:
             logger.error(f"MQTT connection error: {e}")
@@ -420,474 +348,569 @@ class TomDeebot:
             
     async def _on_battery_event(self, event):
         """Handle battery level updates"""
-        self.battery_level = event.value
-        self.robot_data["battery_level"] = event.value
-        logger.debug(f"Battery level: {event.value}%")
+        self._update_event_timestamp("battery")
+        if hasattr(event, 'value'):
+            level = event.value
+            self.robot_state["battery"]["level"] = level
+            self.robot_state["battery"]["label"] = f"{level}%" if level is not None else "Unknown"
+        logger.info(f"Deebot MQTT Event - Battery: {event} (Level: {self.robot_state['battery']['label']})")
         
     async def _on_state_event(self, event):
         """Handle robot state updates"""
-        # Try different possible attributes for state events
+        self._update_event_timestamp("state")
+        raw_status = None
         if hasattr(event, 'state'):
             raw_status = event.state
-            self.robot_status = raw_status
-            self.robot_data["status"] = self._get_status_label(raw_status)
-            logger.debug(f"Robot state: {raw_status} -> {self.robot_data['status']}")
         elif hasattr(event, 'value'):
             raw_status = event.value
-            self.robot_status = raw_status
-            self.robot_data["status"] = self._get_status_label(raw_status)
-            logger.debug(f"Robot state: {raw_status} -> {self.robot_data['status']}")
-        else:
-            raw_status = str(event)
-            self.robot_status = raw_status
-            self.robot_data["status"] = self._get_status_label(raw_status)
-            logger.debug(f"Robot state: {raw_status}")
+        
+        if raw_status is not None:
+            old_status = self.robot_state["status"]["raw"]
+            self.robot_state["status"]["raw"] = raw_status
+            self.robot_state["status"]["label"] = self._get_status_label(raw_status)
+            
+            # Track cleaning state changes
+            self._handle_cleaning_state_change(old_status, raw_status)
+        
+        status_label = self.robot_state["status"]["label"] or "Unknown"
+        logger.info(f"Deebot MQTT Event - State: {status_label} (raw: {raw_status})")
         
     async def _on_error_event(self, event):
         """Handle robot error events"""
-        # Try different possible attributes for error events
-        error_info = "Unknown error"
-        error_code = None
-        error_message = None
+        self._update_event_timestamp("error")
         
+        error_description = "Unknown error"
         if hasattr(event, 'error'):
-            error_info = event.error
-        elif hasattr(event, 'value'):
-            error_info = event.value
-        elif hasattr(event, 'code'):
-            error_code = event.code
-            error_info = f"Error code: {event.code}"
+            error_description = str(event.error)
         elif hasattr(event, 'message'):
-            error_message = event.message
-            error_info = event.message
+            error_description = str(event.message)
+        elif hasattr(event, 'code'):
+            error_description = f"Error code: {event.code}"
         else:
-            error_info = str(event)
+            error_description = str(event)
         
-        # Try to get both code and message if available
-        if hasattr(event, 'code') and hasattr(event, 'message'):
-            error_code = event.code
-            error_message = event.message
-            error_info = f"Code {event.code}: {event.message}"
-        elif hasattr(event, 'error_code') and hasattr(event, 'error_message'):
-            error_code = event.error_code
-            error_message = event.error_message
-            error_info = f"Code {event.error_code}: {event.error_message}"
-        
-        # Create error object with timestamp
-        import time
         error_object = {
             "timestamp": time.time(),
-            "error": error_info,
-            "code": error_code,
-            "message": error_message,
-            "raw_event": str(event)
+            "raw_event": str(event),
+            "description": error_description
         }
         
-        # Update robot data
-        self.robot_data["last_error"] = error_object
+        # Update last error
+        self.robot_state["last_error"] = error_object
         
-        # Add to error history (keep last 10 errors)
-        if self.robot_data["error_history"] is None:
-            self.robot_data["error_history"] = []
-        
-        self.robot_data["error_history"].append(error_object)
+        # Add to error history
+        if self.robot_state["error_history"] is None:
+            self.robot_state["error_history"] = []
+        self.robot_state["error_history"].append(error_object)
         
         # Keep only last 10 errors
-        if len(self.robot_data["error_history"]) > 10:
-            self.robot_data["error_history"] = self.robot_data["error_history"][-10:]
-        
-        logger.warning(f"Robot error: {error_info}")
+        if len(self.robot_state["error_history"]) > 10:
+            self.robot_state["error_history"] = self.robot_state["error_history"][-10:]
+            
+        logger.info(f"Deebot MQTT Event - Error: {error_description}")
         
     async def _on_clean_log_event(self, event):
         """Handle cleaning log updates"""
-        self.last_clean_log = event
-        
-        # Extract cleaning mode if available
+        self._update_event_timestamp("clean_log")
+        raw_mode = None
         if hasattr(event, 'cleaning_mode'):
-            self.robot_data["cleaning_mode"] = event.cleaning_mode
+            raw_mode = event.cleaning_mode
         elif hasattr(event, 'mode'):
-            self.robot_data["cleaning_mode"] = event.mode
+            raw_mode = event.mode
         elif hasattr(event, 'type'):
-            self.robot_data["cleaning_mode"] = event.type
+            raw_mode = event.type
+        
+        if raw_mode is not None:
+            self.robot_state["cleaning_mode"]["raw"] = raw_mode
+            self.robot_state["cleaning_mode"]["label"] = self._get_cleaning_mode_label(raw_mode)
             
-        logger.debug(f"Clean log: {event}")
+            # If we're currently cleaning, update the session with cleaning mode
+            if self.robot_state["current_cleaning_session"]["is_cleaning"]:
+                self._update_cleaning_session_mode(raw_mode, self._get_cleaning_mode_label(raw_mode))
+        
+        mode_label = self.robot_state["cleaning_mode"]["label"] or "Unknown"
+        logger.info(f"Deebot MQTT Event - Clean Log: {mode_label} (raw: {raw_mode})")
     
     async def _on_stats_event(self, event):
         """Handle stats updates which may contain position info"""
-        # Try to extract position information
+        self._update_event_timestamp("stats")
+        
+        # Handle position data
         if hasattr(event, 'position'):
-            self.robot_data["position"] = event.position
+            self.robot_state["position"]["raw"] = event.position
+            if hasattr(event.position, 'x'):
+                self.robot_state["position"]["x"] = event.position.x
+            if hasattr(event.position, 'y'):
+                self.robot_state["position"]["y"] = event.position.y
+            if hasattr(event.position, 'angle'):
+                self.robot_state["position"]["angle"] = event.position.angle
         elif hasattr(event, 'coordinates'):
-            self.robot_data["position"] = event.coordinates
+            self.robot_state["position"]["raw"] = event.coordinates
         elif hasattr(event, 'location'):
-            self.robot_data["position"] = event.location
+            self.robot_state["position"]["raw"] = event.location
         elif hasattr(event, 'x') and hasattr(event, 'y'):
-            self.robot_data["position"] = {"x": event.x, "y": event.y}
+            self.robot_state["position"]["x"] = event.x
+            self.robot_state["position"]["y"] = event.y
+            self.robot_state["position"]["raw"] = {"x": event.x, "y": event.y}
             
-        logger.debug(f"Stats event: {event}")
+        logger.info(f"Deebot MQTT Event - Stats: {event}")
     
     async def _on_rooms_event(self, event):
         """Handle rooms information updates"""
-        # Try to extract rooms information
+        self._update_event_timestamp("rooms")
+        
+        rooms_data = None
         if hasattr(event, 'rooms'):
-            self.robot_data["rooms"] = event.rooms
+            rooms_data = event.rooms
         elif hasattr(event, 'value'):
-            self.robot_data["rooms"] = event.value
+            rooms_data = event.value
         elif hasattr(event, 'data'):
-            self.robot_data["rooms"] = event.data
-        else:
-            self.robot_data["rooms"] = str(event)
+            rooms_data = event.data
             
-        logger.debug(f"Rooms event: {event}")
+        if rooms_data is not None:
+            self.robot_state["rooms"]["raw"] = rooms_data
+            # Extract room list if it's a list of room objects
+            if isinstance(rooms_data, list):
+                room_list = []
+                for room in rooms_data:
+                    if isinstance(room, dict):
+                        room_info = {
+                            "id": room.get("id"),
+                            "name": room.get("name", "Unknown"),
+                            "area": room.get("area")
+                        }
+                        room_list.append(room_info)
+                self.robot_state["rooms"]["list"] = room_list
+                self.robot_state["rooms"]["count"] = len(room_list)
+            
+        logger.info(f"Deebot MQTT Event - Rooms: {event}")
     
     async def _on_volume_event(self, event):
         """Handle volume level updates"""
-        # Try to extract volume information
+        self._update_event_timestamp("volume")
+        
+        volume_value = None
         if hasattr(event, 'volume'):
-            self.robot_data["volume"] = event.volume
+            volume_value = event.volume
         elif hasattr(event, 'value'):
-            self.robot_data["volume"] = event.value
+            volume_value = event.value
         elif hasattr(event, 'level'):
-            self.robot_data["volume"] = event.level
-        else:
-            self.robot_data["volume"] = str(event)
+            volume_value = event.level
             
-        logger.debug(f"Volume event: {event}")
+        if volume_value is not None:
+            self.robot_state["volume"]["raw"] = volume_value
+            self.robot_state["volume"]["level"] = volume_value
+            
+        logger.info(f"Deebot MQTT Event - Volume: {event}")
     
     async def _on_availability_event(self, event):
         """Handle robot availability updates"""
-        # Try to extract availability information
+        self._update_event_timestamp("availability")
+        available = None
         if hasattr(event, 'available'):
-            self.robot_data["availability"] = event.available
+            available = event.available
         elif hasattr(event, 'value'):
-            self.robot_data["availability"] = event.value
+            available = event.value
         elif hasattr(event, 'online'):
-            self.robot_data["availability"] = event.online
+            available = event.online
+            
+        if available is not None:
+            self.robot_state["availability"]["raw"] = available
+            self.robot_state["availability"]["online"] = bool(available)
+            self.robot_state["availability"]["label"] = "En ligne" if available else "Hors ligne"
+        
+        availability_label = self.robot_state["availability"]["label"] or "Unknown"
+        logger.info(f"Deebot MQTT Event - Availability: {availability_label} (raw: {available})")
+    
+    def _make_json_serializable(self, obj):
+        """Convert objects to JSON serializable format"""
+        if obj is None:
+            return None
+        elif isinstance(obj, (str, int, float, bool)):
+            return obj
+        elif isinstance(obj, dict):
+            return {k: self._make_json_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [self._make_json_serializable(item) for item in obj]
+        elif hasattr(obj, '__dict__'):
+            # Convert object to dict representation
+            return self._make_json_serializable(obj.__dict__)
         else:
-            self.robot_data["availability"] = str(event)
-            
-        logger.debug(f"Availability event: {event}")
+            # Fallback to string representation
+            return str(obj)
     
-    def get_vacuum_robot_status(self):
-        """Get comprehensive status combining MQTT real-time data with REST API detailed information"""
-        logger.info("Getting comprehensive vacuum robot status (MQTT + REST)")
+    def get_deebot_status(self, **kwargs):
+        """Get the current status of the Deebot robot"""
+        import json
+        import datetime
         
-        if not self.bot:
-            return "Robot not connected. Please wait for initialization."
+        logger.info("Getting Deebot robot status")
         
-        if not self.mqtt_loop or self.mqtt_loop.is_closed():
-            return "MQTT connection not available"
+        # Create a copy of robot_state with formatted timestamps and JSON-safe objects
+        status_copy = {}
+        for key, value in self.robot_state.items():
+            if key == "connection" and isinstance(value, dict) and value.get("last_event_timestamp"):
+                status_copy[key] = self._make_json_serializable(value)
+                # Add human readable timestamp
+                timestamp = value["last_event_timestamp"]
+                status_copy[key]["last_event_time"] = datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+                status_copy[key]["seconds_since_last_event"] = int(time.time() - timestamp)
+            elif key == "last_error" and isinstance(value, dict) and value.get("timestamp"):
+                status_copy[key] = self._make_json_serializable(value)
+                # Add human readable timestamp for last error
+                timestamp = value["timestamp"]
+                status_copy[key]["error_time"] = datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+            elif key == "error_history" and isinstance(value, list):
+                status_copy[key] = []
+                for error in value:
+                    error_serializable = self._make_json_serializable(error)
+                    if isinstance(error, dict) and error.get("timestamp"):
+                        error_serializable["error_time"] = datetime.datetime.fromtimestamp(error["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
+                    status_copy[key].append(error_serializable)
+            else:
+                status_copy[key] = self._make_json_serializable(value)
         
-        # Create list of REST commands to execute
-        rest_commands = [
-            ("battery", GetBattery()),
-            ("stats", GetStats()),
-            ("clean_logs", GetCleanLogs()),
-            ("charge_state", GetChargeState()),
-        ]
-        
-        # Add additional commands
-        rest_commands.extend([
-            ("position", GetPos()),
-            ("network_info", GetNetInfo()),
-            ("error_info", GetError()),
-            ("water_info", GetWaterInfo()),
-            ("station_state", GetStationState()),
-        ])
-        
-        # Execute all REST commands
-        rest_results = {}
-        
-        for command_name, command in rest_commands:
-            try:
-                logger.debug(f"Executing REST command: {command_name}")
-                future = asyncio.run_coroutine_threadsafe(
-                    self.bot.execute_command(command), 
-                    self.mqtt_loop
+        return json.dumps(status_copy, indent=2, ensure_ascii=False)
+    
+    def _init_database(self):
+        """Initialize SQLite database for cleaning history"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Create cleaning_sessions table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS cleaning_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    start_datetime TEXT NOT NULL,
+                    end_datetime TEXT,
+                    cleaning_type TEXT NOT NULL,
+                    cleaning_mode_raw TEXT,
+                    cleaning_mode_label TEXT,
+                    rooms_cleaned TEXT,
+                    duration_seconds INTEGER,
+                    battery_start INTEGER,
+                    battery_end INTEGER,
+                    status TEXT DEFAULT 'started',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
-                result = future.result(timeout=10)
-                rest_results[command_name] = result
-                logger.debug(f"REST command {command_name} completed successfully")
-            except asyncio.TimeoutError:
-                logger.warning(f"REST command {command_name} timeout")
-                rest_results[command_name] = {"error": "timeout"}
-            except Exception as e:
-                logger.error(f"REST command {command_name} error: {e}")
-                rest_results[command_name] = {"error": str(e)}
-        
-        # Get device name safely
-        device_name = "Unknown"
-        if hasattr(self.bot, 'device_info') and self.bot.device_info:
-            if hasattr(self.bot.device_info, 'name'):
-                device_name = self.bot.device_info.name
-            elif isinstance(self.bot.device_info, dict) and 'name' in self.bot.device_info:
-                device_name = self.bot.device_info['name']
-        
-        # Extract and prioritize information (REST over MQTT)
-        
-        # Battery level (REST priority)
-        battery_level = None
-        if "battery" in rest_results and isinstance(rest_results["battery"], dict):
-            battery_data = rest_results["battery"].get("resp", {}).get("body", {}).get("data", {})
-            battery_level = battery_data.get("value")
-        if battery_level is None:
-            battery_level = self.robot_data.get("battery_level")
-        
-        # Robot status (MQTT)
-        robot_status = self.robot_data.get("status")
-        
-        # Position (REST priority)
-        position = None
-        if "position" in rest_results and isinstance(rest_results["position"], dict):
-            pos_data = rest_results["position"].get("resp", {}).get("body", {}).get("data", {})
-            deebot_pos = pos_data.get("deebotPos", {})
-            if deebot_pos.get("invalid") == 0:  # Valid position
-                position = {
-                    "x": deebot_pos.get("x"),
-                    "y": deebot_pos.get("y"),
-                    "angle": deebot_pos.get("a")
-                }
-        if position is None:
-            position = self.robot_data.get("position")
-        
-        # Rooms (simplified - name and id only)
-        rooms = []
-        mqtt_rooms = self.robot_data.get("rooms", [])
-        if isinstance(mqtt_rooms, list):
-            for room in mqtt_rooms:
-                if isinstance(room, dict):
-                    rooms.append({
-                        "id": room.get("id"),
-                        "name": room.get("name")
-                    })
-        
-        # Volume (MQTT)
-        volume = self.robot_data.get("volume")
-        
-        # Availability (MQTT)
-        availability = self.robot_data.get("availability")
-        
-        # Water info (REST priority)
-        water_info = None
-        if "water_info" in rest_results and isinstance(rest_results["water_info"], dict):
-            water_data = rest_results["water_info"].get("resp", {}).get("body", {}).get("data", {})
-            if water_data:
-                water_info = water_data
-        if water_info is None:
-            water_info = self.robot_data.get("water_info")
-        
-        # Station state (REST priority)
-        station_state = None
-        if "station_state" in rest_results and isinstance(rest_results["station_state"], dict):
-            station_data = rest_results["station_state"].get("resp", {}).get("body", {}).get("data", {})
-            if station_data:
-                station_state = station_data
-        if station_state is None:
-            station_state = self.robot_data.get("station_state")
-        
-        # Current errors
-        current_errors = []
-        last_error = self.robot_data.get("last_error")
-        if last_error and last_error.get("code") != 0:  # Only non-zero error codes
-            current_errors.append({
-                "code": last_error.get("code"),
-                "message": last_error.get("message"),
-                "timestamp": last_error.get("formatted_time", self._format_timestamp(last_error.get("timestamp", 0)))
-            })
-        
-        # Is charging (REST priority)
-        is_charging = None
-        if "charge_state" in rest_results and isinstance(rest_results["charge_state"], dict):
-            charge_data = rest_results["charge_state"].get("resp", {}).get("body", {}).get("data", {})
-            is_charging = bool(charge_data.get("isCharging", 0))
-        
-        # Build clean response
-        clean_status = {
-            "battery_level": battery_level,
-            "robot_status": robot_status,
-            "position": position,
-            "rooms": rooms,
-            "volume": volume,
-            "availability": availability,
-            "water_info": water_info,
-            "station_state": station_state,
-            "current_errors": current_errors,
-            "is_charging": is_charging,
-            "device_name": device_name,
-            "connected": self.bot is not None
-        }
-        
-        # Make everything JSON serializable
-        serializable_status = self._make_json_serializable(clean_status)
-        
-        return json.dumps(serializable_status, indent=2)
+            ''')
+            
+            conn.commit()
+            conn.close()
+            logger.info(f"Deebot cleaning history database initialized: {self.db_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize Deebot database: {e}")
     
-    def _execute_command_sync(self, command):
-        """Execute a command synchronously"""
-        if not self.bot:
-            return "Robot not connected. Please wait for initialization."
-        
-        if not self.mqtt_loop or self.mqtt_loop.is_closed():
-            return "MQTT connection not available"
-        
+    def _record_cleaning_start(self, cleaning_type, cleaning_mode_raw, cleaning_mode_label, rooms=None):
+        """Record the start of a cleaning session"""
         try:
-            future = asyncio.run_coroutine_threadsafe(
-                self.bot.execute_command(command), 
-                self.mqtt_loop
+            import datetime
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            start_datetime = datetime.datetime.now().isoformat()
+            battery_level = self.robot_state.get('battery', {}).get('level')
+            
+            # Convert rooms list to string if provided
+            rooms_str = None
+            if rooms and isinstance(rooms, list):
+                rooms_str = ', '.join([room.get('name', 'Unknown') for room in rooms if isinstance(room, dict)])
+            
+            cursor.execute('''
+                INSERT INTO cleaning_sessions 
+                (start_datetime, cleaning_type, cleaning_mode_raw, cleaning_mode_label, rooms_cleaned, battery_start, status)
+                VALUES (?, ?, ?, ?, ?, ?, 'started')
+            ''', (start_datetime, cleaning_type, cleaning_mode_raw, cleaning_mode_label, rooms_str, battery_level))
+            
+            session_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"Recorded cleaning session start: ID={session_id}, Type={cleaning_type}, Mode={cleaning_mode_label}")
+            return session_id
+            
+        except Exception as e:
+            logger.error(f"Failed to record cleaning start: {e}")
+            return None
+    
+    def _record_cleaning_end(self, status='completed'):
+        """Record the end of the most recent cleaning session"""
+        try:
+            import datetime
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Find the most recent started session
+            cursor.execute('''
+                SELECT id, start_datetime FROM cleaning_sessions 
+                WHERE status = 'started' 
+                ORDER BY start_datetime DESC 
+                LIMIT 1
+            ''')
+            
+            result = cursor.fetchone()
+            if result:
+                session_id, start_datetime = result
+                end_datetime = datetime.datetime.now().isoformat()
+                battery_level = self.robot_state.get('battery', {}).get('level')
+                
+                # Calculate duration
+                start_dt = datetime.datetime.fromisoformat(start_datetime)
+                end_dt = datetime.datetime.now()
+                duration_seconds = int((end_dt - start_dt).total_seconds())
+                
+                cursor.execute('''
+                    UPDATE cleaning_sessions 
+                    SET end_datetime = ?, duration_seconds = ?, battery_end = ?, status = ?
+                    WHERE id = ?
+                ''', (end_datetime, duration_seconds, battery_level, status, session_id))
+                
+                conn.commit()
+                logger.info(f"Recorded cleaning session end: ID={session_id}, Duration={duration_seconds}s, Status={status}")
+            
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"Failed to record cleaning end: {e}")
+    
+    def _handle_cleaning_state_change(self, old_status, new_status):
+        """Handle cleaning state transitions and record cleaning sessions"""
+        # Define cleaning states
+        cleaning_states = [2, 10, 11, 12, 13]  # cleaning, manual_cleaning, spot_cleaning, edge_cleaning, zone_cleaning
+        
+        old_is_cleaning = old_status in cleaning_states if old_status is not None else False
+        new_is_cleaning = new_status in cleaning_states if new_status is not None else False
+        
+        # Starting cleaning
+        if not old_is_cleaning and new_is_cleaning:
+            cleaning_type = self._determine_cleaning_type(new_status)
+            cleaning_mode_raw = self.robot_state["cleaning_mode"]["raw"]
+            cleaning_mode_label = self.robot_state["cleaning_mode"]["label"]
+            rooms = self.robot_state["rooms"]["list"]
+            
+            session_id = self._record_cleaning_start(
+                cleaning_type, 
+                cleaning_mode_raw, 
+                cleaning_mode_label,
+                rooms
             )
-            result = future.result(timeout=15)
-            return "Command executed successfully"
-        except asyncio.TimeoutError:
-            logger.error("Command execution timeout")
-            return "Command execution timeout - robot may be offline"
+            
+            if session_id:
+                self.robot_state["current_cleaning_session"]["session_id"] = session_id
+                self.robot_state["current_cleaning_session"]["is_cleaning"] = True
+                self.robot_state["current_cleaning_session"]["start_time"] = time.time()
+                
+        # Ending cleaning (going to idle, charging, docked, returning)
+        elif old_is_cleaning and not new_is_cleaning:
+            if self.robot_state["current_cleaning_session"]["is_cleaning"]:
+                # Determine if completed or interrupted
+                status = "completed" if new_status in [1, 4, 5, 8] else "interrupted"  # idle, returning, charging, docked
+                self._record_cleaning_end(status)
+                
+                self.robot_state["current_cleaning_session"]["session_id"] = None
+                self.robot_state["current_cleaning_session"]["is_cleaning"] = False
+                self.robot_state["current_cleaning_session"]["start_time"] = None
+    
+    def _determine_cleaning_type(self, status_code):
+        """Determine cleaning type based on status code"""
+        type_map = {
+            2: "general_cleaning",
+            10: "manual_cleaning", 
+            11: "spot_cleaning",
+            12: "edge_cleaning",
+            13: "zone_cleaning"
+        }
+        return type_map.get(status_code, "unknown_cleaning")
+    
+    def _update_cleaning_session_mode(self, raw_mode, mode_label):
+        """Update the current cleaning session with cleaning mode info"""
+        if not self.robot_state["current_cleaning_session"]["session_id"]:
+            return
+            
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                UPDATE cleaning_sessions 
+                SET cleaning_mode_raw = ?, cleaning_mode_label = ?
+                WHERE id = ? AND status = 'started'
+            ''', (raw_mode, mode_label, self.robot_state["current_cleaning_session"]["session_id"]))
+            
+            conn.commit()
+            conn.close()
+            
         except Exception as e:
-            logger.error(f"Command execution error: {e}")
-            if "Session is closed" in str(e):
-                return "Connection lost to robot. Please restart the module."
-            return f"Error executing command: {e}"
+            logger.error(f"Failed to update cleaning session mode: {e}")
     
-    def stop_vacuum_robot(self):
-        """Stop the vacuum robot from cleaning"""
-        logger.info("Stopping vacuum robot cleaning")
-        return self._execute_command_sync(Clean(CleanAction.PAUSE))
-    
-    def go_to_base_station(self):
-        """Send the vacuum robot back to its charging base station"""
-        logger.info("Sending vacuum robot back to base station")
-        return self._execute_command_sync(Charge())
-    
-    def start_vacuum_robot_cleaning(self, cleaning_type, room_name=None):
-        """Start cleaning with specified type and optional room"""
-        logger.info(f"Starting vacuum robot cleaning: {cleaning_type}" + (f" in room {room_name}" if room_name else " (all rooms)"))
+    def get_deebot_cleaning_history(self, limit=20, status="all", **kwargs):
+        """Get the cleaning history of the Deebot robot"""
+        import json
+        import datetime
         
-        if not self.bot:
-            return "Robot not connected. Please wait for initialization."
+        logger.info(f"Getting Deebot cleaning history (limit: {limit}, status: {status})")
         
-        if not self.mqtt_loop or self.mqtt_loop.is_closed():
-            return "MQTT connection not available"
+        # Validate parameters
+        limit = min(max(limit, 1), 100)  # Clamp between 1 and 100
         
         try:
-            # Find room ID if room name is specified
-            room_id = None
-            if room_name:
-                rooms = self.robot_data.get("rooms", [])
-                available_room_names = []
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Build query based on status filter
+            if status == "all":
+                query = '''
+                    SELECT id, start_datetime, end_datetime, cleaning_type, 
+                           cleaning_mode_raw, cleaning_mode_label, rooms_cleaned,
+                           duration_seconds, battery_start, battery_end, status, created_at
+                    FROM cleaning_sessions 
+                    ORDER BY start_datetime DESC 
+                    LIMIT ?
+                '''
+                params = (limit,)
+            else:
+                query = '''
+                    SELECT id, start_datetime, end_datetime, cleaning_type, 
+                           cleaning_mode_raw, cleaning_mode_label, rooms_cleaned,
+                           duration_seconds, battery_start, battery_end, status, created_at
+                    FROM cleaning_sessions 
+                    WHERE status = ?
+                    ORDER BY start_datetime DESC 
+                    LIMIT ?
+                '''
+                params = (status, limit)
+            
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            conn.close()
+            
+            # Format results
+            sessions = []
+            for row in rows:
+                session = {
+                    "id": row[0],
+                    "start_datetime": row[1],
+                    "end_datetime": row[2],
+                    "cleaning_type": row[3],
+                    "cleaning_mode": {
+                        "raw": row[4],
+                        "label": row[5]
+                    },
+                    "rooms_cleaned": row[6],
+                    "duration_seconds": row[7],
+                    "battery": {
+                        "start": row[8],
+                        "end": row[9],
+                        "used": row[8] - row[9] if row[8] and row[9] else None
+                    },
+                    "status": row[10],
+                    "created_at": row[11]
+                }
                 
-                if isinstance(rooms, list):
-                    for room in rooms:
-                        if isinstance(room, dict) and room.get("name"):
-                            available_room_names.append(room.get("name"))
-                            # Check for exact match (case insensitive)
-                            if room.get("name").lower() == room_name.lower():
-                                room_id = room.get("id")
-                                break
+                # Add formatted datetime and duration
+                if session["start_datetime"]:
+                    try:
+                        start_dt = datetime.datetime.fromisoformat(session["start_datetime"])
+                        session["start_date_formatted"] = start_dt.strftime("%d/%m/%Y")
+                        session["start_time_formatted"] = start_dt.strftime("%H:%M:%S")
+                        session["start_datetime_formatted"] = start_dt.strftime("%d/%m/%Y à %H:%M:%S")
+                    except:
+                        pass
+                        
+                if session["end_datetime"]:
+                    try:
+                        end_dt = datetime.datetime.fromisoformat(session["end_datetime"])
+                        session["end_datetime_formatted"] = end_dt.strftime("%d/%m/%Y à %H:%M:%S")
+                    except:
+                        pass
+                
+                # Format duration
+                if session["duration_seconds"]:
+                    duration = session["duration_seconds"]
+                    hours = duration // 3600
+                    minutes = (duration % 3600) // 60
+                    seconds = duration % 60
                     
-                    # If no exact match found, try fuzzy matching
-                    if room_id is None:
-                        for room in rooms:
-                            if isinstance(room, dict) and room.get("name"):
-                                # Check if room_name is contained in the detected room name or vice versa
-                                detected_name = room.get("name").lower()
-                                search_name = room_name.lower()
-                                if search_name in detected_name or detected_name in search_name:
-                                    room_id = room.get("id")
-                                    logger.info(f"Fuzzy match found: '{room_name}' matched with '{room.get('name')}'")
-                                    break
-                
-                if room_id is None:
-                    if available_room_names:
-                        return f"Room '{room_name}' not found. Available rooms from robot: {available_room_names}"
+                    if hours > 0:
+                        session["duration_formatted"] = f"{hours}h {minutes:02d}m {seconds:02d}s"
+                    elif minutes > 0:
+                        session["duration_formatted"] = f"{minutes}m {seconds:02d}s"
                     else:
-                        return f"Room '{room_name}' specified but no rooms detected by robot yet. Try using room names from predefined list or wait for room detection."
-            
-            # Configure cleaning based on type using WorkMode
-            commands_to_execute = []
-            logger.info(f"Requested cleaning type: {cleaning_type}")
-            
-            # Set the appropriate work mode first
-            if cleaning_type == "vacuum_only":
-                commands_to_execute.append(SetWorkMode(WorkMode.VACUUM))
+                        session["duration_formatted"] = f"{seconds}s"
                 
-            elif cleaning_type == "mop_only":
-                commands_to_execute.append(SetWorkMode(WorkMode.MOP))
+                # Translate cleaning type
+                type_labels = {
+                    "general_cleaning": "Nettoyage général",
+                    "manual_cleaning": "Nettoyage manuel",
+                    "spot_cleaning": "Nettoyage localisé",
+                    "edge_cleaning": "Nettoyage des bords",
+                    "zone_cleaning": "Nettoyage par zone",
+                    "unknown_cleaning": "Nettoyage inconnu"
+                }
+                session["cleaning_type_label"] = type_labels.get(session["cleaning_type"], session["cleaning_type"])
                 
-            elif cleaning_type == "vacuum_then_mop":
-                commands_to_execute.append(SetWorkMode(WorkMode.MOP_AFTER_VACUUM))
+                # Translate status
+                status_labels = {
+                    "started": "En cours",
+                    "completed": "Terminé",
+                    "interrupted": "Interrompu"
+                }
+                session["status_label"] = status_labels.get(session["status"], session["status"])
                 
-            elif cleaning_type == "vacuum_and_mop":
-                commands_to_execute.append(SetWorkMode(WorkMode.VACUUM_AND_MOP))
+                sessions.append(session)
             
-            else:
-                return f"Invalid cleaning type: {cleaning_type}"
+            # Summary statistics
+            summary = {
+                "total_sessions": len(sessions),
+                "completed_sessions": len([s for s in sessions if s["status"] == "completed"]),
+                "interrupted_sessions": len([s for s in sessions if s["status"] == "interrupted"]),
+                "in_progress_sessions": len([s for s in sessions if s["status"] == "started"]),
+                "total_cleaning_time": sum([s["duration_seconds"] or 0 for s in sessions]),
+                "average_battery_usage": None
+            }
             
-            # Add the cleaning command
-            if room_id:
-                # Clean specific area/room
-                commands_to_execute.append(CleanArea(area=str(room_id)))
-                logger.info(f"Starting room cleaning for room ID: {room_id}")
-            else:
-                # Clean all areas
-                commands_to_execute.append(Clean(CleanAction.START))
-                logger.info("Starting full house cleaning")
+            # Calculate average battery usage
+            battery_usages = [s["battery"]["used"] for s in sessions if s["battery"]["used"] is not None]
+            if battery_usages:
+                summary["average_battery_usage"] = round(sum(battery_usages) / len(battery_usages), 1)
             
-            # Execute all commands in sequence
-            results = []
-            for i, command in enumerate(commands_to_execute):
-                try:
-                    future = asyncio.run_coroutine_threadsafe(
-                        self.bot.execute_command(command), 
-                        self.mqtt_loop
-                    )
-                    result = future.result(timeout=15)
-                    results.append(f"Command {i+1} executed successfully")
-                    logger.debug(f"Cleaning command {i+1} executed: {type(command).__name__}")
-                except asyncio.TimeoutError:
-                    error_msg = f"Command {i+1} timeout"
-                    logger.error(error_msg)
-                    results.append(error_msg)
-                except Exception as e:
-                    error_msg = f"Command {i+1} error: {e}"
-                    logger.error(error_msg)
-                    results.append(error_msg)
+            # Format total cleaning time
+            total_seconds = summary["total_cleaning_time"]
+            if total_seconds > 0:
+                hours = total_seconds // 3600
+                minutes = (total_seconds % 3600) // 60
+                if hours > 0:
+                    summary["total_cleaning_time_formatted"] = f"{hours}h {minutes:02d}m"
+                else:
+                    summary["total_cleaning_time_formatted"] = f"{minutes}m"
             
-            # Check results
-            success_count = sum(1 for r in results if "successfully" in r)
-            if success_count == len(commands_to_execute):
-                success_msg = f"Cleaning started successfully with {cleaning_type}" + (f" in room {room_name}" if room_name else " for all rooms")
-                logger.info(success_msg)
-                return success_msg
-            else:
-                return f"Cleaning started with some issues: {'; '.join(results)}"
-                
+            result = {
+                "summary": summary,
+                "sessions": sessions,
+                "filter": {
+                    "limit": limit,
+                    "status": status
+                }
+            }
+            
+            return json.dumps(result, indent=2, ensure_ascii=False)
+            
         except Exception as e:
-            logger.error(f"Error starting cleaning: {e}")
-            return f"Error starting cleaning: {e}"
-    
-    def get_vacuum_robot_rooms(self):
-        """Get the list of available rooms for cleaning"""
-        logger.info("Getting list of available rooms for vacuum robot")
+            logger.error(f"Failed to get cleaning history: {e}")
+            return json.dumps({
+                "error": f"Failed to retrieve cleaning history: {str(e)}",
+                "sessions": [],
+                "summary": {}
+            }, ensure_ascii=False)
         
-        available_rooms = self._get_available_rooms()
+    async def _on_ping_request(self):
+        """Handle MQTT PINGREQ events"""
+        self._update_event_timestamp("ping_request")
+        logger.debug(f"Deebot MQTT Event - PINGREQ")
         
-        # Get actual rooms detected by the robot
-        rooms = self.robot_data.get("rooms", [])
-        detected_rooms = []
-        if isinstance(rooms, list):
-            for room in rooms:
-                if isinstance(room, dict) and room.get("name"):
-                    detected_rooms.append({
-                        "id": room.get("id"),
-                        "name": room.get("name")
-                    })
-        
-        result = {
-            "predefined_rooms": available_rooms,
-            "detected_rooms": detected_rooms,
-            "total_available": len(available_rooms),
-            "total_detected": len(detected_rooms)
-        }
-        
-        return json.dumps(result, indent=2)
-    
-    
-
+    async def _on_ping_response(self):
+        """Handle MQTT PINGRESP events"""
+        self._update_event_timestamp("ping_response")
+        logger.debug(f"Deebot MQTT Event - PINGRESP")
