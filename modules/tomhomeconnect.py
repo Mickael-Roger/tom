@@ -27,12 +27,18 @@ class HomeConnect:
     _token_refresh_thread_started = False
     _token_refresh_thread = None
     _config_path = '/data/config.yml'
+    _token_cache_file = None  # Will be set during initialization
     
     def __init__(self, config, llm):
         self.config = config
         self.llm = llm
         self.api_base_url = "https://api.home-connect.com"
         self.client_id = "F9ACB272F14EAEBABDC616492121073863A93923285BCA1904EDB53EE0CCA008"
+        
+        # Set token cache file path from all_datadir
+        all_datadir = config.get('all_datadir', '/data/all/')
+        os.makedirs(all_datadir, exist_ok=True)
+        HomeConnect._token_cache_file = os.path.join(all_datadir, 'homeconnect.json')
         
         # Start token refresh thread only once across all instances
         if not HomeConnect._token_refresh_thread_started:
@@ -61,6 +67,26 @@ class HomeConnect:
             }
         }
 
+    def _load_token_from_cache(self):
+        """Load token from homeconnect.json cache file"""
+        try:
+            if not os.path.exists(self._token_cache_file):
+                return None
+                
+            with open(self._token_cache_file, 'r', encoding='utf-8') as f:
+                token_data = json.load(f)
+                
+            # Check if token is still valid (not expired)
+            if self._is_token_valid(token_data):
+                return token_data['access_token']
+            else:
+                tomlogger.info("HomeConnect: Cached token is expired", module_name="homeconnect")
+                return None
+                
+        except Exception as e:
+            tomlogger.error(f"HomeConnect: Error loading cached token: {e}", module_name="homeconnect")
+            return None
+    
     def _load_token_from_config(self):
         """Load token from configuration file"""
         try:
@@ -79,8 +105,43 @@ class HomeConnect:
             return token_string
             
         except Exception as e:
-            tomlogger.error(f"HomeConnect: Error loading token: {e}", module_name="homeconnect")
+            tomlogger.error(f"HomeConnect: Error loading token from config: {e}", module_name="homeconnect")
             return None
+    
+    def _is_token_valid(self, token_data):
+        """Check if token data is valid and not expired"""
+        if not token_data or not isinstance(token_data, dict):
+            return False
+            
+        required_fields = ['access_token', 'created_at', 'expires_in']
+        if not all(field in token_data for field in required_fields):
+            return False
+            
+        # Check if token is expired (with 5 minute buffer)
+        current_time = time.time()
+        expiry_time = token_data['created_at'] + token_data['expires_in'] - 300  # 5 minute buffer
+        
+        return current_time < expiry_time
+    
+    def _save_token_to_cache(self, access_token, refresh_token=None):
+        """Save token to homeconnect.json cache file"""
+        try:
+            token_data = {
+                'access_token': access_token,
+                'refresh_token': refresh_token,
+                'created_at': time.time(),
+                'expires_in': 86400  # 24 hours
+            }
+            
+            with open(self._token_cache_file, 'w', encoding='utf-8') as f:
+                json.dump(token_data, f, indent=2)
+                
+            tomlogger.info("HomeConnect: Token saved to cache", module_name="homeconnect")
+            return True
+            
+        except Exception as e:
+            tomlogger.error(f"HomeConnect: Error saving token to cache: {e}", module_name="homeconnect")
+            return False
 
     def _token_refresh_loop(self):
         """Background loop to refresh token every 12 hours"""
@@ -100,46 +161,63 @@ class HomeConnect:
                 time.sleep(3600)  # Wait 1 hour before retrying
 
     def _refresh_token(self):
-        """Refresh the access token and update config.yml"""
-        # Load current token from config
-        current_token = self._load_token_from_config()
-        if not current_token:
-            tomlogger.warning("HomeConnect: No token available to refresh", module_name="homeconnect")
+        """Refresh the access token using config token if cache is invalid"""
+        # Try to load from cache first
+        cached_token = self._load_token_from_cache()
+        if cached_token:
+            return True  # Cache is still valid
+            
+        # Cache is invalid, try to use config token to regenerate cache
+        config_token = self._load_token_from_config()
+        if not config_token:
+            tomlogger.warning("HomeConnect: No token available in config", module_name="homeconnect")
             return False
             
-        # For now, we don't have refresh tokens with Home-Connect Device Flow
-        # This is a placeholder for future enhancement
-        return True
-
-    def _update_config_token(self, new_token):
-        """Update the config.yml file with the new token"""
+        # Test if config token is valid by making a simple API call
+        if self._test_token_validity(config_token):
+            # Config token is valid, save it to cache
+            self._save_token_to_cache(config_token)
+            tomlogger.info("HomeConnect: Config token validated and cached", module_name="homeconnect")
+            return True
+        else:
+            tomlogger.error("HomeConnect: Config token is invalid", module_name="homeconnect")
+            return False
+    
+    def _test_token_validity(self, token):
+        """Test if a token is valid by making a simple API call"""
         try:
-            if not os.path.exists(self._config_path):
-                tomlogger.error(f"HomeConnect: config.yml not found: {self._config_path}", module_name="homeconnect")
-                return
-                
-            with open(self._config_path, 'r', encoding='utf-8') as f:
-                config_data = yaml.safe_load(f)
-                
-            # Update the token in the config
-            if 'services' not in config_data:
-                config_data['services'] = {}
-            if 'homeconnect' not in config_data['services']:
-                config_data['services']['homeconnect'] = {}
-                
-            config_data['services']['homeconnect']['token'] = new_token
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept-Language": "en-US"
+            }
             
-            # Write back to file
-            with open(self._config_path, 'w', encoding='utf-8') as f:
-                yaml.safe_dump(config_data, f, default_flow_style=False, allow_unicode=True)
-                
+            response = requests.get(f"{self.api_base_url}/api/homeappliances", headers=headers, timeout=10)
+            return response.status_code == 200
             
         except Exception as e:
-            tomlogger.error(f"HomeConnect: Failed to update config.yml: {e}", module_name="homeconnect")
+            tomlogger.error(f"HomeConnect: Error testing token validity: {e}", module_name="homeconnect")
+            return False
+
+    # Remove this method as we no longer update config.yml
 
     def _get_valid_token(self):
-        """Get a valid access token from config"""
-        return self._load_token_from_config()
+        """Get a valid access token, trying cache first, then config"""
+        # Try cached token first
+        cached_token = self._load_token_from_cache()
+        if cached_token:
+            return cached_token
+            
+        # No valid cached token, try config token
+        config_token = self._load_token_from_config()
+        if not config_token:
+            return None
+            
+        # Test config token and cache it if valid
+        if self._test_token_validity(config_token):
+            self._save_token_to_cache(config_token)
+            return config_token
+        else:
+            return None
 
     def _process_api_list(self, items):
         """Convert API list format ({key, value,...}) to dict {key: value}"""
@@ -150,19 +228,19 @@ class HomeConnect:
     def _create_summary(self, processed_status, processed_settings, active_program):
         """Create a readable summary from processed data"""
         summary = {
-            "etat_general": "Inconnu", 
-            "programme": None, 
-            "temps_restant_min": 0, 
-            "alertes": []
+            "general_state": "Unknown", 
+            "program": None, 
+            "remaining_time_min": 0, 
+            "alerts": []
         }
         
         op_state = processed_status.get('BSH.Common.Status.OperationState', '')
         
         if "Run" in op_state and active_program:
-            summary["etat_general"] = "En marche"
+            summary["general_state"] = "Running"
             prog_key = active_program.get('key')
             if prog_key:
-                summary["programme"] = prog_key.split('.')[-1]
+                summary["program"] = prog_key.split('.')[-1]
             
             # Search for remaining time in active program options
             rem_time = 0
@@ -170,20 +248,20 @@ class HomeConnect:
                 if option.get('key') == 'BSH.Common.Option.RemainingProgramTime':
                     rem_time = option.get('value', 0)
                     break
-            summary["temps_restant_min"] = rem_time // 60
+            summary["remaining_time_min"] = rem_time // 60
             
         elif "Finished" in op_state:
-            summary["etat_general"] = "Termine"
+            summary["general_state"] = "Finished"
         elif "Ready" in op_state:
-            summary["etat_general"] = "Pret"
+            summary["general_state"] = "Ready"
         elif "Inactive" in op_state:
-            summary["etat_general"] = "Inactif"
+            summary["general_state"] = "Inactive"
         
         # Check for common alerts in settings
         if processed_settings.get("ConsumerProducts.Dishwasher.Setting.RinseAidLevel") == "Off":
-            summary["alertes"].append("Niveau de liquide de rincage bas")
+            summary["alerts"].append("Low rinse aid level")
         if processed_settings.get("ConsumerProducts.Dishwasher.Setting.SaltLevel") == "Off":
-            summary["alertes"].append("Niveau de sel bas")
+            summary["alerts"].append("Low salt level")
             
         return summary
 
@@ -195,26 +273,26 @@ class HomeConnect:
         # Status
         try:
             res = requests.get(f"{base_url}/status", headers=headers, timeout=10)
-            details["status_brut"] = res.json().get('data', {}).get('status', []) if res.ok else []
+            details["raw_status"] = res.json().get('data', {}).get('status', []) if res.ok else []
         except Exception as e:
             tomlogger.error(f"HomeConnect: Error getting status for {haId}: {e}", module_name="homeconnect")
-            details["status_brut"] = []
+            details["raw_status"] = []
         
         # Settings
         try:
             res = requests.get(f"{base_url}/settings", headers=headers, timeout=10)
-            details["settings_brut"] = res.json().get('data', {}).get('settings', []) if res.ok else []
+            details["raw_settings"] = res.json().get('data', {}).get('settings', []) if res.ok else []
         except Exception as e:
             tomlogger.error(f"HomeConnect: Error getting settings for {haId}: {e}", module_name="homeconnect")
-            details["settings_brut"] = []
+            details["raw_settings"] = []
         
         # Active Program
-        details["programme_actif_brut"] = None
-        if any(isinstance(item.get('value'), str) and "Run" in item.get('value') for item in details["status_brut"]):
+        details["raw_active_program"] = None
+        if any(isinstance(item.get('value'), str) and "Run" in item.get('value') for item in details["raw_status"]):
             try:
                 res = requests.get(f"{base_url}/programs/active", headers=headers, timeout=10)
                 if res.ok:
-                    details["programme_actif_brut"] = res.json().get('data', {})
+                    details["raw_active_program"] = res.json().get('data', {})
             except Exception as e:
                 tomlogger.error(f"HomeConnect: Error getting active program for {haId}: {e}", module_name="homeconnect")
                 
@@ -226,7 +304,7 @@ class HomeConnect:
             # Get valid token
             access_token = self._get_valid_token()
             if not access_token:
-                return {"erreur": "Token invalide ou expire. Veuillez regenerer le token avec tools/home-connect.py"}
+                return {"error": "Invalid or expired token. Please regenerate token with: python3 tools/home-connect.py"}
             
             headers = {
                 "Authorization": f"Bearer {access_token}",
@@ -239,50 +317,50 @@ class HomeConnect:
             
             if not response.ok:
                 tomlogger.error(f"HomeConnect: Failed to get appliances: {response.status_code} - {response.text}", module_name="homeconnect")
-                return {"erreur": "Impossible de recuperer la liste des appareils", "details": response.text}
+                return {"error": "Unable to retrieve appliance list", "details": response.text}
             
             all_appliances = response.json().get("data", {}).get("homeappliances", [])
             dishwashers = [app for app in all_appliances if app.get("type") == "Dishwasher"]
             
             if not dishwashers:
-                return {"message": "Aucun lave-vaisselle trouve"}
+                return {"message": "No dishwashers found"}
             
             final_output = []
             for dw in dishwashers:
                 haId = dw.get("haId")
                 
                 appliance_info = {
-                    "nom": dw.get("name"),
+                    "name": dw.get("name"),
                     "haId": haId,
-                    "marque": dw.get("brand"),
+                    "brand": dw.get("brand"),
                     "type": dw.get("type"),
-                    "connecte": dw.get("connected"),
-                    "resume": {},
+                    "connected": dw.get("connected"),
+                    "summary": {},
                     "details": {}
                 }
                 
-                if appliance_info["connecte"]:
-                    details_bruts = self._get_appliance_details(haId, headers)
+                if appliance_info["connected"]:
+                    raw_details = self._get_appliance_details(haId, headers)
                     
                     # Process for better readability
-                    status_traite = self._process_api_list(details_bruts["status_brut"])
-                    settings_traites = self._process_api_list(details_bruts["settings_brut"])
+                    processed_status = self._process_api_list(raw_details["raw_status"])
+                    processed_settings = self._process_api_list(raw_details["raw_settings"])
                     
                     # Create summary
-                    appliance_info["resume"] = self._create_summary(
-                        status_traite, 
-                        settings_traites, 
-                        details_bruts["programme_actif_brut"]
+                    appliance_info["summary"] = self._create_summary(
+                        processed_status, 
+                        processed_settings, 
+                        raw_details["raw_active_program"]
                     )
                     
                     # Add processed details
                     appliance_info["details"] = {
-                        "status": status_traite,
-                        "settings": settings_traites,
-                        "programme_actif": details_bruts["programme_actif_brut"]
+                        "status": processed_status,
+                        "settings": processed_settings,
+                        "active_program": raw_details["raw_active_program"]
                     }
                 else:
-                    appliance_info["resume"] = {"etat_general": "Deconnecte"}
+                    appliance_info["summary"] = {"general_state": "Disconnected"}
                 
                 final_output.append(appliance_info)
             
@@ -290,10 +368,10 @@ class HomeConnect:
             
         except requests.exceptions.Timeout:
             tomlogger.error("HomeConnect: Request timeout", module_name="homeconnect")
-            return {"erreur": "Timeout lors de la connexion a l'API Home-Connect"}
+            return {"error": "Timeout connecting to Home-Connect API"}
         except Exception as e:
             tomlogger.error(f"HomeConnect: Error getting dishwasher status: {e}", module_name="homeconnect")
-            return {"erreur": f"Erreur lors de la recuperation du statut: {str(e)}"}
+            return {"error": f"Error retrieving status: {str(e)}"}
 
     @property
     def systemContext(self):
