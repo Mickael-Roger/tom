@@ -154,6 +154,60 @@ users:
 
 ---
 
+### 🏠 homeconnect - Lave-vaisselle Home-Connect
+
+**Complexité :** 1 | **Type :** Global
+
+Contrôle et surveillance d'un lave-vaisselle compatible Home-Connect (statut, programmes, notifications).
+
+#### Configuration
+
+```yaml
+services:
+  homeconnect:
+    token: "eyJhbGciOiJIUzI1NiIs..."  # requis - Token OAuth2 Home-Connect
+```
+
+> **Note** : Utilisez le script `tools/home-connect.py` pour obtenir votre token OAuth2.
+
+#### Génération du Token
+
+1. Rendez-vous sur https://developer.home-connect.com/
+2. Créez une application configurée pour utiliser le "Device Flow"
+3. Exécutez : `python3 tools/home-connect.py`
+4. Suivez les instructions pour générer le token
+5. Copiez le token dans votre `config.yml`
+
+#### Fonctions Disponibles
+
+- `get_dishwasher_status` : État complet du lave-vaisselle (programme, temps restant, alertes)
+- `get_dishwasher_details` : Informations détaillées (statut, réglages, programme actif)
+
+#### États du Lave-vaisselle
+
+- **En marche** : Programme en cours d'exécution
+- **Terminé** : Cycle de lavage terminé
+- **Prêt** : Disponible pour nouveau programme
+- **Inactif** : Lave-vaisselle éteint ou déconnecté
+
+#### Alertes Automatiques
+
+- Niveau de liquide de rinçage bas
+- Niveau de sel bas
+- Erreurs de fonctionnement
+
+#### Activation Utilisateur
+
+```yaml
+users:
+  - username: user1
+    services:
+      homeconnect:
+        enable: true
+```
+
+---
+
 ### 🚇 idfm - Transports Île-de-France
 
 **Complexité :** 1 | **Type :** Global

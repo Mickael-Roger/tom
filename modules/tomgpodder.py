@@ -76,7 +76,7 @@ class TomGPodder:
                 "type": "function",
                 "function": {
                     "name": "list_podcast_subscriptions",
-                    "description": "List all podcast subscriptions with their information including unread episode count.",
+                    "description": "List all podcast subscriptions with their information including unheard episode count.",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -87,8 +87,8 @@ class TomGPodder:
             {
                 "type": "function",
                 "function": {
-                    "name": "list_unread_episodes",
-                    "description": "List all unread/unplayed podcast episodes, organized by podcast subscription.",
+                    "name": "list_unviewed_episodes",
+                    "description": "List all unheard/unplayed podcast episodes, organized by podcast subscription.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -110,10 +110,10 @@ class TomGPodder:
         
         The function 'list_podcast_subscriptions' shows all subscribed podcasts:
            - Use this to show the user what podcasts they are currently subscribed to
-           - Returns podcast titles, URLs, and count of unread episodes for each subscription
+           - Returns podcast titles, URLs, and count of unheard episodes for each subscription
            - Helps users understand their current podcast library
         
-        The function 'list_unread_episodes' shows unread/unplayed episodes:
+        The function 'list_unheard' shows unheard/unplayed episodes:
            - Use this to show the user which podcast episodes they haven't listened to yet
            - Episodes are organized by podcast for better readability
            - Includes episode titles, publication dates, descriptions, and URLs
@@ -126,8 +126,8 @@ class TomGPodder:
             "list_podcast_subscriptions": {
                 "function": self.list_podcast_subscriptions
             },
-            "list_unread_episodes": {
-                "function": self.list_unread_episodes
+            "list_unheard_episodes": {
+                "function": self.list_unheard_episodes
             },
         }
 
@@ -242,6 +242,7 @@ class TomGPodder:
                 self._sync_subscriptions()
                 self._sync_episodes()
                 self._sync_episode_status()
+                self._update_background_status()
                 logger.info("Background sync completed successfully")
             except Exception as e:
                 logger.error(f"Error in background sync: {e}")
@@ -414,16 +415,16 @@ class TomGPodder:
             logger.error(f"Error syncing episode status: {e}")
 
     def list_podcast_subscriptions(self):
-        """List all podcast subscriptions with unread episode counts."""
+        """List all podcast subscriptions with unheard episode counts."""
         try:
             dbconn = sqlite3.connect(self.db)
             cursor = dbconn.cursor()
             
-            # Get all subscriptions with unread episode counts
+            # Get all subscriptions with unheard episode counts
             cursor.execute("""
                 SELECT s.id, s.title, s.url, 
                        COUNT(e.id) as total_episodes,
-                       COUNT(CASE WHEN e.status = 'unplayed' THEN 1 END) as unread_count
+                       COUNT(CASE WHEN e.status = 'unplayed' THEN 1 END) as unheard_count
                 FROM subscriptions s
                 LEFT JOIN episodes e ON s.id = e.subscription_id
                 GROUP BY s.id, s.title, s.url
@@ -435,14 +436,14 @@ class TomGPodder:
             
             subscriptions = []
             for row in subscriptions_data:
-                sub_id, title, url, total_episodes, unread_count = row
+                sub_id, title, url, total_episodes, unheard_count = row
                 
                 subscription_info = {
                     'id': sub_id,
                     'title': title,
                     'url': url,
                     'total_episodes': total_episodes,
-                    'unread_episodes': unread_count
+                    'unheard_episodes': unheard_count
                 }
                 
                 subscriptions.append(subscription_info)
@@ -463,8 +464,8 @@ class TomGPodder:
                 'message': f'Failed to list subscriptions: {str(e)}'
             }
 
-    def list_unread_episodes(self, limit=50):
-        """List all unread podcast episodes, organized by subscription."""
+    def list_unheard_episodes(self, limit=50):
+        """List all unheard podcast episodes, organized by subscription."""
         try:
             # Validate limit parameter
             if limit is None:
@@ -477,7 +478,7 @@ class TomGPodder:
             dbconn = sqlite3.connect(self.db)
             cursor = dbconn.cursor()
             
-            # Get unread episodes with subscription information, ordered by publication date (newest first)
+            # Get unheard episodes with subscription information, ordered by publication date (newest first)
             cursor.execute("""
                 SELECT s.title as podcast_title, s.url as podcast_url,
                        e.id, e.title, e.publication_date, e.url, e.description, e.status
@@ -521,16 +522,43 @@ class TomGPodder:
             result = {
                 'status': 'success',
                 'podcasts': podcasts_list,
-                'total_unread_episodes': total_episodes,
+                'total_unheard_episodes': total_episodes,
                 'limit_applied': limit
             }
             
-            logger.info(f"Retrieved {total_episodes} unread episodes across {len(podcasts_list)} podcasts")
+            logger.info(f"Retrieved {total_episodes} unheard episodes across {len(podcasts_list)} podcasts")
             return result
             
         except Exception as e:
-            logger.error(f"Error listing unread episodes: {e}")
+            logger.error(f"Error listing unheard episodes: {e}")
             return {
                 'status': 'error',
-                'message': f'Failed to list unread episodes: {str(e)}'
+                'message': f'Failed to list unheard episodes: {str(e)}'
             }
+
+    def _update_background_status(self):
+        """Update background status with unheard episode count, like in tomyoutube.py."""
+        try:
+            dbconn = sqlite3.connect(self.db)
+            cursor = dbconn.cursor()
+            
+            # Count unheard episodes (same logic as tomyoutube.py line 362)
+            cursor.execute("SELECT COUNT(id) FROM episodes WHERE status = 'unplayed'")
+            unheard_episodes = cursor.fetchall()
+            dbconn.close()
+            
+            nb_episodes = unheard_episodes[0][0]
+            
+            # Same logic as tomyoutube.py lines 368-371
+            if nb_episodes == 0:
+                status = None
+            else:
+                status = f"{nb_episodes} unheard episodes"
+            
+            # Update background_status if changed (same logic as tomyoutube.py lines 373-375)
+            if status != self.background_status['status']:
+                self.background_status['ts'] = int(time.time())
+                self.background_status['status'] = status
+                
+        except Exception as e:
+            logger.error(f"Error updating background status: {e}")
