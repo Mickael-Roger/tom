@@ -58,12 +58,62 @@ class HomeConnect:
                         "properties": {},
                     }
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "start_dishwasher_program",
+                    "description": "Start a dishwasher program. Use this when the user wants to start a specific wash cycle or program",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "haId": {
+                                "type": "string",
+                                "description": "The Home Connect appliance ID of the dishwasher to start. Get this from get_dishwasher_status first if unknown."
+                            },
+                            "program_key": {
+                                "type": "string",
+                                "description": "The program key to start. Common programs include: 'Dishcare.Dishwasher.Program.Eco50' (Eco program), 'Dishcare.Dishwasher.Program.Quick45' (Quick wash), 'Dishcare.Dishwasher.Program.Auto1' (Auto program), 'Dishcare.Dishwasher.Program.Intensive70' (Intensive program)"
+                            },
+                            "delayed_start_minutes": {
+                                "type": "integer",
+                                "description": "Optional delay in minutes before starting the program (0 for immediate start)",
+                                "minimum": 0,
+                                "maximum": 1440
+                            }
+                        },
+                        "required": ["haId", "program_key"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_available_dishwasher_programs",
+                    "description": "Get the list of available programs for a specific dishwasher",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "haId": {
+                                "type": "string",
+                                "description": "The Home Connect appliance ID of the dishwasher. Get this from get_dishwasher_status first if unknown."
+                            }
+                        },
+                        "required": ["haId"]
+                    }
+                }
             }
         ]
         
         self.functions = {
             "get_dishwasher_status": {
                 "function": functools.partial(self.get_dishwasher_status)
+            },
+            "start_dishwasher_program": {
+                "function": functools.partial(self.start_dishwasher_program)
+            },
+            "get_available_dishwasher_programs": {
+                "function": functools.partial(self.get_available_dishwasher_programs)
             }
         }
 
@@ -373,12 +423,132 @@ class HomeConnect:
             tomlogger.error(f"HomeConnect: Error getting dishwasher status: {e}", module_name="homeconnect")
             return {"error": f"Error retrieving status: {str(e)}"}
 
+    def start_dishwasher_program(self, haId, program_key, delayed_start_minutes=0):
+        """Start a dishwasher program"""
+        try:
+            # Get valid token
+            access_token = self._get_valid_token()
+            if not access_token:
+                return {"error": "Invalid or expired token. Please regenerate token with: python3 tools/home-connect.py"}
+            
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Accept-Language": "en-US",
+                "Content-Type": "application/vnd.bsh.sdk.v1+json"
+            }
+            
+            # Prepare the program data
+            program_data = {
+                "data": {
+                    "key": program_key,
+                    "options": []
+                }
+            }
+            
+            # Add delayed start option if specified
+            if delayed_start_minutes and delayed_start_minutes > 0:
+                program_data["data"]["options"].append({
+                    "key": "BSH.Common.Option.StartInRelative",
+                    "value": delayed_start_minutes * 60,  # Convert minutes to seconds
+                    "unit": "seconds"
+                })
+            
+            # Start the program
+            api_url = f"{self.api_base_url}/api/homeappliances/{haId}/programs/active"
+            response = requests.put(api_url, headers=headers, json=program_data, timeout=10)
+            
+            if response.status_code == 204:
+                # Success - program started
+                delay_info = f" with {delayed_start_minutes} minutes delay" if delayed_start_minutes > 0 else ""
+                return {
+                    "success": True,
+                    "message": f"Program '{program_key.split('.')[-1]}' started successfully{delay_info}",
+                    "program_key": program_key,
+                    "delayed_start_minutes": delayed_start_minutes
+                }
+            elif response.status_code == 409:
+                # Conflict - dishwasher not ready
+                return {"error": "Dishwasher is not ready to start a program. Check if it's powered on, door is closed, and remote control is enabled."}
+            elif response.status_code == 404:
+                # Not found - invalid haId or program
+                return {"error": "Dishwasher or program not found. Check the appliance ID and program key."}
+            else:
+                tomlogger.error(f"HomeConnect: Failed to start program: {response.status_code} - {response.text}", module_name="homeconnect")
+                return {"error": f"Failed to start program: HTTP {response.status_code}", "details": response.text}
+            
+        except requests.exceptions.Timeout:
+            tomlogger.error("HomeConnect: Request timeout while starting program", module_name="homeconnect")
+            return {"error": "Timeout connecting to Home-Connect API"}
+        except Exception as e:
+            tomlogger.error(f"HomeConnect: Error starting dishwasher program: {e}", module_name="homeconnect")
+            return {"error": f"Error starting program: {str(e)}"}
+
+    def get_available_dishwasher_programs(self, haId):
+        """Get available programs for a specific dishwasher"""
+        try:
+            # Get valid token
+            access_token = self._get_valid_token()
+            if not access_token:
+                return {"error": "Invalid or expired token. Please regenerate token with: python3 tools/home-connect.py"}
+            
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Accept-Language": "en-US"
+            }
+            
+            # Get available programs
+            api_url = f"{self.api_base_url}/api/homeappliances/{haId}/programs/available"
+            response = requests.get(api_url, headers=headers, timeout=10)
+            
+            if not response.ok:
+                tomlogger.error(f"HomeConnect: Failed to get available programs: {response.status_code} - {response.text}", module_name="homeconnect")
+                return {"error": "Unable to retrieve available programs", "details": response.text}
+            
+            programs_data = response.json().get("data", {}).get("programs", [])
+            
+            # Process programs for better readability
+            available_programs = []
+            for program in programs_data:
+                program_info = {
+                    "key": program.get("key"),
+                    "name": program.get("key", "").split(".")[-1] if program.get("key") else "Unknown",
+                    "constraints": {}
+                }
+                
+                # Add constraints if available
+                if "constraints" in program:
+                    program_info["constraints"] = program["constraints"]
+                    
+                available_programs.append(program_info)
+            
+            return {
+                "success": True,
+                "haId": haId,
+                "available_programs": available_programs,
+                "count": len(available_programs)
+            }
+            
+        except requests.exceptions.Timeout:
+            tomlogger.error("HomeConnect: Request timeout while getting available programs", module_name="homeconnect")
+            return {"error": "Timeout connecting to Home-Connect API"}
+        except Exception as e:
+            tomlogger.error(f"HomeConnect: Error getting available programs: {e}", module_name="homeconnect")
+            return {"error": f"Error retrieving available programs: {str(e)}"}
+
     @property
     def systemContext(self):
         return """You are managing Home-Connect compatible dishwashers. You can:
 - Check the status of dishwashers including current program, remaining time, and alerts
 - Monitor dishwasher connection status
 - Get detailed information about dishwasher settings and operation state
+- Start dishwasher programs with optional delayed start
+- Get the list of available programs for each dishwasher
+
+When starting programs:
+- Always get the dishwasher status first to obtain the haId
+- Common program keys include: Eco50, Quick45, Auto1, Intensive70
+- You can set a delayed start in minutes (0 for immediate start)
+- Check that the dishwasher is ready (powered on, door closed, remote control enabled)
 
 Always provide clear, actionable information about dishwasher status and any alerts that require user attention."""
 
