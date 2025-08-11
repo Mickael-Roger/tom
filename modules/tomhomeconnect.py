@@ -147,13 +147,34 @@ class HomeConnect:
             with open(self._config_path, 'r', encoding='utf-8') as f:
                 config_data = yaml.safe_load(f)
                 
-            token_string = config_data.get('services', {}).get('homeconnect', {}).get('token', '')
-            if not token_string:
+            homeconnect_config = config_data.get('services', {}).get('homeconnect', {})
+            
+            # Support both simple token string and full token object
+            token_data = homeconnect_config.get('token', '')
+            
+            if isinstance(token_data, dict):
+                # Token is a full object with access_token and potentially refresh_token
+                access_token = token_data.get('access_token')
+                refresh_token = token_data.get('refresh_token')
+                
+                if access_token:
+                    # Save full token data to cache if we have both access and refresh tokens
+                    if refresh_token:
+                        self._save_token_to_cache(access_token, refresh_token)
+                        tomlogger.info("HomeConnect: Loaded token with refresh token from config", module_name="homeconnect")
+                    
+                    return access_token
+                else:
+                    tomlogger.error("HomeConnect: No access_token found in token object", module_name="homeconnect")
+                    return None
+                    
+            elif isinstance(token_data, str) and token_data:
+                # Token is a simple string (legacy format)
+                return token_data
+            else:
                 tomlogger.error("HomeConnect: No token found in configuration", module_name="homeconnect")
                 return None
                 
-            return token_string
-            
         except Exception as e:
             tomlogger.error(f"HomeConnect: Error loading token from config: {e}", module_name="homeconnect")
             return None
@@ -193,31 +214,117 @@ class HomeConnect:
             tomlogger.error(f"HomeConnect: Error saving token to cache: {e}", module_name="homeconnect")
             return False
 
+    def _calculate_refresh_delay(self):
+        """Calculate how long to wait before next token refresh (12h before expiration)"""
+        try:
+            if not os.path.exists(self._token_cache_file):
+                return 0  # Refresh immediately if no cache
+                
+            with open(self._token_cache_file, 'r', encoding='utf-8') as f:
+                token_data = json.load(f)
+                
+            if not self._is_token_valid(token_data):
+                return 0  # Refresh immediately if expired
+                
+            # Calculate time until refresh (12h before expiration)
+            current_time = time.time()
+            created_at = token_data.get('created_at', current_time)
+            expires_in = token_data.get('expires_in', 86400)  # Default 24h
+            
+            # Refresh 12 hours before expiration (43200 seconds = 12h)
+            refresh_time = created_at + expires_in - 43200
+            delay = max(0, refresh_time - current_time)
+            
+            tomlogger.info(f"HomeConnect: Next token refresh in {delay/3600:.1f} hours", module_name="homeconnect")
+            return delay
+            
+        except Exception as e:
+            tomlogger.error(f"HomeConnect: Error calculating refresh delay: {e}", module_name="homeconnect")
+            return 3600  # Default to 1 hour if error
+
     def _token_refresh_loop(self):
-        """Background loop to refresh token every 12 hours"""
+        """Background loop to refresh token 12 hours before expiration"""
         while True:
             try:
-                # Wait 12 hours (12 * 3600 seconds)
-                time.sleep(43200)
+                # Calculate how long to wait before next refresh
+                delay = self._calculate_refresh_delay()
                 
+                if delay > 0:
+                    # Wait until it's time to refresh
+                    time.sleep(delay)
+                
+                # Try to refresh the token
                 if self._refresh_token():
-                    pass
+                    tomlogger.info("HomeConnect: Token refreshed successfully", module_name="homeconnect")
                 else:
                     tomlogger.error("HomeConnect: Token refresh failed", module_name="homeconnect")
+                    # If refresh failed, try again in 1 hour
+                    time.sleep(3600)
                     
             except Exception as e:
                 tomlogger.error(f"HomeConnect: Token refresh loop error: {e}", module_name="homeconnect")
                 # Continue loop even if there's an error
                 time.sleep(3600)  # Wait 1 hour before retrying
 
+    def _refresh_token_with_api(self, refresh_token):
+        """Use refresh token to get a new access token from Home Connect API"""
+        try:
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded"
+            }
+            
+            data = {
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "client_id": self.client_id
+            }
+            
+            # Home Connect OAuth2 token endpoint
+            token_url = "https://api.home-connect.com/security/oauth/token"
+            response = requests.post(token_url, headers=headers, data=data, timeout=10)
+            
+            if response.status_code == 200:
+                token_data = response.json()
+                new_access_token = token_data.get('access_token')
+                new_refresh_token = token_data.get('refresh_token', refresh_token)  # Keep old if not provided
+                
+                if new_access_token:
+                    self._save_token_to_cache(new_access_token, new_refresh_token)
+                    tomlogger.info("HomeConnect: Token refreshed successfully using refresh token", module_name="homeconnect")
+                    return True
+                    
+            tomlogger.error(f"HomeConnect: Failed to refresh token via API: {response.status_code} - {response.text}", module_name="homeconnect")
+            return False
+            
+        except Exception as e:
+            tomlogger.error(f"HomeConnect: Error refreshing token via API: {e}", module_name="homeconnect")
+            return False
+
     def _refresh_token(self):
-        """Refresh the access token using config token if cache is invalid"""
+        """Refresh the access token using refresh token or config token as fallback"""
         # Try to load from cache first
         cached_token = self._load_token_from_cache()
         if cached_token:
             return True  # Cache is still valid
             
-        # Cache is invalid, try to use config token to regenerate cache
+        # Cache is invalid, try to use refresh token if available
+        try:
+            if os.path.exists(self._token_cache_file):
+                with open(self._token_cache_file, 'r', encoding='utf-8') as f:
+                    token_data = json.load(f)
+                    
+                refresh_token = token_data.get('refresh_token')
+                if refresh_token:
+                    tomlogger.info("HomeConnect: Attempting to refresh token using refresh token", module_name="homeconnect")
+                    if self._refresh_token_with_api(refresh_token):
+                        return True
+                    else:
+                        tomlogger.warning("HomeConnect: Refresh token failed, falling back to config token", module_name="homeconnect")
+                        
+        except Exception as e:
+            tomlogger.error(f"HomeConnect: Error loading refresh token: {e}", module_name="homeconnect")
+            
+        # Fallback to config token
         config_token = self._load_token_from_config()
         if not config_token:
             tomlogger.warning("HomeConnect: No token available in config", module_name="homeconnect")

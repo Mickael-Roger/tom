@@ -71,16 +71,32 @@ def get_new_token_device_flow():
             print("\nAuthorization successful!")
             token_data['created_at'] = time.time()
             
-            print("\n=== GENERATED TOKEN ===")
-            print("Copy the token below into your config.yml file")
-            print("under services.homeconnect.token :\n")
-            print(token_data['access_token'])
-            print("\n=== END OF TOKEN ===\n")
+            access_token = token_data['access_token']
+            refresh_token = token_data.get('refresh_token')
+            expires_in = token_data.get('expires_in', 86400)
             
-            print("IMPORTANT: Add this line to your config.yml:")
+            print("\n=== GENERATED TOKENS ===")
+            print("Access Token:", access_token)
+            if refresh_token:
+                print("Refresh Token:", refresh_token)
+                print(f"Token expires in: {expires_in} seconds ({expires_in/3600:.1f} hours)")
+            else:
+                print("Warning: No refresh token provided by Home Connect API")
+            print("\n=== END OF TOKENS ===\n")
+            
+            print("RECOMMENDED: Add this configuration to your config.yml:")
             print("services:")
             print("  homeconnect:")
-            print(f"    token: \"{token_data['access_token']}\"")
+            if refresh_token:
+                print("    token:")
+                print(f"      access_token: \"{access_token}\"")
+                print(f"      refresh_token: \"{refresh_token}\"")
+            else:
+                print(f"    token: \"{access_token}\"")
+            
+            print("\nNOTE: The new token format with refresh_token enables automatic")
+            print("token renewal. The module will refresh the token 12 hours before")
+            print("expiration to ensure continuous service.")
             return
         
         elif token_data.get('error') == 'authorization_pending':
