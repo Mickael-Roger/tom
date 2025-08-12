@@ -10,8 +10,10 @@ import android.text.TextWatcher
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.SeekBar
 import android.widget.Toast
 import android.animation.ObjectAnimator
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -166,18 +168,38 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Reset button - different behavior for debug/release
-        if (BuildConfig.DEBUG) {
-            // Debug: visible button
-            binding.btnReset.visibility = View.VISIBLE
-            binding.btnReset.setOnClickListener {
-                resetConversation()
+        // Reset slider
+        binding.sbReset.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    // Fade out the label as the user slides
+                    binding.tvResetLabel.alpha = 1.0f - (progress / seekBar!!.max.toFloat())
+                }
             }
-        } else {
-            // Release: hidden button, slide gesture instead
-            binding.btnReset.visibility = View.GONE
-            setupResetSlideGesture()
-        }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                // Optional: actions when sliding starts
+            }
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                if (seekBar != null) {
+                    if (seekBar.progress >= 95) { // Use a threshold for completion
+                        resetConversation()
+                    }
+
+                    // Animate the thumb back to the start
+                    val progressAnimator = ObjectAnimator.ofInt(seekBar, "progress", seekBar.progress, 0)
+                    progressAnimator.duration = 300
+                    progressAnimator.interpolator = DecelerateInterpolator()
+                    progressAnimator.start()
+
+                    // Animate the label alpha back to full
+                    val alphaAnimator = ObjectAnimator.ofFloat(binding.tvResetLabel, "alpha", binding.tvResetLabel.alpha, 1.0f)
+                    alphaAnimator.duration = 300
+                    alphaAnimator.start()
+                }
+            }
+        })
 
         // Settings button (header)
         binding.ivSettingsHeader.setOnClickListener {
@@ -210,34 +232,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupResetSlideGesture() {
-        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onFling(
-                e1: MotionEvent?,
-                e2: MotionEvent,
-                velocityX: Float,
-                velocityY: Float
-            ): Boolean {
-                if (e1 != null) {
-                    val diffY = e2.y - e1.y
-                    val diffX = e2.x - e1.x
-                    
-                    // Slide from bottom to top
-                    if (abs(diffY) > abs(diffX) && diffY < -100 && abs(velocityY) > 100) {
-                        resetConversation()
-                        return true
-                    }
-                }
-                return false
-            }
-        })
-        
-        // Apply gesture to the main chat area
-        binding.rvChat.setOnTouchListener { _, event ->
-            gestureDetector.onTouchEvent(event)
-            false // Allow normal scroll behavior
-        }
-    }
+    
 
     private fun setupAudio() {
         audioManager = AudioManager(

@@ -102,25 +102,10 @@
         android:orientation="vertical"
         android:background="@android:color/white"
         android:elevation="4dp"
-        android:padding="16dp">
-
-        <!-- Control buttons row (Reset only) -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center"
-            android:layout_marginBottom="8dp">
-
-            <ImageButton
-                android:id="@+id/btnReset"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:src="@drawable/ic_refresh"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Reset conversation" />
-
-        </LinearLayout>
+        android:paddingTop="16dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="8dp">
 
         <!-- Message input row -->
         <LinearLayout
@@ -163,6 +148,37 @@
                 android:enabled="false" />
 
         </LinearLayout>
+
+        <!-- Reset Slider -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="4dp">
+
+            <SeekBar
+                android:id="@+id/sbReset"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:max="100"
+                android:progress="0"
+                android:progressDrawable="@drawable/seek_track"
+                android:thumb="@drawable/seek_thumb"
+                android:thumbOffset="0dp"
+                android:paddingStart="1dp"
+                android:paddingEnd="1dp" />
+
+            <TextView
+                android:id="@+id/tvResetLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="Slide to Reset"
+                android:textColor="#757575"
+                android:textSize="16sp"
+                android:clickable="false"
+                android:focusable="false"/>
+        </FrameLayout>
 
     </LinearLayout>
     
