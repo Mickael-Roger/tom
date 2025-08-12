@@ -315,7 +315,7 @@ Instructions:
 3. Consider adding new tuning entries for modules not currently configured
 4. Consider modifying existing tuning entries if new information contradicts or enhances current settings
 5. Only suggest updates if there's clear, actionable information from the conversation
-6. Respond with a valid YAML configuration or "NO_UPDATE" if no changes are needed
+6. IMPORTANT: Only return the entries that need to be added or modified, NOT the complete configuration
 
 Examples of what to look for:
 - User preferences about response style or format
@@ -324,14 +324,18 @@ Examples of what to look for:
 - Contextual information that would improve module responses
 
 Response format requirements:
-- If updates are needed: respond with a complete YAML configuration in this exact format:
+- If updates are needed: respond with ONLY the entries to add/modify in this exact format:
   ```
   module_name1: "behavioral instruction as a single string"
   module_name2: "another behavioral instruction as a single string"
   ```
 - If no updates needed: respond exactly with "NO_UPDATE"
 
-IMPORTANT: Each tuning entry must be a simple string value, not a dictionary or complex structure. The behavioral instructions will be added directly as system context for the modules."""
+IMPORTANT: 
+- Each tuning entry must be a simple string value, not a dictionary or complex structure
+- The behavioral instructions will be added directly as system context for the modules
+- DO NOT return the complete existing configuration, only the new/modified entries
+- Existing entries not mentioned will be preserved automatically"""
 
         # Call LLM for tuning analysis
         tuning_messages = [
@@ -372,6 +376,10 @@ IMPORTANT: Each tuning entry must be a simple string value, not a dictionary or 
               new_tuning_config = yaml.safe_load(yaml_content)
               
               if new_tuning_config and isinstance(new_tuning_config, dict):
+                # Merge with existing tuning configuration instead of replacing
+                merged_tuning_config = current_tuning.copy()
+                merged_tuning_config.update(new_tuning_config)
+                
                 # Save updated tuning configuration
                 user_datadir = self.global_config['global'].get('user_datadir', './data/users/')
                 username = self.username
@@ -381,10 +389,11 @@ IMPORTANT: Each tuning entry must be a simple string value, not a dictionary or 
                 tuning_file = os.path.join(user_dir, 'tuning.yml')
                 
                 with open(tuning_file, 'w', encoding='utf-8') as f:
-                  yaml.dump(new_tuning_config, f, default_flow_style=False, allow_unicode=True)
+                  yaml.dump(merged_tuning_config, f, default_flow_style=False, allow_unicode=True)
                 
                 tomlogger.info(f"Updated tuning configuration with insights from conversation", self.username)
-                tomlogger.debug(f"New tuning config: {new_tuning_config}", self.username)
+                tomlogger.debug(f"Updated entries: {list(new_tuning_config.keys())}", self.username)
+                tomlogger.debug(f"Full merged config: {merged_tuning_config}", self.username)
               else:
                 tomlogger.debug(f"Invalid tuning config format returned by LLM", self.username)
             except yaml.YAMLError as e:
