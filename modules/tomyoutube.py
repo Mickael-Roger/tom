@@ -374,6 +374,17 @@ class TomYoutube:
       self.background_status['ts'] = int(time.time())
       self.background_status['status'] = status
 
+    # Nettoyage des vidéos vues et anciennes (>6 mois)
+    dbconn = sqlite3.connect(self.db)
+    cursor = dbconn.cursor()
+    cursor.execute("DELETE FROM videos WHERE viewed = 1 AND publication < datetime('now', '-6 months')")
+    deleted_count = cursor.rowcount
+    dbconn.commit()
+    dbconn.close()
+    
+    if deleted_count > 0:
+      logger.info(f"Nettoyage: {deleted_count} vidéos anciennes supprimées")
+
 
   def list_unviewed_videos(self):
 

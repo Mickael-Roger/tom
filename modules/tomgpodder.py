@@ -242,6 +242,7 @@ class TomGPodder:
                 self._sync_subscriptions()
                 self._sync_episodes()
                 self._sync_episode_status()
+                self._cleanup_old_episodes()
                 self._update_background_status()
                 logger.info("Background sync completed successfully")
             except Exception as e:
@@ -535,6 +536,28 @@ class TomGPodder:
                 'status': 'error',
                 'message': f'Failed to list unheard episodes: {str(e)}'
             }
+
+    def _cleanup_old_episodes(self):
+        """Clean up old played episodes (older than 6 months)."""
+        try:
+            dbconn = sqlite3.connect(self.db)
+            cursor = dbconn.cursor()
+            
+            cursor.execute("""
+                DELETE FROM episodes 
+                WHERE status = 'played' 
+                AND publication_date < datetime('now', '-6 months')
+            """)
+            deleted_count = cursor.rowcount
+            
+            dbconn.commit()
+            dbconn.close()
+            
+            if deleted_count > 0:
+                logger.info(f"Nettoyage: {deleted_count} épisodes anciens supprimés")
+                
+        except Exception as e:
+            logger.error(f"Error cleaning up old episodes: {e}")
 
     def _update_background_status(self):
         """Update background status with unheard episode count, like in tomyoutube.py."""
