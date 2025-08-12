@@ -1,5 +1,5 @@
 import feedparser
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import functools
 import sqlite3
@@ -340,12 +340,26 @@ class TomYoutube:
             all_videos.append(val[0])
 
           if video['id'] not in all_videos:
-            dbconn = sqlite3.connect(self.db)
-            cursor = dbconn.cursor()
-            video_type = 'short' if '/shorts/' in video['link'] else 'video'
-            cursor.execute("INSERT INTO videos (video_id, channel_id, channel_name, publication, title, uri, video_type) VALUES (?, ?, ?, ?, ?, ?, ?) ", (video['id'], id, name, datetime.fromtimestamp(time.mktime(video['published_parsed'])).strftime("%Y-%m-%d %H:%M:%S"), video['title'], video['link'], video_type))
-            dbconn.commit()
-            dbconn.close()
+            # Check if video is not too old (>5 months) before adding
+            should_add = True
+            if video.get('published_parsed'):
+              try:
+                video_date = datetime.fromtimestamp(time.mktime(video['published_parsed']))
+                five_months_ago = datetime.now() - timedelta(days=150)
+                if video_date < five_months_ago:
+                  should_add = False
+                  logger.debug(f"Skipping old video (>5 months): {video['title']}")
+              except:
+                # If date parsing fails, add the video anyway
+                pass
+            
+            if should_add:
+              dbconn = sqlite3.connect(self.db)
+              cursor = dbconn.cursor()
+              video_type = 'short' if '/shorts/' in video['link'] else 'video'
+              cursor.execute("INSERT INTO videos (video_id, channel_id, channel_name, publication, title, uri, video_type) VALUES (?, ?, ?, ?, ?, ?, ?) ", (video['id'], id, name, datetime.fromtimestamp(time.mktime(video['published_parsed'])).strftime("%Y-%m-%d %H:%M:%S"), video['title'], video['link'], video_type))
+              dbconn.commit()
+              dbconn.close()
 
           # Update channel last update to now
           dbconn = sqlite3.connect(self.db)

@@ -5,7 +5,8 @@ import os
 import sys
 import requests
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 from mygpoclient.api import MygPodderClient
 
 # Logging
@@ -311,7 +312,6 @@ class TomGPodder:
                             if pub_date_str:
                                 try:
                                     # Try parsing RFC 2822 format (common in RSS)
-                                    from email.utils import parsedate_to_datetime
                                     publication_date = parsedate_to_datetime(pub_date_str).isoformat()
                                 except:
                                     # Fallback: store raw date string
@@ -324,13 +324,28 @@ class TomGPodder:
                             """, (subscription_id, episode_url))
                             
                             if not cursor.fetchone():
-                                # Insert new episode
-                                cursor.execute("""
-                                    INSERT INTO episodes (subscription_id, title, publication_date, url, description)
-                                    VALUES (?, ?, ?, ?, ?)
-                                """, (subscription_id, episode_title, publication_date, episode_url, description))
+                                # Check if episode is not too old (>5 months) before adding
+                                should_add = True
+                                if publication_date:
+                                    try:
+                                        episode_date = parsedate_to_datetime(pub_date_str) if pub_date_str else None
+                                        if episode_date:
+                                            five_months_ago = datetime.now(episode_date.tzinfo) - timedelta(days=150)
+                                            if episode_date < five_months_ago:
+                                                should_add = False
+                                                logger.debug(f"Skipping old episode (>5 months): {episode_title}")
+                                    except:
+                                        # If date parsing fails, add the episode anyway
+                                        pass
                                 
-                                logger.debug(f"Added new episode: {episode_title}")
+                                if should_add:
+                                    # Insert new episode
+                                    cursor.execute("""
+                                        INSERT INTO episodes (subscription_id, title, publication_date, url, description)
+                                        VALUES (?, ?, ?, ?, ?)
+                                    """, (subscription_id, episode_title, publication_date, episode_url, description))
+                                    
+                                    logger.debug(f"Added new episode: {episode_title}")
                             
                         except Exception as e:
                             logger.error(f"Error processing episode in {sub_url}: {e}")
