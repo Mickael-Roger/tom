@@ -149,11 +149,10 @@ class HomeConnect:
                 
             homeconnect_config = config_data.get('services', {}).get('homeconnect', {})
             
-            # Support both simple token string and full token object
-            token_data = homeconnect_config.get('token', '')
+            # Token must be a full object with access_token and refresh_token
+            token_data = homeconnect_config.get('token', {})
             
             if isinstance(token_data, dict):
-                # Token is a full object with access_token and potentially refresh_token
                 access_token = token_data.get('access_token')
                 refresh_token = token_data.get('refresh_token')
                 
@@ -167,12 +166,8 @@ class HomeConnect:
                 else:
                     tomlogger.error("HomeConnect: No access_token found in token object", module_name="homeconnect")
                     return None
-                    
-            elif isinstance(token_data, str) and token_data:
-                # Token is a simple string (legacy format)
-                return token_data
             else:
-                tomlogger.error("HomeConnect: No token found in configuration", module_name="homeconnect")
+                tomlogger.error("HomeConnect: Token must be an object with access_token and refresh_token", module_name="homeconnect")
                 return None
                 
         except Exception as e:
@@ -302,12 +297,12 @@ class HomeConnect:
 
     def _refresh_token(self):
         """Refresh the access token using refresh token or config token as fallback"""
-        # Try to load from cache first
-        cached_token = self._load_token_from_cache()
-        if cached_token:
-            return True  # Cache is still valid
+        # Check if we need to refresh (less than 12h remaining)
+        refresh_delay = self._calculate_refresh_delay()
+        if refresh_delay > 0:
+            return True  # Not yet time to refresh
             
-        # Cache is invalid, try to use refresh token if available
+        # Time to refresh - try to use refresh token if available
         try:
             if os.path.exists(self._token_cache_file):
                 with open(self._token_cache_file, 'r', encoding='utf-8') as f:
