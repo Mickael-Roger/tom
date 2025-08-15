@@ -11,6 +11,7 @@ import json
 import sys
 import sqlite3
 import logging
+import requests
 from typing import Dict, Any, Optional
 
 # Add lib directory to path for imports
@@ -69,6 +70,78 @@ class TomWebService:
         if user and user['password'] == password:
             return user
         return None
+
+    def _proxy_request(self, endpoint: str) -> str:
+        """Proxy request to user's backend container"""
+        if not self._check_auth():
+            raise cherrypy.HTTPError(401, "Authentication required")
+            
+        username = cherrypy.session['username']
+        
+        # Build target URL
+        target_url = f"http://{username}:8080{endpoint}"
+        
+        # Get original request data
+        method = cherrypy.request.method
+        headers = dict(cherrypy.request.headers)
+        query_string = cherrypy.request.query_string
+        
+        # Remove host-specific headers that shouldn't be forwarded
+        headers_to_remove = ['host', 'content-length']
+        for header in headers_to_remove:
+            headers.pop(header, None)
+        
+        # Add query string if present
+        if query_string:
+            target_url += f"?{query_string}"
+        
+        try:
+            # Get request body for POST/PUT requests
+            body = None
+            if method in ['POST', 'PUT', 'PATCH']:
+                if hasattr(cherrypy.request, 'json') and cherrypy.request.json:
+                    body = json.dumps(cherrypy.request.json)
+                    headers['content-type'] = 'application/json'
+                else:
+                    # Handle form data or raw body
+                    body = cherrypy.request.body.read()
+                    if isinstance(body, bytes):
+                        body = body.decode('utf-8')
+            
+            tomlogger.debug(f"Proxying {method} {endpoint} to {target_url}", username, "web", "proxy")
+            
+            # Make the proxy request
+            response = requests.request(
+                method=method,
+                url=target_url,
+                headers=headers,
+                data=body,
+                timeout=30,
+                allow_redirects=False
+            )
+            
+            # Set response headers
+            for header_name, header_value in response.headers.items():
+                # Skip headers that shouldn't be forwarded
+                if header_name.lower() not in ['content-encoding', 'content-length', 'transfer-encoding']:
+                    cherrypy.response.headers[header_name] = header_value
+            
+            # Set response status
+            cherrypy.response.status = response.status_code
+            
+            tomlogger.debug(f"Proxy response: {response.status_code}", username, "web", "proxy")
+            
+            return response.content
+            
+        except requests.exceptions.ConnectionError:
+            tomlogger.error(f"Backend connection failed for user {username}", username, "web", "proxy")
+            raise cherrypy.HTTPError(503, f"Backend service unavailable for user {username}")
+        except requests.exceptions.Timeout:
+            tomlogger.error(f"Backend timeout for user {username}", username, "web", "proxy")
+            raise cherrypy.HTTPError(504, f"Backend timeout for user {username}")
+        except Exception as e:
+            tomlogger.error(f"Proxy error for user {username}: {str(e)}", username, "web", "proxy")
+            raise cherrypy.HTTPError(500, f"Proxy error: {str(e)}")
 
     @cherrypy.expose
     @cherrypy.tools.allow(methods=['GET'])
@@ -216,6 +289,30 @@ class TomWebService:
         except Exception as e:
             tomlogger.error(f"Error storing FCM token: {str(e)}", module_name="system")
             raise cherrypy.HTTPError(500, "Error storing FCM token")
+
+    @cherrypy.expose
+    @cherrypy.tools.allow(methods=['GET', 'POST'])
+    def notifications(self):
+        """Proxy notifications requests to user backend"""
+        return self._proxy_request("/notifications")
+
+    @cherrypy.expose
+    @cherrypy.tools.allow(methods=['POST'])
+    def reset(self):
+        """Proxy reset requests to user backend"""
+        return self._proxy_request("/reset")
+
+    @cherrypy.expose
+    @cherrypy.tools.allow(methods=['POST'])
+    def process(self):
+        """Proxy process requests to user backend"""
+        return self._proxy_request("/process")
+
+    @cherrypy.expose
+    @cherrypy.tools.allow(methods=['GET'])
+    def tasks(self):
+        """Proxy tasks requests to user backend"""
+        return self._proxy_request("/tasks")
 
 
 def main():

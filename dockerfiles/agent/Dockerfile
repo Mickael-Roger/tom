@@ -6,5 +6,7 @@ RUN addgroup -g 1000 tom && \
 
 USER 1000
 
+EXPOSE 8080
+
 # Run the application
 ENTRYPOINT ["/bin/sleep", "9999999999"]
