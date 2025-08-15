@@ -10,7 +10,9 @@ import os
 import sys
 import yaml
 import logging
-from typing import Dict, Any, Optional
+import asyncio
+import subprocess
+from typing import Dict, Any, Optional, List
 
 # Add lib directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'lib'))
@@ -114,6 +116,31 @@ class LLMConfig:
         tomlogger.info(f"✅ TTS LLM: {self.tts_llm}", module_name="llm")
 
 
+class MCPClient:
+    """MCP (Model Context Protocol) Client for managing user-specific MCP servers"""
+    
+    def __init__(self, username: str):
+        self.username = username
+        self.mcp_config_path = f"/data/users/{username}/mcp.json"
+        self.mcp_servers = {}
+        self.check_mcp_config()
+    
+    def check_mcp_config(self):
+        """Check for MCP configuration file presence"""
+        if os.path.exists(self.mcp_config_path):
+            try:
+                with open(self.mcp_config_path, 'r', encoding='utf-8') as file:
+                    config = json.load(file)
+                    self.mcp_servers = config.get('mcpServers', {})
+                    tomlogger.info(f"✅ MCP config found with {len(self.mcp_servers)} servers", self.username, module_name="mcp")
+            except json.JSONDecodeError as e:
+                tomlogger.error(f"❌ Invalid JSON in MCP config: {str(e)}", self.username, module_name="mcp")
+                self.mcp_servers = {}
+        else:
+            tomlogger.info(f"⚠️ No MCP config file found at {self.mcp_config_path}", self.username, module_name="mcp")
+            self.mcp_servers = {}
+
+
 class TomAgent:
     """Individual Tom agent service"""
     
@@ -124,6 +151,9 @@ class TomAgent:
         # Initialize LLM configuration
         self.llm_config = LLMConfig(config)
         tomlogger.info(f"Agent initialized for {username} with LLMs: {list(self.llm_config.llms_dict.keys())}", username, "sys", "agent")
+        
+        # Initialize MCP client
+        self.mcp_client = MCPClient(username)
         
     @cherrypy.expose
     @cherrypy.tools.allow(methods=['GET'])
