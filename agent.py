@@ -33,11 +33,97 @@ def init_config(config_path: str = '/data/config.yml') -> Dict[str, Any]:
         return {'global': {'log_level': 'INFO'}}
 
 
+class LLMConfig:
+    """Configuration class for LLM setup"""
+    
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        
+        # Variables to store LLM configuration
+        self.default_llm = None
+        self.tts_llm = None
+        self.llms_dict = {}  # Dict with llm_name -> {api, env_var, models}
+        
+        self._setup_llms()
+        
+    def _setup_llms(self):
+        """Setup LLM configurations from config"""
+        global_config = self.config.get('global', {})
+        
+        # Get default LLMs
+        self.default_llm = global_config.get('llm', 'openai')
+        self.tts_llm = global_config.get('llm_tts', self.default_llm)
+        
+        # Load LLM configuration from global.llms structure
+        llms_config = global_config.get('llms', {})
+        
+        tomlogger.info(f"Setting up LLMs from config: {list(llms_config.keys())}", module_name="llm")
+        
+        # Configure each LLM provider from configuration
+        for llm_name, llm_config in llms_config.items():
+            if not isinstance(llm_config, dict):
+                tomlogger.warning(f"Invalid configuration for LLM '{llm_name}', skipping", module_name="llm")
+                continue
+                
+            api_key = llm_config.get("api")
+            if not api_key:
+                tomlogger.warning(f"No API key found for LLM '{llm_name}', skipping", module_name="llm")
+                continue
+                
+            # Get models configuration (required)
+            models = llm_config.get("models")
+            if not models or len(models) != 3:
+                tomlogger.warning(f"LLM '{llm_name}' must have exactly 3 models for complexity levels 0, 1, 2. Skipping.", module_name="llm")
+                continue
+                
+            # Get environment variable name (required)
+            env_var = llm_config.get("env_var")
+            if not env_var:
+                tomlogger.warning(f"No env_var specified for LLM '{llm_name}', skipping", module_name="llm")
+                continue
+            
+            # Configure the LLM environment variable
+            os.environ[env_var] = api_key
+            
+            # Store LLM configuration in dict
+            self.llms_dict[llm_name] = {
+                "api": api_key,
+                "env_var": env_var,
+                "models": models
+            }
+            
+            tomlogger.info(f"✅ Configured LLM '{llm_name}' with models: {models}", module_name="llm")
+        
+        # Check that the configured default LLM was actually loaded
+        if self.default_llm not in self.llms_dict:
+            available_llms = list(self.llms_dict.keys())
+            tomlogger.error(f"Default LLM '{self.default_llm}' is not configured. Available LLMs: {available_llms}", module_name="llm")
+            if available_llms:
+                self.default_llm = available_llms[0]
+                tomlogger.warning(f"Falling back to first available LLM: {self.default_llm}", module_name="llm")
+            else:
+                tomlogger.critical("No LLMs configured! Agent will not function properly.", module_name="llm")
+        
+        # Check TTS LLM
+        if self.tts_llm not in self.llms_dict:
+            tomlogger.warning(f"TTS LLM '{self.tts_llm}' not configured, falling back to default LLM", module_name="llm")
+            self.tts_llm = self.default_llm
+        
+        # Log final configuration
+        tomlogger.info(f"✅ Default LLM: {self.default_llm}", module_name="llm")
+        tomlogger.info(f"✅ TTS LLM: {self.tts_llm}", module_name="llm")
+
+
 class TomAgent:
     """Individual Tom agent service"""
     
-    def __init__(self, username: str):
+    def __init__(self, username: str, config: Dict[str, Any]):
         self.username = username
+        self.config = config
+        
+        # Initialize LLM configuration
+        self.llm_config = LLMConfig(config)
+        tomlogger.info(f"Agent initialized for {username} with LLMs: {list(self.llm_config.llms_dict.keys())}", username, "sys", "agent")
         
     @cherrypy.expose
     @cherrypy.tools.allow(methods=['GET'])
@@ -123,7 +209,7 @@ def main():
     cherrypy.log.error_log.setLevel(logging.INFO)
     
     # Create agent instance
-    agent = TomAgent(username)
+    agent = TomAgent(username, config)
     
     tom_logger.startup(f"Tom Agent server starting on port 8080 for user {username}...")
     

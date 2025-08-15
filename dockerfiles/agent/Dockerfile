@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install dependencies
 RUN pip install --upgrade pip && \
-    pip install cherrypy PyYAML
+    pip install cherrypy PyYAML litellm
 
 # Create user with UID 1000
 RUN addgroup -g 1000 tom && \

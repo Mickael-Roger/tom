@@ -29,7 +29,7 @@ services:
     networks:
       - tom
     volumes:
-      - /data/users/mickael:/data
+      - /data/:/data/
 
   nina:
     build:
@@ -42,7 +42,7 @@ services:
     networks:
       - tom
     volumes:
-      - /data/users/nina:/data
+      - /data/:/data/
 
   ambre:
     build:
@@ -55,7 +55,7 @@ services:
     networks:
       - tom
     volumes:
-      - /data/users/ambre:/data
+      - /data/:/data/
 
   charlotte:
     build:
@@ -68,5 +68,5 @@ services:
     networks:
       - tom
     volumes:
-      - /data/users/charlotte:/data
+      - /data/:/data/
 
