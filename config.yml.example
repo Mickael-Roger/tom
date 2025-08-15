@@ -1,0 +1,145 @@
+global:
+  log_level: INFO
+  sessions: /tmp/tom_sessions  # Path for the session storage directory
+  
+  # Configuration Firebase pour les notifications push
+  firebase:
+    apiKey: "your-firebase-api-key"
+    authDomain: "your-project.firebaseapp.com"
+    projectId: "your-project-id"
+    storageBucket: "your-project.appspot.com"
+    messagingSenderId: "123456789"
+    appId: "1:123456789:web:abcdefghijklmnop"
+    vapidkey: "your-vapid-key"
+  
+  all_datadir: /data/all/  # Path for global data files
+
+  # LLM Configuration
+  llm: openai                    # Default LLM
+  llm_tts: openrouter-gemini     # TTS LLM
+  llms:
+    deepseek:
+      api: sk-your-deepseek-api-key
+      env_var: DEEPSEEK_API_KEY
+      models:
+      - deepseek/deepseek-chat
+      - deepseek/deepseek-chat
+      - deepseek/deepseek-reasoner
+    gemini:
+      api: AIzaSy-your-gemini-api-key
+      env_var: GEMINI_API_KEY
+      models:
+      - gemini/gemini-1.5-flash
+      - gemini/gemini-1.5-flash
+      - gemini/gemini-1.5-pro
+    mistral:
+      api: your-mistral-api-key
+      env_var: MISTRAL_API_KEY
+      models:
+      - mistral/mistral-large-latest
+      - mistral/mistral-large-latest
+      - mistral/mistral-large-latest
+    openai:
+      api: sk-proj-your-openai-api-key
+      env_var: OPENAI_API_KEY
+      models:
+      - openai/gpt-4o-mini
+      - openai/gpt-4o
+      - openai/gpt-4o
+    openrouter-gemini:
+      api: sk-or-v1-your-openrouter-api-key
+      env_var: OPENROUTER_API_KEY
+      models:
+      - openrouter/google/gemini-2.0-flash-exp
+      - openrouter/google/gemini-2.0-flash-exp
+      - openrouter/google/gemini-2.0-flash-exp
+    xai:
+      api: xai-your-xai-api-key
+      env_var: XAI_API_KEY
+      models:
+      - xai/grok-beta
+      - xai/grok-beta
+      - xai/grok-beta
+
+users:
+  - username: alice
+    password: alice123
+    personal_context: "Alice is a software developer who prefers technical responses and detailed explanations"
+    services:
+      weather:
+        url: http://weather-service/mcp
+        headers:
+          Authorization: "Bearer weather-api-token"
+          Content-Type: "application/json"
+        config:
+          description: "Weather forecast and current conditions service"
+          llm: openai
+          complexity: 1
+        enable: true
+      
+      calculator:
+        url: http://calculator-service/mcp
+        config:
+          description: "Mathematical calculations and data analysis"
+          llm: deepseek
+          complexity: 2
+        enable: true
+      
+      file_manager:
+        url: http://filemanager/mcp
+        headers:
+          X-API-Key: "file-access-key"
+        config:
+          description: "File operations and document management"
+          # llm not specified, will use global.llm
+          # complexity not specified, will default to 0
+        enable: false  # Disabled for this user
+    
+  - username: bob
+    password: bob456
+    personal_context: "Bob works in marketing and prefers concise, business-focused responses"
+    services:
+      analytics:
+        url: http://analytics-service/mcp
+        headers:
+          Authorization: "Bearer analytics-token"
+        config:
+          description: "Marketing analytics and reporting service"
+          llm: gemini
+          complexity: 1
+        enable: true
+      
+      crm:
+        url: http://crm-service/mcp
+        config:
+          description: "Customer relationship management tools"
+          llm: openai
+          complexity: 1
+        enable: true
+    
+  - username: charlie
+    password: charlie789
+    personal_context: "Charlie is a student who needs help with research and learning"
+    services:
+      research:
+        url: http://research-tools/mcp
+        config:
+          description: "Academic research and citation tools"
+          llm: mistral
+          complexity: 2
+        enable: true
+      
+      translator:
+        url: http://translation-service/mcp
+        headers:
+          Accept-Language: "en,fr,es"
+        config:
+          description: "Multi-language translation service"
+          llm: openrouter-gemini
+          complexity: 0
+        enable: true
+
+  - username: diana
+    password: diana321
+    personal_context: "Diana is a content creator who needs creative and writing assistance"
+    # No services configured - user will only have access to base LLM functionality

@@ -1,0 +1,389 @@
+# Tom Chatbot Server
+
+Tom is a multi-user chatbot server application with per-user agent isolation, LLM configuration management, and MCP (Model Context Protocol) support.
+
+## Architecture Overview
+
+### Components
+
+1. **Main Server (`tom.py`)** - HTTPS web server handling authentication and routing
+2. **Agent Service (`agent.py`)** - Individual user agent instances with LLM and MCP capabilities
+3. **Centralized Logging (`lib/tomlogger.py`)** - Thread-safe logging system with structured output
+4. **Configuration Management** - YAML-based configuration with per-user settings
+
+### System Architecture
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Web Client    │────│   Tom Server     │────│   User Agent    │
+│   (HTTPS)       │    │   (Port 443)     │    │   (Port 8080)   │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                              │                         │
+                              │                         │
+                       ┌──────▼──────┐           ┌──────▼──────┐
+                       │  Config.yml │           │   MCP       │
+                       │  Sessions   │           │   Servers   │
+                       │  TLS Certs  │           │   LLMs      │
+                       └─────────────┘           └─────────────┘
+```
+
+## Installation
+
+### Prerequisites
+
+- Python 3.13+
+- Docker (for containerized deployment)
+- TLS certificates for HTTPS
+- Configuration files in `/data/`
+
+### Directory Structure
+
+```
+/data/
+├── config.yml              # Main configuration (includes user MCP services)
+├── tls/                     # TLS certificates
+│   ├── cert.pem
+│   └── key.pem
+└── users/                   # (Optional user-specific data directory)
+```
+
+### Dependencies
+
+Install Python dependencies:
+
+```bash
+pip install cherrypy PyYAML litellm
+```
+
+## Configuration
+
+### Main Configuration (`/data/config.yml`)
+
+```yaml
+global:
+  log_level: INFO
+  sessions: /tmp/tom_sessions
+  
+  # Firebase configuration for push notifications
+  firebase:
+    apiKey: "your-firebase-api-key"
+    authDomain: "your-project.firebaseapp.com"
+    projectId: "your-project-id"
+    storageBucket: "your-project.appspot.com"
+    messagingSenderId: "123456789"
+    appId: "1:123456789:web:abcdefghijklmnop"
+    vapidkey: "your-vapid-key"
+  
+  all_datadir: /data/all/
+  
+  # LLM Configuration
+  llm: openai                    # Default LLM
+  llm_tts: openrouter-gemini     # TTS LLM
+  llms:
+    openai:
+      api: "sk-proj-..."
+      env_var: OPENAI_API_KEY
+      models:
+        - openai/gpt-4o-mini     # Complexity level 0
+        - openai/gpt-4.1         # Complexity level 1
+        - openai/gpt-4.1         # Complexity level 2
+    gemini:
+      api: "AIzaSy..."
+      env_var: GEMINI_API_KEY
+      models:
+        - gemini/gemini-1.5-flash
+        - gemini/gemini-1.5-flash
+        - gemini/gemini-1.5-flash
+
+users:
+  - username: alice
+    password: alice123
+    personal_context: "Alice is a software developer who prefers technical responses"
+    services:
+      weather:
+        url: "http://weather-service/mcp"
+        headers:
+          Authorization: "Bearer token123"
+          Content-Type: "application/json"
+        description: "Weather forecast service"
+        llm: "openai"
+        enable: true
+      calculator:
+        url: "http://calc-service/mcp"
+        enable: true
+  - username: bob
+    password: bob456
+    personal_context: "Bob prefers concise answers and works in marketing"
+    services:
+      analytics:
+        url: "http://analytics/mcp"
+        description: "Marketing analytics service"
+        enable: false
+```
+
+## Services
+
+### Tom Server (`tom.py`)
+
+**Purpose**: Main HTTPS web server with authentication and reverse proxy capabilities.
+
+**Key Features**:
+- HTTPS-only with TLS certificate validation
+- Session-based authentication
+- Reverse proxy to user-specific agent containers
+- Firebase push notification support
+
+**Routes**:
+- `/` - Main index page
+- `/auth` - Authentication endpoint
+- `/login` - User login
+- `/logout` - User logout
+- `/notificationconfig` - Firebase notification configuration
+- `/firebase_messaging_sw_js` - Firebase service worker
+- `/fcmtoken` - FCM token management
+- `/notifications` - Proxy to user agent
+- `/reset` - Proxy to user agent
+- `/process` - Proxy to user agent
+- `/tasks` - Proxy to user agent
+
+**Configuration**: Reads from `/data/config.yml`
+
+**Logging**: Uses centralized tomlogger with module context
+
+### Agent Service (`agent.py`)
+
+**Purpose**: Per-user agent instances with LLM and MCP capabilities.
+
+**Key Features**:
+- Multi-LLM support with complexity-based model selection
+- MCP client for external tool integration
+- User-specific configuration loading
+- Centralized logging integration
+
+**Components**:
+
+1. **LLMConfig Class**:
+   - Manages multiple LLM providers
+   - Environment variable configuration
+   - Model complexity mapping
+   - Fallback mechanisms
+
+2. **MCPClient Class**:
+   - User-specific MCP service configuration from config.yml
+   - URL-based service support with optional headers
+   - Personal context management
+   - Service enable/disable functionality
+   - Configuration validation
+
+3. **TomAgent Class**:
+   - CherryPy web service on port 8080
+   - Request handling and processing
+   - Integration with LLM and MCP systems
+
+**Routes**:
+- `/notifications` (GET) - Notifications endpoint
+- `/reset` (POST) - Reset user session
+- `/tasks` (GET) - Background tasks status
+- `/process` (POST) - Main processing endpoint
+
+### Logging System (`lib/tomlogger.py`)
+
+**Purpose**: Centralized, thread-safe logging with structured output.
+
+**Features**:
+- Thread-safe singleton pattern
+- Custom log formatting with context
+- CherryPy integration
+- Multiple log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+
+**Log Format**:
+```
+2025-01-15 10:30:45 | INFO     | alice        | llm             | ✅ Configured LLM 'openai' with models: ['openai/gpt-4o-mini', 'openai/gpt-4.1', 'openai/gpt-4.1']
+```
+
+**Context Fields**:
+- Timestamp
+- Log level
+- Username (max 12 chars)
+- Module name (max 15 chars)
+- Message
+
+## Docker Deployment
+
+### Tom Server Container
+
+```dockerfile
+FROM python:3.13-alpine
+WORKDIR /app
+RUN pip install cherrypy PyYAML
+RUN addgroup -g 1000 tom && adduser -u 1000 -G tom -s /bin/sh -D tom
+COPY tom.py lib/ /app/
+RUN chown -R tom:tom /app
+USER 1000
+EXPOSE 443
+ENTRYPOINT ["python", "tom.py"]
+```
+
+### Agent Container
+
+```dockerfile
+FROM python:3.13-alpine
+WORKDIR /app
+RUN pip install cherrypy PyYAML litellm
+RUN addgroup -g 1000 tom && adduser -u 1000 -G tom -s /bin/sh -D tom
+COPY agent.py lib/ /app/
+RUN chown -R tom:tom /app
+USER 1000
+EXPOSE 8080
+ENTRYPOINT ["python", "agent.py"]
+```
+
+### Environment Variables
+
+**Agent Container**:
+- `TOM_USERNAME` - Username for the agent instance
+- LLM API keys as configured in config.yml
+
+## Usage
+
+### Starting the Services
+
+1. **Prepare configuration**:
+   ```bash
+   # Create configuration directory
+   mkdir -p /data/tls /data/users
+   
+   # Copy TLS certificates
+   cp cert.pem /data/tls/
+   cp key.pem /data/tls/
+   
+   # Create main configuration
+   cp config.yml /data/
+   ```
+
+2. **Start Tom Server**:
+   ```bash
+   python tom.py
+   ```
+
+3. **Start Agent for user**:
+   ```bash
+   export TOM_USERNAME=alice
+   python agent.py
+   ```
+
+### Docker Compose Example
+
+```yaml
+version: '3.8'
+services:
+  tom-server:
+    build:
+      context: .
+      dockerfile: dockerfiles/tom/Dockerfile
+    ports:
+      - "443:443"
+    volumes:
+      - /data:/data
+    
+  tom-agent-alice:
+    build:
+      context: .
+      dockerfile: dockerfiles/agent/Dockerfile
+    environment:
+      - TOM_USERNAME=alice
+    volumes:
+      - /data:/data
+    depends_on:
+      - tom-server
+```
+
+## Security Features
+
+- **HTTPS Only**: No HTTP fallback, TLS required
+- **Session Management**: File-based session storage
+- **User Isolation**: Per-user agent containers
+- **API Key Management**: Environment variable isolation
+- **Non-root Execution**: All containers run as UID 1000
+
+## Monitoring and Debugging
+
+### Log Analysis
+
+All services use structured logging with the following format:
+- Timestamp with millisecond precision
+- Consistent log levels
+- User context tracking
+- Module-specific categorization
+
+### Health Checking
+
+Each service exposes endpoints that can be used for health monitoring:
+- Tom Server: GET requests to authenticated routes
+- Agent Service: GET `/tasks` endpoint
+
+### Configuration Validation
+
+- YAML syntax validation on startup
+- LLM configuration validation with fallbacks
+- MCP server configuration checking
+- TLS certificate validation
+
+## Development
+
+### Adding New LLM Providers
+
+1. Add configuration to `config.yml`:
+   ```yaml
+   llms:
+     new-provider:
+       api: "api-key"
+       env_var: NEW_PROVIDER_API_KEY
+       models:
+         - provider/model-simple
+         - provider/model-standard
+         - provider/model-complex
+   ```
+
+2. Set environment variable in agent container
+
+### Adding New MCP Services
+
+1. Add service configuration to user in `config.yml`:
+   ```yaml
+   users:
+     - username: alice
+       password: alice123
+       services:
+         new-service:
+           url: "http://new-service/mcp"
+           headers:
+             Authorization: "Bearer your-token"
+           description: "Description of the new service"
+           llm: "openai"
+           enable: true
+   ```
+
+2. The agent will automatically detect and log the new service on startup
+
+## Troubleshooting
+
+### Common Issues
+
+1. **TLS Certificate Errors**: Ensure certificates are in `/data/tls/` and readable
+2. **Configuration Not Found**: Check `/data/config.yml` exists and is valid YAML
+3. **LLM API Errors**: Verify API keys and environment variables
+4. **MCP Service Issues**: Check service URLs and authentication in user config
+5. **Port Conflicts**: Ensure ports 443 and 8080 are available
+
+### Log Messages
+
+- `✅` - Successful operations
+- `⚠️` - Warnings or missing optional components
+- `❌` - Errors requiring attention
+- `🚀` - Service startup messages
+- `🛑` - Service shutdown messages
+
+## License
+
+This project is part of the Tom chatbot system. See individual files for specific licensing information.

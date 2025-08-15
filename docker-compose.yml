@@ -70,3 +70,20 @@ services:
     volumes:
       - /data/:/data/
 
+ ### MODULES MCP ###
+ 
+  weather:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/weather/Dockerfile
+    container_name: weather
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    ports:
+      - 9090:80
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/weather/:/data/
+

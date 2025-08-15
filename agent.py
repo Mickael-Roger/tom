@@ -10,7 +10,11 @@ import os
 import sys
 import yaml
 import logging
-from typing import Dict, Any, Optional
+import asyncio
+import httpx
+from typing import Dict, Any, Optional, List
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
 
 # Add lib directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'lib'))
@@ -121,6 +125,7 @@ class MCPClient:
         self.username = username
         self.config = config
         self.mcp_services = {}
+        self.mcp_connections = {}  # Dict: service_name -> {object, description, complexity, tools}
         self.load_user_services()
     
     def load_user_services(self):
@@ -163,9 +168,18 @@ class MCPClient:
             
             # Extract optional fields
             headers = service_config.get('headers', {})
-            description = service_config.get('description', '')
-            llm = service_config.get('llm', '')
             enable = service_config.get('enable', True)  # Default to True if not specified
+            
+            # Extract config section for description, complexity, and llm
+            config_section = service_config.get('config', {})
+            description = config_section.get('description', '')
+            complexity = config_section.get('complexity', 0)  # Default to 0 if not specified
+            
+            # Get LLM with fallback to global default
+            llm = config_section.get('llm', '')
+            if not llm:
+                # Fallback to global.llm if not specified in service config
+                llm = self.config.get('global', {}).get('llm', 'openai')
             
             # Validate headers is a dict
             if not isinstance(headers, dict):
@@ -183,12 +197,188 @@ class MCPClient:
                 'headers': headers,
                 'description': description,
                 'llm': llm,
+                'complexity': complexity,
                 'enable': enable
             }
             
             tomlogger.info(f"✅ Loaded MCP service '{service_name}' at {url}", self.username, module_name="mcp")
         
         tomlogger.info(f"Loaded {len(self.mcp_services)} MCP services for user '{self.username}'", self.username, module_name="mcp")
+        
+        # Initialize MCP connections structure with config values
+        for service_name, service_config in self.mcp_services.items():
+            self.mcp_connections[service_name] = {
+                'object': None,
+                'description': service_config['description'],
+                'complexity': service_config['complexity'],
+                'tools': []
+            }
+        
+        # Debug logging for MCP connections if in DEBUG mode
+        log_level = self.config.get('global', {}).get('log_level', 'INFO')
+        if log_level.upper() == 'DEBUG':
+            # Log structure without the actual session objects to avoid serialization issues
+            debug_connections = {}
+            for name, conn in self.mcp_connections.items():
+                debug_connections[name] = {
+                    'description': conn['description'],
+                    'complexity': conn['complexity'],
+                    'object_type': type(conn['object']).__name__ if conn['object'] else 'None',
+                    'tools_count': len(conn['tools'])
+                }
+            tomlogger.debug(f"MCP connections structure: {debug_connections}", self.username, module_name="mcp")
+    
+    async def initialize_mcp_connections(self):
+        """Initialize MCP connections for all enabled services with retry logic"""
+        max_retries = 10  # Maximum number of retry cycles
+        retry_delay = 60  # Wait 1 minute between retry cycles
+        
+        failed_services = list(self.mcp_services.keys())  # Start with all services
+        retry_count = 0
+        
+        while failed_services and retry_count < max_retries:
+            if retry_count > 0:
+                tomlogger.info(f"Retrying MCP connections (attempt {retry_count + 1}/{max_retries}) for {len(failed_services)} services", self.username, module_name="mcp")
+                await asyncio.sleep(retry_delay)
+            
+            # Try to connect to all failed services
+            newly_failed = []
+            for service_name in failed_services:
+                service_config = self.mcp_services[service_name]
+                try:
+                    success = await self.connect_to_mcp_service(service_name, service_config)
+                    if not success:
+                        newly_failed.append(service_name)
+                except Exception as e:
+                    tomlogger.error(f"Failed to connect to MCP service '{service_name}': {str(e)}", self.username, module_name="mcp")
+                    newly_failed.append(service_name)
+            
+            # Update the list of failed services
+            failed_services = newly_failed
+            retry_count += 1
+            
+            if failed_services:
+                tomlogger.warning(f"Still {len(failed_services)} failed MCP services: {failed_services}", self.username, module_name="mcp")
+            else:
+                tomlogger.info(f"✅ All MCP services connected successfully", self.username, module_name="mcp")
+                break
+        
+        if failed_services:
+            tomlogger.error(f"❌ Failed to connect to {len(failed_services)} MCP services after {max_retries} retries: {failed_services}", self.username, module_name="mcp")
+    
+    async def connect_to_mcp_service(self, service_name: str, service_config: Dict[str, Any]) -> bool:
+        """Connect to a specific MCP service and retrieve its tools
+        
+        Returns:
+            bool: True if connection successful, False otherwise
+        """
+        url = service_config['url']
+        headers = service_config.get('headers', {})
+        
+        tomlogger.info(f"🔌 Attempting connection to MCP service '{service_name}' at {url}", self.username, module_name="mcp")
+        tomlogger.debug(f"Connection details - URL: {url}, Headers: {headers}", self.username, module_name="mcp")
+        
+        try:
+            # Test SSE endpoint connectivity with proper headers
+            tomlogger.debug(f"Testing SSE endpoint connectivity to {url}", self.username, module_name="mcp")
+            async with httpx.AsyncClient(timeout=10.0) as http_client:
+                try:
+                    # Test with SSE-specific headers
+                    sse_headers = {
+                        'Accept': 'text/event-stream',
+                        'Cache-Control': 'no-cache',
+                        **headers  # Include any custom headers from config
+                    }
+                    response = await http_client.get(url, headers=sse_headers, timeout=5.0)
+                    tomlogger.debug(f"SSE endpoint response status: {response.status_code}, Content-Type: {response.headers.get('content-type', 'unknown')}", self.username, module_name="mcp")
+                    
+                    # For SSE, we expect either 200 or specific streaming response
+                    if response.status_code not in [200, 202]:
+                        tomlogger.warning(f"SSE endpoint returned unexpected status {response.status_code} for '{service_name}'", self.username, module_name="mcp")
+                    
+                except httpx.RequestError as e:
+                    tomlogger.error(f"SSE endpoint connectivity test failed for '{service_name}': {type(e).__name__}: {str(e)}", self.username, module_name="mcp")
+                    return False
+                except httpx.TimeoutException:
+                    tomlogger.debug(f"SSE endpoint test timeout for '{service_name}' (expected for streaming endpoints)", self.username, module_name="mcp")
+                    # Timeout is actually expected for SSE endpoints, continue
+                except httpx.HTTPStatusError as e:
+                    tomlogger.error(f"SSE endpoint HTTP status error for '{service_name}': {e.response.status_code}", self.username, module_name="mcp")
+                    return False
+            
+            # Now try full MCP streamable HTTP connection
+            tomlogger.debug(f"Attempting streamable HTTP MCP connection to '{service_name}'", self.username, module_name="mcp")
+            try:
+                # Use streamable HTTP client for MCP over HTTP
+                async with streamablehttp_client(url) as (read_stream, write_stream, _):
+                    tomlogger.debug(f"Streamable HTTP connection established for '{service_name}'", self.username, module_name="mcp")
+                    
+                    try:
+                        async with ClientSession(read_stream, write_stream) as session:
+                            tomlogger.debug(f"MCP ClientSession created for '{service_name}'", self.username, module_name="mcp")
+                            
+                            # Initialize the MCP session
+                            tomlogger.debug(f"Initializing MCP session for '{service_name}'", self.username, module_name="mcp")
+                            await session.initialize()
+                            tomlogger.debug(f"MCP session initialized for '{service_name}'", self.username, module_name="mcp")
+                            
+                            # Get available tools from the MCP server
+                            tomlogger.debug(f"Requesting tools list from '{service_name}'", self.username, module_name="mcp")
+                            tools_result = await session.list_tools()
+                            tomlogger.debug(f"Received {len(tools_result.tools)} tools from '{service_name}'", self.username, module_name="mcp")
+                            
+                            # Convert MCP tools to OpenAI format
+                            openai_tools = []
+                            for tool in tools_result.tools:
+                                openai_tool = {
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool.name,
+                                        "description": tool.description,
+                                        "strict": True,
+                                        "parameters": tool.inputSchema if hasattr(tool, 'inputSchema') else {
+                                            "type": "object",
+                                            "properties": {},
+                                            "required": [],
+                                            "additionalProperties": False
+                                        }
+                                    }
+                                }
+                                openai_tools.append(openai_tool)
+                            
+                            # Update the existing service entry in connections dict with MCP client object
+                            if service_name in self.mcp_connections:
+                                self.mcp_connections[service_name]['object'] = session
+                                self.mcp_connections[service_name]['tools'] = openai_tools
+                                # description and complexity are already set from config
+                            
+                            tomlogger.info(f"✅ Successfully connected to MCP service '{service_name}' with {len(openai_tools)} tools", self.username, module_name="mcp")
+                            tomlogger.debug(f"Available tools for '{service_name}': {[tool['function']['name'] for tool in openai_tools]}", self.username, module_name="mcp")
+                            return True
+                    
+                    except Exception as session_error:
+                        tomlogger.error(f"MCP session error for '{service_name}': {type(session_error).__name__}: {str(session_error)}", self.username, module_name="mcp")
+                        import traceback
+                        tomlogger.debug(f"Session error traceback for '{service_name}': {traceback.format_exc()}", self.username, module_name="mcp")
+                        return False
+                        
+            except Exception as http_error:
+                tomlogger.error(f"Streamable HTTP connection error for '{service_name}': {type(http_error).__name__}: {str(http_error)}", self.username, module_name="mcp")
+                import traceback
+                tomlogger.debug(f"HTTP error traceback for '{service_name}': {traceback.format_exc()}", self.username, module_name="mcp")
+                return False
+            
+        except Exception as e:
+            tomlogger.error(f"❌ Unexpected error connecting to MCP service '{service_name}': {type(e).__name__}: {str(e)}", self.username, module_name="mcp")
+            import traceback
+            tomlogger.debug(f"Full error traceback for '{service_name}': {traceback.format_exc()}", self.username, module_name="mcp")
+            return False
+        
+        finally:
+            # Keep the service entry but mark as failed if we reach here
+            if service_name in self.mcp_connections and self.mcp_connections[service_name]['object'] is None:
+                self.mcp_connections[service_name]['object'] = None
+                self.mcp_connections[service_name]['tools'] = []
     
     def get_services(self) -> Dict[str, Dict]:
         """Get all configured MCP services for the user"""
@@ -198,9 +388,32 @@ class MCPClient:
         """Get configuration for a specific MCP service"""
         return self.mcp_services.get(service_name)
     
+    def get_mcp_connections(self) -> Dict[str, Dict]:
+        """Get all MCP connections with their objects, descriptions, complexity and tools"""
+        return self.mcp_connections
+    
+    def get_mcp_connection(self, service_name: str) -> Optional[Dict]:
+        """Get MCP connection object for a specific service"""
+        return self.mcp_connections.get(service_name)
+    
     def get_personal_context(self) -> str:
         """Get the personal context for the user"""
         return getattr(self, 'personal_context', '')
+    
+    def init_connections_sync(self):
+        """Synchronous wrapper to initialize MCP connections"""
+        if self.mcp_services:
+            tomlogger.info(f"Starting MCP connections initialization for {len(self.mcp_services)} services", self.username, module_name="mcp")
+            # Run the async initialization in a new event loop
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(self.initialize_mcp_connections())
+                loop.close()
+            except Exception as e:
+                tomlogger.error(f"Failed to initialize MCP connections: {str(e)}", self.username, module_name="mcp")
+        else:
+            tomlogger.info("No MCP services configured for initialization", self.username, module_name="mcp")
 
 
 class TomAgent:
@@ -216,6 +429,9 @@ class TomAgent:
         
         # Initialize MCP client
         self.mcp_client = MCPClient(username, config)
+        
+        # Initialize MCP connections
+        self.mcp_client.init_connections_sync()
         
     @cherrypy.expose
     @cherrypy.tools.allow(methods=['GET'])
