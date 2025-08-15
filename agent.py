@@ -10,9 +10,7 @@ import os
 import sys
 import yaml
 import logging
-import asyncio
-import subprocess
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 
 # Add lib directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'lib'))
@@ -117,28 +115,92 @@ class LLMConfig:
 
 
 class MCPClient:
-    """MCP (Model Context Protocol) Client for managing user-specific MCP servers"""
+    """MCP (Model Context Protocol) Client for managing user-specific MCP services"""
     
-    def __init__(self, username: str):
+    def __init__(self, username: str, config: Dict[str, Any]):
         self.username = username
-        self.mcp_config_path = f"/data/users/{username}/mcp.json"
-        self.mcp_servers = {}
-        self.check_mcp_config()
+        self.config = config
+        self.mcp_services = {}
+        self.load_user_services()
     
-    def check_mcp_config(self):
-        """Check for MCP configuration file presence"""
-        if os.path.exists(self.mcp_config_path):
-            try:
-                with open(self.mcp_config_path, 'r', encoding='utf-8') as file:
-                    config = json.load(file)
-                    self.mcp_servers = config.get('mcpServers', {})
-                    tomlogger.info(f"✅ MCP config found with {len(self.mcp_servers)} servers", self.username, module_name="mcp")
-            except json.JSONDecodeError as e:
-                tomlogger.error(f"❌ Invalid JSON in MCP config: {str(e)}", self.username, module_name="mcp")
-                self.mcp_servers = {}
-        else:
-            tomlogger.info(f"⚠️ No MCP config file found at {self.mcp_config_path}", self.username, module_name="mcp")
-            self.mcp_servers = {}
+    def load_user_services(self):
+        """Load MCP services configuration for the user from config.yml"""
+        users_config = self.config.get('users', [])
+        user_config = None
+        
+        # Find the user configuration
+        for user in users_config:
+            if user.get('username') == self.username:
+                user_config = user
+                break
+        
+        if not user_config:
+            tomlogger.warning(f"No configuration found for user '{self.username}'", self.username, module_name="mcp")
+            return
+        
+        # Load personal context
+        self.personal_context = user_config.get('personal_context', '')
+        if self.personal_context:
+            tomlogger.info(f"✅ Personal context loaded for user '{self.username}'", self.username, module_name="mcp")
+        
+        # Load services configuration
+        services = user_config.get('services', {})
+        if not services:
+            tomlogger.info(f"No MCP services configured for user '{self.username}'", self.username, module_name="mcp")
+            return
+        
+        # Validate and store each service
+        for service_name, service_config in services.items():
+            if not isinstance(service_config, dict):
+                tomlogger.warning(f"Invalid service configuration for '{service_name}', skipping", self.username, module_name="mcp")
+                continue
+            
+            # Validate required fields
+            url = service_config.get('url')
+            if not url:
+                tomlogger.warning(f"Service '{service_name}' missing required 'url' field, skipping", self.username, module_name="mcp")
+                continue
+            
+            # Extract optional fields
+            headers = service_config.get('headers', {})
+            description = service_config.get('description', '')
+            llm = service_config.get('llm', '')
+            enable = service_config.get('enable', True)  # Default to True if not specified
+            
+            # Validate headers is a dict
+            if not isinstance(headers, dict):
+                tomlogger.warning(f"Service '{service_name}' has invalid headers (must be dict), using empty headers", self.username, module_name="mcp")
+                headers = {}
+            
+            # Skip disabled services
+            if not enable:
+                tomlogger.info(f"⚠️ MCP service '{service_name}' is disabled, skipping", self.username, module_name="mcp")
+                continue
+            
+            # Store service configuration
+            self.mcp_services[service_name] = {
+                'url': url,
+                'headers': headers,
+                'description': description,
+                'llm': llm,
+                'enable': enable
+            }
+            
+            tomlogger.info(f"✅ Loaded MCP service '{service_name}' at {url}", self.username, module_name="mcp")
+        
+        tomlogger.info(f"Loaded {len(self.mcp_services)} MCP services for user '{self.username}'", self.username, module_name="mcp")
+    
+    def get_services(self) -> Dict[str, Dict]:
+        """Get all configured MCP services for the user"""
+        return self.mcp_services
+    
+    def get_service(self, service_name: str) -> Optional[Dict]:
+        """Get configuration for a specific MCP service"""
+        return self.mcp_services.get(service_name)
+    
+    def get_personal_context(self) -> str:
+        """Get the personal context for the user"""
+        return getattr(self, 'personal_context', '')
 
 
 class TomAgent:
@@ -153,7 +215,7 @@ class TomAgent:
         tomlogger.info(f"Agent initialized for {username} with LLMs: {list(self.llm_config.llms_dict.keys())}", username, "sys", "agent")
         
         # Initialize MCP client
-        self.mcp_client = MCPClient(username)
+        self.mcp_client = MCPClient(username, config)
         
     @cherrypy.expose
     @cherrypy.tools.allow(methods=['GET'])
