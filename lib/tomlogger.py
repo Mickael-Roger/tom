@@ -5,12 +5,14 @@ from enum import Enum
 from typing import Optional
 import threading
 
+
 class LogLevel(Enum):
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
     ERROR = "ERROR"
     CRITICAL = "CRITICAL"
+
 
 class TomLogger:
     """
@@ -47,7 +49,37 @@ class TomLogger:
         self.logger.handlers.clear()
         
         # Create custom formatter
-        formatter = logging.Formatter(
+        class TomFormatter(logging.Formatter):
+            def format(self, record):
+                # Set default values for missing context fields
+                if not hasattr(record, 'username'):
+                    # Check if this is a CherryPy log
+                    if hasattr(record, 'name') and 'cherrypy' in record.name:
+                        record.username = 'cherrypy'
+                        # Force CherryPy logs to INFO level for consistency
+                        if record.levelno != logging.INFO:
+                            record.levelno = logging.INFO
+                            record.levelname = 'INFO'
+                    else:
+                        record.username = 'system'
+                        
+                if not hasattr(record, 'module_name'):
+                    # Use logger name for module_name if not set
+                    if hasattr(record, 'name') and record.name:
+                        if 'cherrypy' in record.name:
+                            record.module_name = 'cherrypy'
+                        else:
+                            record.module_name = record.name.split('.')[-1][:15]
+                    else:
+                        record.module_name = 'system'
+                        
+                # Truncate fields to fit format
+                record.username = record.username[:12]
+                record.module_name = record.module_name[:15]
+                
+                return super().format(record)
+        
+        formatter = TomFormatter(
             '%(asctime)s | %(levelname)-8s | %(username)-12s | %(module_name)-15s | %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
@@ -206,8 +238,10 @@ class TomLogger:
         """Log file watcher events"""
         self.info(f"🔍 {message}", module_name="system")
 
-# Global logger instance - will be initialized with config in server.py
+
+# Global logger instance - will be initialized with config in tom.py
 logger = None
+
 
 # Function to initialize the global logger
 def init_logger(log_level: str = "INFO"):
@@ -220,27 +254,33 @@ def init_logger(log_level: str = "INFO"):
         logger.set_log_level(log_level)
     return logger
 
+
 # Convenience functions for easy access
 def set_log_context(username: Optional[str] = None, client_type: Optional[str] = None, module_name: Optional[str] = None):
     """Set logging context for current thread"""
     if logger:
         logger.set_context(username, client_type, module_name)
 
+
 def debug(message: str, username: Optional[str] = None, client_type: Optional[str] = None, module_name: Optional[str] = None):
     if logger:
         logger.debug(message, username, client_type, module_name)
+
 
 def info(message: str, username: Optional[str] = None, client_type: Optional[str] = None, module_name: Optional[str] = None):
     if logger:
         logger.info(message, username, client_type, module_name)
 
+
 def warning(message: str, username: Optional[str] = None, client_type: Optional[str] = None, module_name: Optional[str] = None):
     if logger:
         logger.warning(message, username, client_type, module_name)
 
+
 def error(message: str, username: Optional[str] = None, client_type: Optional[str] = None, module_name: Optional[str] = None):
     if logger:
         logger.error(message, username, client_type, module_name)
+
 
 def critical(message: str, username: Optional[str] = None, client_type: Optional[str] = None, module_name: Optional[str] = None):
     if logger:

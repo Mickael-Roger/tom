@@ -1,0 +1,72 @@
+version: "3.9"
+
+networks:
+  tom:
+    driver: bridge
+
+services:
+  tom:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/tom/Dockerfile
+    container_name: tom
+    restart: always
+    ports:
+      - "443:443"
+    volumes:
+      - /data/:/data/
+    networks:
+      - tom
+
+  mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/agent/Dockerfile
+    container_name: mickael
+    restart: always
+    environment:
+      - TOM_USERNAME=mickael
+    networks:
+      - tom
+    volumes:
+      - /data/users/mickael:/data
+
+  nina:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/agent/Dockerfile
+    container_name: nina
+    restart: always
+    environment:
+      - TOM_USERNAME=nina
+    networks:
+      - tom
+    volumes:
+      - /data/users/nina:/data
+
+  ambre:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/agent/Dockerfile
+    container_name: ambre
+    restart: always
+    environment:
+      - TOM_USERNAME=ambre
+    networks:
+      - tom
+    volumes:
+      - /data/users/ambre:/data
+
+  charlotte:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/agent/Dockerfile
+    container_name: charlotte
+    restart: always
+    environment:
+      - TOM_USERNAME=charlotte
+    networks:
+      - tom
+    volumes:
+      - /data/users/charlotte:/data
+
