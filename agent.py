@@ -322,14 +322,19 @@ class MCPClient:
                                 }
                                 openai_tools.append(openai_tool)
                             
-                            # Update the existing service entry in connections dict with MCP client object
+                            # Store tools and connection info, but don't keep the session object
+                            # The session will be recreated when needed for actual tool calls
                             if service_name in self.mcp_connections:
-                                self.mcp_connections[service_name]['object'] = session
+                                self.mcp_connections[service_name]['object'] = None  # Don't store session
                                 self.mcp_connections[service_name]['tools'] = openai_tools
+                                self.mcp_connections[service_name]['url'] = url  # Store URL for reconnection
+                                self.mcp_connections[service_name]['headers'] = headers
                                 # description and complexity are already set from config
                             
                             tomlogger.info(f"✅ Successfully connected to MCP service '{service_name}' with {len(openai_tools)} tools", self.username, module_name="mcp")
                             tomlogger.debug(f"Available tools for '{service_name}': {[tool['function']['name'] for tool in openai_tools]}", self.username, module_name="mcp")
+                            
+                            # Session will be closed automatically by the context manager
                             return True
                     
                     except Exception as session_error:
@@ -376,6 +381,28 @@ class MCPClient:
         """Get the personal context for the user"""
         return getattr(self, 'personal_context', '')
     
+    async def create_mcp_session(self, service_name: str):
+        """Create a new MCP session for a service when needed"""
+        if service_name not in self.mcp_connections:
+            return None
+        
+        connection_info = self.mcp_connections[service_name]
+        url = connection_info.get('url')
+        headers = connection_info.get('headers', {})
+        
+        if not url:
+            return None
+        
+        try:
+            # Create new session for tool calls
+            async with streamablehttp_client(url) as (read_stream, write_stream, _):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    return session
+        except Exception as e:
+            tomlogger.error(f"Failed to create MCP session for '{service_name}': {str(e)}", self.username, module_name="mcp")
+            return None
+    
     def init_connections_sync(self):
         """Synchronous wrapper to initialize MCP connections"""
         if self.mcp_services:
@@ -384,8 +411,18 @@ class MCPClient:
             try:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                loop.run_until_complete(self.initialize_mcp_connections())
-                loop.close()
+                try:
+                    loop.run_until_complete(self.initialize_mcp_connections())
+                finally:
+                    # Ensure all pending tasks are properly cancelled
+                    pending_tasks = asyncio.all_tasks(loop)
+                    if pending_tasks:
+                        tomlogger.debug(f"Cancelling {len(pending_tasks)} pending tasks", self.username, module_name="mcp")
+                        for task in pending_tasks:
+                            task.cancel()
+                        # Wait for tasks to be cancelled
+                        loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
+                    loop.close()
             except Exception as e:
                 tomlogger.error(f"Failed to initialize MCP connections: {str(e)}", self.username, module_name="mcp")
         else:
