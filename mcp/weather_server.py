@@ -35,7 +35,7 @@ else:
     logger = logging.getLogger(__name__)
 
 # Initialize FastMCP server
-server = FastMCP(name="weather-server", host="0.0.0.0", port=80)
+server = FastMCP(name="weather-server", stateless_http=True, host="0.0.0.0", port=80)
 
 
 class WeatherService:
@@ -269,8 +269,8 @@ def main():
     else:
         print("Starting Weather MCP Server on port 80")
     
-    # Run the FastMCP server with SSE transport
-    server.run(transport="sse")
+    # Run the FastMCP server with streamable HTTP transport
+    server.run(transport="streamable-http")
 
 
 if __name__ == "__main__":

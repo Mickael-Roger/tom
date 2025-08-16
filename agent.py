@@ -279,35 +279,11 @@ class MCPClient:
         tomlogger.debug(f"Connection details - URL: {url}, Headers: {headers}", self.username, module_name="mcp")
         
         try:
-            # Test SSE endpoint connectivity with proper headers
-            tomlogger.debug(f"Testing SSE endpoint connectivity to {url}", self.username, module_name="mcp")
-            async with httpx.AsyncClient(timeout=10.0) as http_client:
-                try:
-                    # Test with SSE-specific headers
-                    sse_headers = {
-                        'Accept': 'text/event-stream',
-                        'Cache-Control': 'no-cache',
-                        **headers  # Include any custom headers from config
-                    }
-                    response = await http_client.get(url, headers=sse_headers, timeout=5.0)
-                    tomlogger.debug(f"SSE endpoint response status: {response.status_code}, Content-Type: {response.headers.get('content-type', 'unknown')}", self.username, module_name="mcp")
-                    
-                    # For SSE, we expect either 200 or specific streaming response
-                    if response.status_code not in [200, 202]:
-                        tomlogger.warning(f"SSE endpoint returned unexpected status {response.status_code} for '{service_name}'", self.username, module_name="mcp")
-                    
-                except httpx.RequestError as e:
-                    tomlogger.error(f"SSE endpoint connectivity test failed for '{service_name}': {type(e).__name__}: {str(e)}", self.username, module_name="mcp")
-                    return False
-                except httpx.TimeoutException:
-                    tomlogger.debug(f"SSE endpoint test timeout for '{service_name}' (expected for streaming endpoints)", self.username, module_name="mcp")
-                    # Timeout is actually expected for SSE endpoints, continue
-                except httpx.HTTPStatusError as e:
-                    tomlogger.error(f"SSE endpoint HTTP status error for '{service_name}': {e.response.status_code}", self.username, module_name="mcp")
-                    return False
+            # Skip GET test for stateless HTTP MCP servers (they only accept POST)
+            tomlogger.debug(f"Skipping GET test for stateless HTTP MCP endpoint: {url}", self.username, module_name="mcp")
             
-            # Now try full MCP streamable HTTP connection
-            tomlogger.debug(f"Attempting streamable HTTP MCP connection to '{service_name}'", self.username, module_name="mcp")
+            # Try full MCP streamable HTTP connection directly
+            tomlogger.debug(f"Attempting streamable-http MCP connection to '{service_name}'", self.username, module_name="mcp")
             try:
                 # Use streamable HTTP client for MCP over HTTP
                 async with streamablehttp_client(url) as (read_stream, write_stream, _):
