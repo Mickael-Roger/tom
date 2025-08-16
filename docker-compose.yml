@@ -80,10 +80,23 @@ services:
     restart: always
     environment:
       - TOM_LOG_LEVEL=DEBUG
-    ports:
-      - 9090:80
     networks:
       - tom
     volumes:
       - /data/mcp/weather/:/data/
+ 
+  anki-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/anki/Dockerfile
+    container_name: anki-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - ANKI_URL=http://server.taila2494.ts.net:8765
+      - ANKI_PROFILE=mickael
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/anki/:/data/
 
