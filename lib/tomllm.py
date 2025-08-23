@@ -448,3 +448,231 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                           self.username, module_name="tomllm")
         
         return load_modules
+    
+    async def execute_request_with_tools(self, conversation: List[Dict[str, str]], tools: List[Dict], 
+                                        complexity: int = 1, max_iterations: int = 10, mcp_client=None) -> Any:
+        """
+        Execute request with tools, handling multiple iterations of tool calls
+        
+        Args:
+            conversation: List of conversation messages
+            tools: List of available tools in OpenAI format
+            complexity: LLM complexity level to use
+            max_iterations: Maximum number of tool call iterations
+            mcp_client: MCPClient instance for executing MCP tools
+            
+        Returns:
+            Final response content or error dict
+        """
+        
+        working_conversation = copy.deepcopy(conversation)
+        iteration = 0
+        
+        tomlogger.info(f"🚀 Starting tool execution with {len(tools)} tools, max {max_iterations} iterations", 
+                      self.username, module_name="tomllm")
+        
+        while iteration < max_iterations:
+            iteration += 1
+            tomlogger.debug(f"🔄 Tool execution iteration {iteration}/{max_iterations}", 
+                           self.username, module_name="tomllm")
+            
+            response = self.callLLM(messages=working_conversation, tools=tools, complexity=complexity)
+            
+            if not response:
+                tomlogger.error(f"LLM call failed during tool execution iteration {iteration}", 
+                               self.username, module_name="tomllm")
+                return {
+                    "status": "ERROR",
+                    "message": f"LLM call failed at iteration {iteration}"
+                }
+            
+            if response.choices[0].finish_reason == "stop":
+                # Final response - return content
+                response_content = response.choices[0].message.content
+                tomlogger.info(f"✅ Tool execution completed after {iteration} iterations", 
+                              self.username, module_name="tomllm")
+                return {
+                    "status": "OK",
+                    "response": response_content,
+                    "iterations": iteration
+                }
+                
+            elif response.choices[0].finish_reason == "tool_calls":
+                # Add assistant message to conversation
+                working_conversation.append(response.choices[0].message.to_dict())
+                
+                # Execute each tool call
+                for tool_call in response.choices[0].message.tool_calls:
+                    function_name = tool_call.function.name
+                    
+                    try:
+                        function_params = json.loads(tool_call.function.arguments)
+                    except json.JSONDecodeError as e:
+                        tomlogger.error(f"Failed to parse tool arguments for {function_name}: {tool_call.function.arguments}", 
+                                       self.username, module_name="tomllm")
+                        # Add error result
+                        error_result = {
+                            "error": f"Invalid tool arguments: {str(e)}"
+                        }
+                        working_conversation.append({
+                            "role": "tool", 
+                            "content": json.dumps(error_result), 
+                            "tool_call_id": tool_call.id
+                        })
+                        continue
+                    
+                    tomlogger.info(f"🔧 Executing tool: {function_name} with params: {function_params}", 
+                                  self.username, module_name="tomllm")
+                    
+                    # Execute actual MCP tool call
+                    if mcp_client:
+                        tool_result = await self._execute_mcp_tool(
+                            mcp_client, function_name, function_params
+                        )
+                    else:
+                        # Fallback if no MCP client provided
+                        tomlogger.warning(f"No MCP client provided for tool {function_name}, simulating", 
+                                        self.username, module_name="tomllm")
+                        tool_result = {
+                            "error": f"No MCP client available to execute {function_name}",
+                            "function": function_name,
+                            "params": function_params
+                        }
+                    
+                    # Add tool result to conversation
+                    working_conversation.append({
+                        "role": "tool",
+                        "content": json.dumps(tool_result),
+                        "tool_call_id": tool_call.id
+                    })
+                    
+                    tomlogger.debug(f"📥 Tool {function_name} result: {json.dumps(tool_result)}", 
+                                   self.username, module_name="tomllm")
+            else:
+                tomlogger.warning(f"Unexpected finish_reason: {response.choices[0].finish_reason}", 
+                                 self.username, module_name="tomllm")
+                return {
+                    "status": "ERROR",
+                    "message": f"Unexpected response finish_reason: {response.choices[0].finish_reason}"
+                }
+        
+        # Max iterations reached
+        tomlogger.warning(f"Tool execution reached max iterations ({max_iterations})", 
+                         self.username, module_name="tomllm")
+        return {
+            "status": "ERROR", 
+            "message": f"Tool execution reached maximum iterations ({max_iterations})",
+            "iterations": max_iterations
+        }
+    
+    async def _execute_mcp_tool(self, mcp_client, function_name: str, function_params: dict) -> dict:
+        """
+        Execute a specific MCP tool
+        
+        Args:
+            mcp_client: MCPClient instance
+            function_name: Name of the function to call
+            function_params: Parameters for the function
+            
+        Returns:
+            Dict with execution result
+        """
+        try:
+            # Find which service contains this tool
+            service_name = None
+            mcp_connections = mcp_client.get_mcp_connections()
+            
+            for svc_name, connection_info in mcp_connections.items():
+                tools = connection_info.get('tools', [])
+                for tool in tools:
+                    if tool['function']['name'] == function_name:
+                        service_name = svc_name
+                        break
+                if service_name:
+                    break
+            
+            if not service_name:
+                tomlogger.error(f"Tool '{function_name}' not found in any MCP service", 
+                               self.username, module_name="tomllm")
+                return {
+                    "error": f"Tool '{function_name}' not found in any MCP service"
+                }
+            
+            tomlogger.debug(f"Found tool '{function_name}' in service '{service_name}'", 
+                           self.username, module_name="tomllm")
+            
+            # Create MCP session for this service
+            connection_info = mcp_connections[service_name]
+            url = connection_info.get('url')
+            headers = connection_info.get('headers', {})
+            
+            if not url:
+                tomlogger.error(f"No URL found for service '{service_name}'", 
+                               self.username, module_name="tomllm")
+                return {
+                    "error": f"No URL configured for service '{service_name}'"
+                }
+            
+            # Import required MCP modules
+            from mcp import ClientSession
+            from mcp.client.streamable_http import streamablehttp_client
+            import asyncio
+            
+            tomlogger.debug(f"Creating MCP session for '{service_name}' at {url}", 
+                           self.username, module_name="tomllm")
+            
+            # Create session and execute tool
+            async with streamablehttp_client(url) as (read_stream, write_stream, _):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    
+                    tomlogger.debug(f"Calling MCP tool '{function_name}' with params: {function_params}", 
+                                   self.username, module_name="tomllm")
+                    
+                    # Call the tool
+                    result = await session.call_tool(function_name, function_params)
+                    
+                    tomlogger.debug(f"MCP tool '{function_name}' returned: {result}", 
+                                   self.username, module_name="tomllm")
+                    
+                    # Convert MCP result to standard format
+                    if result and hasattr(result, 'content') and result.content:
+                        # Extract content from MCP result
+                        content_items = []
+                        for content in result.content:
+                            if hasattr(content, 'text'):
+                                content_items.append(content.text)
+                            elif hasattr(content, 'data'):
+                                content_items.append(str(content.data))
+                            else:
+                                content_items.append(str(content))
+                        
+                        # Join all content items
+                        result_text = '\n'.join(content_items) if content_items else str(result)
+                        
+                        return {
+                            "status": "success",
+                            "result": result_text,
+                            "function": function_name,
+                            "service": service_name
+                        }
+                    else:
+                        tomlogger.warning(f"Empty or invalid result from MCP tool '{function_name}'", 
+                                        self.username, module_name="tomllm")
+                        return {
+                            "status": "success",
+                            "result": "Tool executed successfully but returned no content",
+                            "function": function_name,
+                            "service": service_name
+                        }
+        
+        except Exception as e:
+            tomlogger.error(f"Error executing MCP tool '{function_name}': {str(e)}", 
+                           self.username, module_name="tomllm")
+            import traceback
+            tomlogger.debug(f"MCP tool execution error traceback: {traceback.format_exc()}", 
+                           self.username, module_name="tomllm")
+            return {
+                "error": f"Failed to execute MCP tool '{function_name}': {str(e)}",
+                "function": function_name
+            }

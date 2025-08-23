@@ -283,21 +283,33 @@ class MCPClient:
                             # Convert MCP tools to OpenAI format
                             openai_tools = []
                             for tool in tools_result.tools:
+                                # Get and validate the input schema
+                                if hasattr(tool, 'inputSchema') and tool.inputSchema:
+                                    schema = tool.inputSchema
+                                    # Ensure additionalProperties is set to False for all objects
+                                    schema = self._fix_schema_additional_properties(schema)
+                                else:
+                                    schema = {
+                                        "type": "object",
+                                        "properties": {},
+                                        "required": [],
+                                        "additionalProperties": False
+                                    }
+                                
                                 openai_tool = {
                                     "type": "function",
                                     "function": {
                                         "name": tool.name,
                                         "description": tool.description,
                                         "strict": True,
-                                        "parameters": tool.inputSchema if hasattr(tool, 'inputSchema') else {
-                                            "type": "object",
-                                            "properties": {},
-                                            "required": [],
-                                            "additionalProperties": False
-                                        }
+                                        "parameters": schema
                                     }
                                 }
                                 openai_tools.append(openai_tool)
+                                
+                                # Debug log the schema to verify it's correct
+                                tomlogger.debug(f"Converted tool '{tool.name}' schema: {json.dumps(schema, indent=2)}", 
+                                              self.username, module_name="mcp")
                             
                             # Store tools and connection info, but don't keep the session object
                             # The session will be recreated when needed for actual tool calls
@@ -349,11 +361,6 @@ class MCPClient:
             tomlogger.debug(f"Full error traceback for '{service_name}': {traceback.format_exc()}", self.username, module_name="mcp")
             return False
         
-        finally:
-            # Keep the service entry but mark as failed if we reach here
-            if service_name in self.mcp_connections and self.mcp_connections[service_name]['object'] is None:
-                self.mcp_connections[service_name]['object'] = None
-                self.mcp_connections[service_name]['tools'] = []
     
     def get_services(self) -> Dict[str, Dict]:
         """Get all configured MCP services for the user"""
@@ -421,6 +428,42 @@ class MCPClient:
                 tomlogger.error(f"Failed to initialize MCP connections: {str(e)}", self.username, module_name="mcp")
         else:
             tomlogger.info("No MCP services configured for initialization", self.username, module_name="mcp")
+    
+    def _fix_schema_additional_properties(self, schema):
+        """
+        Recursively fix JSON schema to ensure all objects have additionalProperties: false
+        This is required for OpenAI's strict mode
+        """
+        if not isinstance(schema, dict):
+            return schema
+        
+        # Create a copy to avoid modifying the original
+        fixed_schema = schema.copy()
+        
+        # If this is an object type, ensure additionalProperties is false
+        if fixed_schema.get("type") == "object":
+            fixed_schema["additionalProperties"] = False
+        
+        # Recursively fix nested schemas
+        if "properties" in fixed_schema and isinstance(fixed_schema["properties"], dict):
+            fixed_properties = {}
+            for prop_name, prop_schema in fixed_schema["properties"].items():
+                fixed_properties[prop_name] = self._fix_schema_additional_properties(prop_schema)
+            fixed_schema["properties"] = fixed_properties
+        
+        # Fix array items schema
+        if "items" in fixed_schema:
+            fixed_schema["items"] = self._fix_schema_additional_properties(fixed_schema["items"])
+        
+        # Fix anyOf, oneOf, allOf schemas
+        for key in ["anyOf", "oneOf", "allOf"]:
+            if key in fixed_schema and isinstance(fixed_schema[key], list):
+                fixed_schema[key] = [
+                    self._fix_schema_additional_properties(sub_schema) 
+                    for sub_schema in fixed_schema[key]
+                ]
+        
+        return fixed_schema
 
 
 class TomAgent:
@@ -510,6 +553,14 @@ class TomAgent:
             tomlogger.info(f"🎯 Available modules for triage: {[m['name'] for m in available_modules]}", 
                           self.username, "api", "agent")
             
+            # Debug: Log current status of MCP connections
+            if tomlogger.logger and tomlogger.logger.logger.level <= 20:  # INFO or DEBUG level
+                for service_name, connection_info in mcp_connections.items():
+                    tools_count = len(connection_info.get('tools', []))
+                    object_status = "connected" if connection_info.get('object') else "not_connected" 
+                    tomlogger.debug(f"MCP '{service_name}': {tools_count} tools, status: {object_status}", 
+                                  self.username, "api", "agent")
+            
             # Step 1: ALWAYS do triage first, even if no modules have tools yet
             # (modules might initialize their tools after startup)
             required_modules = self.tomllm.triage_modules(
@@ -542,7 +593,29 @@ class TomAgent:
                         module_tools = connection_info.get('tools', [])
                         tools.extend(module_tools)
                         selected_connections[module_name] = connection_info
+                        
+                        # Enhanced logging for debugging
                         tomlogger.info(f"📦 Added {len(module_tools)} tools from module '{module_name}'", 
+                                      self.username, "api", "agent")
+                        
+                        if len(module_tools) == 0:
+                            tomlogger.warning(f"❗ Module '{module_name}' has no tools available!", 
+                                            self.username, "api", "agent")
+                            tomlogger.debug(f"Connection info for '{module_name}': {connection_info}", 
+                                          self.username, "api", "agent")
+                            
+                            # If no tools but service is configured, suggest checking connection
+                            if module_name in self.mcp_client.get_services():
+                                tomlogger.warning(f"💡 Service '{module_name}' is configured but has no tools. Check MCP server connection.", 
+                                                self.username, "api", "agent")
+                        else:
+                            tool_names = [tool['function']['name'] for tool in module_tools]
+                            tomlogger.debug(f"Tools from '{module_name}': {tool_names}", 
+                                          self.username, "api", "agent")
+                    else:
+                        tomlogger.error(f"❌ Module '{module_name}' not found in MCP connections!", 
+                                      self.username, "api", "agent")
+                        tomlogger.debug(f"Available connections: {list(mcp_connections.keys())}", 
                                       self.username, "api", "agent")
                 
                 # Build conversation with context
@@ -570,15 +643,112 @@ class TomAgent:
                 response_context = self.tomllm.set_response_context(client_type)
                 conversation.append({"role": "system", "content": response_context})
                 
-                # Execute with tools (this would need actual MCP tool execution implementation)
-                # For now, return a placeholder response
-                return {
-                    "status": "OK",
-                    "message": f"Would execute request with modules: {required_modules}",
-                    "selected_modules": required_modules,
-                    "available_tools_count": len(tools),
-                    "response": f"Je vais traiter votre demande '{user_request}' en utilisant les modules: {', '.join(required_modules)}"
-                }
+                # Check if we have any tools to work with
+                if len(tools) == 0:
+                    tomlogger.warning(f"⚠️ No tools available from selected modules: {required_modules}", 
+                                    self.username, "api", "agent")
+                    
+                    # Fall back to general knowledge response with context about unavailable services
+                    from datetime import datetime
+                    gps = ""
+                    if position:
+                        gps = f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}."
+                    
+                    today = datetime.now().strftime("%A %d %B %Y %H:%M:%S")
+                    weeknumber = datetime.now().isocalendar().week
+                    
+                    fallback_conversation = [
+                        {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"},
+                        {"role": "system", "content": f"You are Tom, a helpful personal assistant. The user requested information that would normally require external services ({', '.join(required_modules)}), but those services are currently unavailable. Provide a helpful response based on your general knowledge and suggest alternatives if possible."},
+                        {"role": "user", "content": user_request}
+                    ]
+                    
+                    # Add response context
+                    response_context = self.tomllm.set_response_context(client_type)
+                    fallback_conversation.append({"role": "system", "content": response_context})
+                    
+                    # Get fallback response
+                    response = self.tomllm.callLLM(messages=fallback_conversation, complexity=1)
+                    
+                    if response and response.choices[0].finish_reason == "stop":
+                        response_content = response.choices[0].message.content
+                        
+                        if sound_enabled:
+                            return {
+                                "status": "OK",
+                                "text_display": response_content,
+                                "text_tts": response_content,
+                                "selected_modules": required_modules,
+                                "warning": "Selected services unavailable, used general knowledge"
+                            }
+                        else:
+                            return {
+                                "status": "OK", 
+                                "response": response_content,
+                                "selected_modules": required_modules,
+                                "warning": "Selected services unavailable, used general knowledge"
+                            }
+                    else:
+                        return {
+                            "status": "ERROR",
+                            "message": "Selected services unavailable and fallback response failed"
+                        }
+                
+                # Execute request with the selected tools using the full execution loop
+                tomlogger.info(f"🎯 Executing LLM request with {len(tools)} tools from {len(required_modules)} modules", 
+                              self.username, "api", "agent")
+                
+                # Determine complexity based on selected modules
+                max_complexity = 1  # Default complexity
+                for module_name in required_modules:
+                    if module_name in mcp_connections:
+                        module_complexity = mcp_connections[module_name].get('complexity', 1)
+                        max_complexity = max(max_complexity, module_complexity)
+                
+                # Execute with tools using the full conversation loop
+                # Need to run async function in event loop
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                
+                execution_result = loop.run_until_complete(
+                    self.tomllm.execute_request_with_tools(
+                        conversation=conversation,
+                        tools=tools,
+                        complexity=max_complexity,
+                        max_iterations=10,
+                        mcp_client=self.mcp_client
+                    )
+                )
+                
+                if execution_result.get("status") == "OK":
+                    response_content = execution_result["response"]
+                    
+                    if sound_enabled:
+                        return {
+                            "status": "OK",
+                            "text_display": response_content,
+                            "text_tts": response_content,  # Could implement TTS synthesis here
+                            "selected_modules": required_modules,
+                            "iterations": execution_result.get("iterations", 1)
+                        }
+                    else:
+                        return {
+                            "status": "OK",
+                            "response": response_content,
+                            "selected_modules": required_modules,
+                            "iterations": execution_result.get("iterations", 1)
+                        }
+                else:
+                    # Execution failed
+                    return {
+                        "status": "ERROR",
+                        "message": execution_result.get("message", "Tool execution failed"),
+                        "selected_modules": required_modules
+                    }
             else:
                 # No specific modules needed, use general knowledge
                 tomlogger.info(f"💭 No specific modules needed, using general LLM knowledge", 
