@@ -396,14 +396,11 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         temporal_message = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
         
         # Build current triage conversation (without temporal message or history)
+        # Note: No response formatting context needed for triage since it doesn't generate user responses
         current_triage_conversation = [
             {"role": "system", "content": prompt},
             {"role": "user", "content": user_request}
         ]
-        
-        # Add response context
-        response_context = self.set_response_context(client_type)
-        current_triage_conversation.append({"role": "system", "content": response_context})
         
         # Build full triage conversation with temporal message first, then history
         triage_conversation = self.get_conversation_with_history(client_type, current_triage_conversation, temporal_message)
@@ -476,6 +473,14 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         
         working_conversation = copy.deepcopy(conversation)
         iteration = 0
+        
+        # Extract user request from conversation for history tracking
+        if track_history:
+            # Find the last user message in the conversation to add to history
+            user_messages = [msg for msg in conversation if msg.get('role') == 'user']
+            if user_messages:
+                last_user_message = user_messages[-1]
+                self.add_user_request(client_type, last_user_message.get('content', ''))
         
         tomlogger.info(f"🚀 Starting tool execution with {len(tools)} tools, max {max_iterations} iterations", 
                       self.username, module_name="tomllm")

@@ -590,8 +590,7 @@ class TomAgent:
                     "conversation_reset": True
                 }
             
-            # Add user request to history (do this after triage, excluding triage calls)
-            self.tomllm.add_user_request(client_type, user_request)
+            # Note: User request will be added to history after successful response generation
             
             # Step 2: Execute request with selected modules
             if required_modules:
@@ -651,13 +650,7 @@ class TomAgent:
                     {"role": "user", "content": user_request}
                 ]
                 
-                # Add module descriptions as context
-                for module_name, connection_info in selected_connections.items():
-                    description = connection_info.get('description', '')
-                    if description:
-                        current_conversation.append({"role": "system", "content": f"Module {module_name}: {description}"})
-                
-                # Add response context
+                # Add response context (module descriptions not needed here - only for triage)
                 response_context = self.tomllm.set_response_context(client_type)
                 current_conversation.append({"role": "system", "content": response_context})
                 
@@ -689,6 +682,10 @@ class TomAgent:
                     
                     if response and response.choices[0].finish_reason == "stop":
                         response_content = response.choices[0].message.content
+                        
+                        # Add user request and assistant response to history
+                        self.tomllm.add_user_request(client_type, user_request)
+                        self.tomllm.add_assistant_response(client_type, response_content)
                         
                         if sound_enabled:
                             return {
@@ -804,7 +801,8 @@ class TomAgent:
                 if response and response.choices[0].finish_reason == "stop":
                     response_content = response.choices[0].message.content
                     
-                    # Add assistant response to history
+                    # Add user request and assistant response to history
+                    self.tomllm.add_user_request(client_type, user_request)
                     self.tomllm.add_assistant_response(client_type, response_content)
                     
                     if sound_enabled:
