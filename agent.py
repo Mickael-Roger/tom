@@ -495,9 +495,20 @@ class TomAgent:
     @cherrypy.tools.allow(methods=['POST'])
     @cherrypy.tools.json_out()
     def reset(self):
-        """Handle reset requests"""
-        tomlogger.info("POST /reset", self.username, "api", "agent")
-        return {"status": "OK"}
+        """Handle reset requests - clear conversation history for all client types"""
+        request_data = getattr(cherrypy.request, 'json', None)
+        client_type = request_data.get('client_type', 'web') if request_data else 'web'
+        
+        tomlogger.info(f"POST /reset for client_type: {client_type}", self.username, "api", "agent")
+        
+        # Reset history for the specific client type
+        self.tomllm.reset_history(client_type)
+        
+        return {
+            "status": "OK",
+            "message": f"Conversation history reset for {client_type} client",
+            "client_type": client_type
+        }
     
     @cherrypy.expose
     @cherrypy.tools.allow(methods=['GET'])
@@ -571,12 +582,16 @@ class TomAgent:
             )
             
             if required_modules == ["reset_performed"]:
-                # Handle conversation reset
+                # Handle conversation reset - clear history for this client
+                self.tomllm.reset_history(client_type)
                 return {
                     "status": "OK",
                     "response": "Salut ! Comment puis-je t'aider ?",
                     "conversation_reset": True
                 }
+            
+            # Add user request to history (do this after triage, excluding triage calls)
+            self.tomllm.add_user_request(client_type, user_request)
             
             # Step 2: Execute request with selected modules
             if required_modules:
@@ -618,7 +633,7 @@ class TomAgent:
                         tomlogger.debug(f"Available connections: {list(mcp_connections.keys())}", 
                                       self.username, "api", "agent")
                 
-                # Build conversation with context
+                # Build conversation with context and history
                 from datetime import datetime
                 gps = ""
                 if position:
@@ -627,8 +642,11 @@ class TomAgent:
                 today = datetime.now().strftime("%A %d %B %Y %H:%M:%S")
                 weeknumber = datetime.now().isocalendar().week
                 
-                conversation = [
-                    {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"},
+                # Create temporal message (date/GPS) - never stored in history
+                temporal_message = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
+                
+                # Build current conversation (without temporal message or history)
+                current_conversation = [
                     {"role": "system", "content": "You are Tom, a helpful personal assistant. Use the available tools to respond to user requests."},
                     {"role": "user", "content": user_request}
                 ]
@@ -637,11 +655,14 @@ class TomAgent:
                 for module_name, connection_info in selected_connections.items():
                     description = connection_info.get('description', '')
                     if description:
-                        conversation.append({"role": "system", "content": f"Module {module_name}: {description}"})
+                        current_conversation.append({"role": "system", "content": f"Module {module_name}: {description}"})
                 
                 # Add response context
                 response_context = self.tomllm.set_response_context(client_type)
-                conversation.append({"role": "system", "content": response_context})
+                current_conversation.append({"role": "system", "content": response_context})
+                
+                # Build full conversation with temporal message first, then history
+                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message)
                 
                 # Check if we have any tools to work with
                 if len(tools) == 0:
@@ -649,16 +670,9 @@ class TomAgent:
                                     self.username, "api", "agent")
                     
                     # Fall back to general knowledge response with context about unavailable services
-                    from datetime import datetime
-                    gps = ""
-                    if position:
-                        gps = f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}."
-                    
-                    today = datetime.now().strftime("%A %d %B %Y %H:%M:%S")
-                    weeknumber = datetime.now().isocalendar().week
+                    # Re-use the temporal message already created
                     
                     fallback_conversation = [
-                        {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"},
                         {"role": "system", "content": f"You are Tom, a helpful personal assistant. The user requested information that would normally require external services ({', '.join(required_modules)}), but those services are currently unavailable. Provide a helpful response based on your general knowledge and suggest alternatives if possible."},
                         {"role": "user", "content": user_request}
                     ]
@@ -667,8 +681,11 @@ class TomAgent:
                     response_context = self.tomllm.set_response_context(client_type)
                     fallback_conversation.append({"role": "system", "content": response_context})
                     
+                    # Build conversation with temporal message and history
+                    full_fallback_conversation = self.tomllm.get_conversation_with_history(client_type, fallback_conversation, temporal_message)
+                    
                     # Get fallback response
-                    response = self.tomllm.callLLM(messages=fallback_conversation, complexity=1)
+                    response = self.tomllm.callLLM(messages=full_fallback_conversation, complexity=1)
                     
                     if response and response.choices[0].finish_reason == "stop":
                         response_content = response.choices[0].message.content
@@ -720,7 +737,9 @@ class TomAgent:
                         tools=tools,
                         complexity=max_complexity,
                         max_iterations=10,
-                        mcp_client=self.mcp_client
+                        mcp_client=self.mcp_client,
+                        client_type=client_type,
+                        track_history=True
                     )
                 )
                 
@@ -754,7 +773,7 @@ class TomAgent:
                 tomlogger.info(f"💭 No specific modules needed, using general LLM knowledge", 
                               self.username, "api", "agent")
                 
-                # Build simple conversation
+                # Build simple conversation with history
                 from datetime import datetime
                 gps = ""
                 if position:
@@ -763,21 +782,30 @@ class TomAgent:
                 today = datetime.now().strftime("%A %d %B %Y %H:%M:%S")
                 weeknumber = datetime.now().isocalendar().week
                 
-                conversation = [
-                    {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"},
+                # Create temporal message (date/GPS) - never stored in history
+                temporal_message = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
+                
+                # Build current conversation (without temporal message or history)
+                current_conversation = [
                     {"role": "system", "content": "You are Tom, a helpful personal assistant. Respond using your general knowledge."},
                     {"role": "user", "content": user_request}
                 ]
                 
                 # Add response context
                 response_context = self.tomllm.set_response_context(client_type)
-                conversation.append({"role": "system", "content": response_context})
+                current_conversation.append({"role": "system", "content": response_context})
+                
+                # Build full conversation with temporal message first, then history
+                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message)
                 
                 # Get direct response
                 response = self.tomllm.callLLM(messages=conversation, complexity=1)
                 
                 if response and response.choices[0].finish_reason == "stop":
                     response_content = response.choices[0].message.content
+                    
+                    # Add assistant response to history
+                    self.tomllm.add_assistant_response(client_type, response_content)
                     
                     if sound_enabled:
                         return {

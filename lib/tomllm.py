@@ -37,6 +37,13 @@ class TomLLM:
         # Rate limiting for Mistral (1.5 seconds between requests)
         self.mistral_last_request = 0
         
+        # History management - separate history for each client type
+        self.history = {
+            'web': [],      # Web browser client
+            'android': [],  # Android mobile client  
+            'tui': []       # Terminal UI client
+        }
+        
         # Setup LLMs from configuration
         self._setup_llms()
         
@@ -290,9 +297,7 @@ class TomLLM:
         """Set response context based on client type"""
         if client_type == 'tui':
             return "Your response will be displayed in a TUI terminal application. You should use markdown to format your answer for better readability. You can use titles, lists, bold text, etc."
-        elif client_type == 'android':
-            return "Your response will be displayed in an Android mobile application. You should use markdown to format your answer for better readability. Keep responses concise and mobile-friendly."
-        else:  # web and pwa
+        else:  # android, web and pwa
             return "Your response will be displayed in a web browser or in a mobile app that supports markdown. You should use markdown to format your answer for better readability. You can use titles, lists, bold text, etc. Use simple text and line breaks for readability. Unless the user explicitly asks for it, you must never directly write URL or stuff like that. Instead, you must use the tag [open:PLACE URL HERE]"
     
     def triage_modules(self, user_request: str, position: Optional[Dict[str, float]], 
@@ -378,10 +383,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
 ```
 '''
         
-        # Build conversation for triage
-        triage_conversation = []
-        
-        # Add current time and GPS info if available
+        # Build conversation for triage with history
         from datetime import datetime
         gps = ""
         if position:
@@ -389,18 +391,22 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         
         today = datetime.now().strftime("%A %d %B %Y %H:%M:%S")
         weeknumber = datetime.now().isocalendar().week
-        today_msg = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
-        triage_conversation.append(today_msg)
         
-        # Add main system prompt
-        triage_conversation.append({"role": "system", "content": prompt})
+        # Create temporal message (date/GPS) - never stored in history
+        temporal_message = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
         
-        # Add user request
-        triage_conversation.append({"role": "user", "content": user_request})
+        # Build current triage conversation (without temporal message or history)
+        current_triage_conversation = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": user_request}
+        ]
         
         # Add response context
         response_context = self.set_response_context(client_type)
-        triage_conversation.append({"role": "system", "content": response_context})
+        current_triage_conversation.append({"role": "system", "content": response_context})
+        
+        # Build full triage conversation with temporal message first, then history
+        triage_conversation = self.get_conversation_with_history(client_type, current_triage_conversation, temporal_message)
         
         tomlogger.info(f"🔍 Starting module triage for request: {user_request[:100]}...", 
                       self.username, module_name="tomllm")
@@ -450,7 +456,8 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         return load_modules
     
     async def execute_request_with_tools(self, conversation: List[Dict[str, str]], tools: List[Dict], 
-                                        complexity: int = 1, max_iterations: int = 10, mcp_client=None) -> Any:
+                                        complexity: int = 1, max_iterations: int = 10, mcp_client=None, 
+                                        client_type: str = 'web', track_history: bool = True) -> Any:
         """
         Execute request with tools, handling multiple iterations of tool calls
         
@@ -460,6 +467,8 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             complexity: LLM complexity level to use
             max_iterations: Maximum number of tool call iterations
             mcp_client: MCPClient instance for executing MCP tools
+            client_type: Client type for history tracking ('web', 'android', 'tui')
+            track_history: Whether to track conversation in history
             
         Returns:
             Final response content or error dict
@@ -489,6 +498,11 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             if response.choices[0].finish_reason == "stop":
                 # Final response - return content
                 response_content = response.choices[0].message.content
+                
+                # Track final assistant response in history
+                if track_history and response_content:
+                    self.add_assistant_response(client_type, response_content)
+                
                 tomlogger.info(f"✅ Tool execution completed after {iteration} iterations", 
                               self.username, module_name="tomllm")
                 return {
@@ -499,7 +513,12 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                 
             elif response.choices[0].finish_reason == "tool_calls":
                 # Add assistant message to conversation
-                working_conversation.append(response.choices[0].message.to_dict())
+                assistant_message = response.choices[0].message.to_dict()
+                working_conversation.append(assistant_message)
+                
+                # Track assistant tool calls in history
+                if track_history:
+                    self.add_assistant_tool_calls(client_type, response.choices[0].message.tool_calls)
                 
                 # Execute each tool call
                 for tool_call in response.choices[0].message.tool_calls:
@@ -540,11 +559,16 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                         }
                     
                     # Add tool result to conversation
+                    tool_result_content = json.dumps(tool_result)
                     working_conversation.append({
                         "role": "tool",
-                        "content": json.dumps(tool_result),
+                        "content": tool_result_content,
                         "tool_call_id": tool_call.id
                     })
+                    
+                    # Track tool result in history
+                    if track_history:
+                        self.add_tool_result(client_type, tool_call.id, tool_result_content)
                     
                     tomlogger.debug(f"📥 Tool {function_name} result: {json.dumps(tool_result)}", 
                                    self.username, module_name="tomllm")
@@ -676,3 +700,191 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                 "error": f"Failed to execute MCP tool '{function_name}': {str(e)}",
                 "function": function_name
             }
+    
+    def add_to_history(self, client_type: str, message: Dict[str, Any]):
+        """
+        Add a message to conversation history for specific client type
+        
+        Args:
+            client_type: 'web', 'android', or 'tui'
+            message: Message dict to add to history
+        """
+        if client_type not in self.history:
+            tomlogger.warning(f"Invalid client type '{client_type}', defaulting to 'web'", 
+                            self.username, module_name="tomllm")
+            client_type = 'web'
+        
+        self.history[client_type].append(message)
+        
+        # Debug logging - show what message was added in DEBUG mode
+        if tomlogger.logger and tomlogger.logger.logger.level <= 10:  # DEBUG level = 10
+            try:
+                tomlogger.debug(f"📝 Added to {client_type} history ({len(self.history[client_type])} total): {json.dumps(message, indent=2, ensure_ascii=False)}", 
+                               self.username, module_name="tomllm")
+            except Exception as json_error:
+                tomlogger.debug(f"📝 Added to {client_type} history ({len(self.history[client_type])} total): {str(message)} (JSON serialization failed: {json_error})", 
+                               self.username, module_name="tomllm")
+        else:
+            tomlogger.debug(f"Added message to {client_type} history (now {len(self.history[client_type])} messages)", 
+                           self.username, module_name="tomllm")
+    
+    def add_user_request(self, client_type: str, user_content: str):
+        """
+        Add user request to history
+        
+        Args:
+            client_type: 'web', 'android', or 'tui'
+            user_content: User's request text
+        """
+        user_message = {
+            "role": "user",
+            "content": user_content
+        }
+        self.add_to_history(client_type, user_message)
+        tomlogger.debug(f"Added user request to {client_type} history: {user_content[:50]}...", 
+                       self.username, module_name="tomllm")
+    
+    def add_assistant_tool_calls(self, client_type: str, tool_calls: List[Any]):
+        """
+        Add assistant tool calls to history
+        
+        Args:
+            client_type: 'web', 'android', or 'tui'
+            tool_calls: List of tool call objects from LLM response
+        """
+        assistant_message = {
+            "role": "assistant", 
+            "content": None,
+            "tool_calls": [tool_call.to_dict() if hasattr(tool_call, 'to_dict') else tool_call for tool_call in tool_calls]
+        }
+        self.add_to_history(client_type, assistant_message)
+        tomlogger.debug(f"Added {len(tool_calls)} tool calls to {client_type} history", 
+                       self.username, module_name="tomllm")
+    
+    def add_tool_result(self, client_type: str, tool_call_id: str, result_content: str):
+        """
+        Add tool execution result to history
+        
+        Args:
+            client_type: 'web', 'android', or 'tui'
+            tool_call_id: ID of the tool call this result corresponds to
+            result_content: JSON string result from tool execution
+        """
+        tool_message = {
+            "role": "tool",
+            "content": result_content,
+            "tool_call_id": tool_call_id
+        }
+        self.add_to_history(client_type, tool_message)
+        tomlogger.debug(f"Added tool result to {client_type} history for call {tool_call_id}", 
+                       self.username, module_name="tomllm")
+    
+    def add_assistant_response(self, client_type: str, response_content: str):
+        """
+        Add final assistant response to history
+        
+        Args:
+            client_type: 'web', 'android', or 'tui'
+            response_content: Final response text from assistant
+        """
+        response_message = {
+            "role": "assistant",
+            "content": response_content
+        }
+        self.add_to_history(client_type, response_message)
+        tomlogger.debug(f"Added assistant response to {client_type} history: {response_content[:50]}...", 
+                       self.username, module_name="tomllm")
+    
+    def get_conversation_with_history(self, client_type: str, current_conversation: List[Dict[str, Any]], 
+                                      temporal_message: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """
+        Build conversation with history prepended
+        
+        Args:
+            client_type: 'web', 'android', or 'tui'
+            current_conversation: Current conversation messages (system prompts, user request)
+            temporal_message: Optional temporal message (date/GPS) that goes first but never in history
+            
+        Returns:
+            Full conversation with temporal message first, then history, then current messages
+        """
+        if client_type not in self.history:
+            tomlogger.warning(f"Invalid client type '{client_type}', using empty history", 
+                            self.username, module_name="tomllm")
+            client_history = []
+        else:
+            client_history = self.history[client_type]
+        
+        # Debug logging - show history content in DEBUG mode
+        if client_history and tomlogger.logger and tomlogger.logger.logger.level <= 10:  # DEBUG level = 10
+            try:
+                tomlogger.debug(f"📚 History for {client_type} ({len(client_history)} messages): {json.dumps(client_history, indent=2, ensure_ascii=False)}", 
+                               self.username, module_name="tomllm")
+            except Exception as json_error:
+                tomlogger.debug(f"📚 History for {client_type} ({len(client_history)} messages): {str(client_history)} (JSON serialization failed: {json_error})", 
+                               self.username, module_name="tomllm")
+        
+        # Build conversation in correct order:
+        # 1. Temporal message first (date/GPS - never stored in history)
+        # 2. History (previous conversation)
+        # 3. Current conversation messages (system prompts, user request)
+        
+        full_conversation = []
+        
+        # 1. Add temporal message first if provided (date/GPS)
+        if temporal_message:
+            full_conversation.append(temporal_message)
+        
+        # 2. Add history
+        if client_history:
+            full_conversation.extend(client_history)
+        
+        # 3. Add current conversation messages
+        full_conversation.extend(current_conversation)
+        
+        temporal_count = 1 if temporal_message else 0
+        tomlogger.debug(f"Built conversation for {client_type}: {temporal_count} temporal + {len(client_history)} history + {len(current_conversation)} current = {len(full_conversation)} total", 
+                       self.username, module_name="tomllm")
+        
+        return full_conversation
+    
+    def reset_history(self, client_type: str):
+        """
+        Reset conversation history for specific client type
+        
+        Args:
+            client_type: 'web', 'android', or 'tui'
+        """
+        if client_type not in self.history:
+            tomlogger.warning(f"Invalid client type '{client_type}', cannot reset", 
+                            self.username, module_name="tomllm")
+            return
+        
+        history_length = len(self.history[client_type])
+        
+        # Debug logging - show what was cleared in DEBUG mode
+        if tomlogger.logger and tomlogger.logger.logger.level <= 10 and history_length > 0:  # DEBUG level = 10
+            try:
+                tomlogger.debug(f"🗑️ Clearing {client_type} history content: {json.dumps(self.history[client_type], indent=2, ensure_ascii=False)}", 
+                               self.username, module_name="tomllm")
+            except Exception as json_error:
+                tomlogger.debug(f"🗑️ Clearing {client_type} history content: {str(self.history[client_type])} (JSON serialization failed: {json_error})", 
+                               self.username, module_name="tomllm")
+        
+        self.history[client_type] = []
+        tomlogger.info(f"🔄 Reset {client_type} conversation history ({history_length} messages cleared)", 
+                      self.username, module_name="tomllm")
+    
+    def get_history_length(self, client_type: str) -> int:
+        """
+        Get the number of messages in history for a client type
+        
+        Args:
+            client_type: 'web', 'android', or 'tui'
+            
+        Returns:
+            Number of messages in history
+        """
+        if client_type not in self.history:
+            return 0
+        return len(self.history[client_type])
