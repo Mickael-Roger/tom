@@ -34,6 +34,9 @@ if tomlogger:
 else:
     logger = logging.getLogger(__name__)
 
+# Server configuration and description
+SERVER_DESCRIPTION = "This module is used for for any question about the weather forecast."
+
 # Initialize FastMCP server
 server = FastMCP(name="weather-server", stateless_http=True, host="0.0.0.0", port=80)
 
@@ -272,6 +275,11 @@ def main():
     # Run the FastMCP server with streamable HTTP transport
     server.run(transport="streamable-http")
 
+
+@server.resource("description://weather")
+def description() -> str:
+    """Renvoie la description du serveur."""
+    return SERVER_DESCRIPTION
 
 if __name__ == "__main__":
     main()

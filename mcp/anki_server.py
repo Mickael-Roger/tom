@@ -33,6 +33,9 @@ if tomlogger:
 else:
     logger = logging.getLogger(__name__)
 
+# Server configuration and description
+SERVER_DESCRIPTION = "This module is used to manage Anki. Anki is a flashcard program. It uses cards. It uses technics from cognitive science such as active recall testing and spaced repetition to help me in my memorization. I use Anki to train myself on memorizing and reinforcing my knowledge."
+
 # Initialize FastMCP server
 server = FastMCP(name="anki-server", stateless_http=True, host="0.0.0.0", port=80)
 
@@ -224,6 +227,12 @@ def anki_add_card(front: str, back: str, deck_name: str) -> str:
         }
     
     return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+@server.resource("description://anki")
+def description() -> str:
+    """Return the server description."""
+    return SERVER_DESCRIPTION
 
 
 def main():

@@ -222,6 +222,8 @@ class MCPClient:
             for name, conn in self.mcp_connections.items():
                 debug_connections[name] = {
                     'description': conn['description'],
+                    'server_description': conn.get('server_description', ''),
+                    'config_description': conn.get('config_description', ''),
                     'complexity': conn['complexity'],
                     'object_type': type(conn['object']).__name__ if conn['object'] else 'None',
                     'tools_count': len(conn['tools'])
@@ -298,6 +300,59 @@ class MCPClient:
                             await session.initialize()
                             tomlogger.debug(f"MCP session initialized for '{service_name}'", self.username, module_name="mcp")
                             
+                            # Get server description via resource endpoint
+                            tomlogger.debug(f"Requesting server description from '{service_name}'", self.username, module_name="mcp")
+                            server_description = ''
+                            
+                            # Try to get description via resource endpoint first
+                            try:
+                                # Try different possible resource URIs for description
+                                resource_uris = [
+                                    f"description://{service_name.lower()}",
+                                    f"description://{service_name}",
+                                    "description://server",
+                                    "description://description"
+                                ]
+                                
+                                for resource_uri in resource_uris:
+                                    try:
+                                        tomlogger.debug(f"Trying resource URI '{resource_uri}' for '{service_name}'", self.username, module_name="mcp")
+                                        resource_result = await session.read_resource(resource_uri)
+                                        if resource_result and resource_result.contents:
+                                            # Get the first content item
+                                            content = resource_result.contents[0]
+                                            if hasattr(content, 'text'):
+                                                server_description = content.text
+                                                tomlogger.debug(f"✅ Got description from resource '{resource_uri}' for '{service_name}': {server_description[:100]}...", self.username, module_name="mcp")
+                                                break
+                                            elif hasattr(content, 'data'):
+                                                server_description = str(content.data)
+                                                tomlogger.debug(f"✅ Got description from resource '{resource_uri}' for '{service_name}': {server_description[:100]}...", self.username, module_name="mcp")
+                                                break
+                                    except Exception as resource_error:
+                                        tomlogger.debug(f"Resource '{resource_uri}' not available for '{service_name}': {resource_error}", self.username, module_name="mcp")
+                                        continue
+                                        
+                            except Exception as resource_error:
+                                tomlogger.debug(f"Could not get description via resources from '{service_name}': {resource_error}", self.username, module_name="mcp")
+                            
+                            # Fallback to server info if no description found via resources
+                            if not server_description:
+                                try:
+                                    tomlogger.debug(f"Fallback: requesting server info from '{service_name}'", self.username, module_name="mcp")
+                                    server_info = await session.get_server_info()
+                                    if server_info:
+                                        # Try 'instructions' first (FastMCP parameter)
+                                        server_description = getattr(server_info, 'instructions', '')
+                                        if not server_description:
+                                            # Fallback to 'description'
+                                            server_description = getattr(server_info, 'description', '')
+                                except Exception as info_error:
+                                    tomlogger.debug(f"Could not get server info from '{service_name}': {info_error}", self.username, module_name="mcp")
+                            
+                            if server_description:
+                                tomlogger.debug(f"Final server description for '{service_name}': {server_description}", self.username, module_name="mcp")
+                            
                             # Get available tools from the MCP server
                             tomlogger.debug(f"Requesting tools list from '{service_name}'", self.username, module_name="mcp")
                             tools_result = await session.list_tools()
@@ -329,7 +384,24 @@ class MCPClient:
                                 self.mcp_connections[service_name]['tools'] = openai_tools
                                 self.mcp_connections[service_name]['url'] = url  # Store URL for reconnection
                                 self.mcp_connections[service_name]['headers'] = headers
-                                # description and complexity are already set from config
+                                
+                                # Store both descriptions and use config description if available, otherwise server description
+                                config_description = service_config.get('description', '')
+                                self.mcp_connections[service_name]['server_description'] = server_description
+                                self.mcp_connections[service_name]['config_description'] = config_description
+                                
+                                if config_description:
+                                    self.mcp_connections[service_name]['description'] = config_description
+                                    tomlogger.info(f"✅ Using config description for '{service_name}'", self.username, module_name="mcp")
+                                    tomlogger.debug(f"Config description for '{service_name}': {config_description}", self.username, module_name="mcp")
+                                elif server_description:
+                                    self.mcp_connections[service_name]['description'] = server_description
+                                    tomlogger.info(f"✅ Using server description for '{service_name}' (no config description)", self.username, module_name="mcp")
+                                    tomlogger.debug(f"Server description for '{service_name}': {server_description}", self.username, module_name="mcp")
+                                else:
+                                    tomlogger.warning(f"No description available for '{service_name}' (config: '{config_description}', server: '{server_description}')", self.username, module_name="mcp")
+                                # If neither, description remains as set from config during initialization
+                                # complexity is already set from config
                             
                             tomlogger.info(f"✅ Successfully connected to MCP service '{service_name}' with {len(openai_tools)} tools", self.username, module_name="mcp")
                             tomlogger.debug(f"Available tools for '{service_name}': {[tool['function']['name'] for tool in openai_tools]}", self.username, module_name="mcp")
