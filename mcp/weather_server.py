@@ -104,7 +104,7 @@ class WeatherService:
         """Save GPS cache to JSON file"""
         try:
             with open(self.gps_cache_file, 'w', encoding='utf-8') as f:
-                json.dump(self.gps_cache, f, ensure_ascii=False, indent=2)
+                json.dump(self.gps_cache, f, ensure_ascii=False)
         except IOError:
             pass
     
@@ -246,7 +246,7 @@ def weather_get_by_gps_position(
         tomlogger.info(f"Tool call: weather_get_by_gps_position with lat={gps_latitude}, lon={gps_longitude}, from={period_from}, to={period_to}", module_name="weather")
     
     result = weather_service.get_weather_by_gps(gps_latitude, gps_longitude, period_from, period_to)
-    return json.dumps(result, ensure_ascii=False, indent=2)
+    return json.dumps(result, ensure_ascii=False)
 
 
 @server.tool()
@@ -260,7 +260,7 @@ def get_gps_position_by_city_name(city_name: str) -> str:
         tomlogger.info(f"Tool call: get_gps_position_by_city_name with city={city_name}", module_name="weather")
     
     result = weather_service.get_city_gps(city_name)
-    return json.dumps(result, ensure_ascii=False, indent=2)
+    return json.dumps(result, ensure_ascii=False)
 
 
 

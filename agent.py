@@ -22,6 +22,9 @@ from tomlogger import init_logger
 import tomlogger
 from tomllm import TomLLM
 
+import asyncio
+import traceback
+from datetime import datetime
 
 def init_config(config_path: str = '/data/config.yml') -> Dict[str, Any]:
     """Load configuration from YAML file"""
@@ -345,19 +348,16 @@ class MCPClient:
                     
                     except Exception as session_error:
                         tomlogger.error(f"MCP session error for '{service_name}': {type(session_error).__name__}: {str(session_error)}", self.username, module_name="mcp")
-                        import traceback
                         tomlogger.debug(f"Session error traceback for '{service_name}': {traceback.format_exc()}", self.username, module_name="mcp")
                         return False
                         
             except Exception as http_error:
                 tomlogger.error(f"Streamable HTTP connection error for '{service_name}': {type(http_error).__name__}: {str(http_error)}", self.username, module_name="mcp")
-                import traceback
                 tomlogger.debug(f"HTTP error traceback for '{service_name}': {traceback.format_exc()}", self.username, module_name="mcp")
                 return False
             
         except Exception as e:
             tomlogger.error(f"❌ Unexpected error connecting to MCP service '{service_name}': {type(e).__name__}: {str(e)}", self.username, module_name="mcp")
-            import traceback
             tomlogger.debug(f"Full error traceback for '{service_name}': {traceback.format_exc()}", self.username, module_name="mcp")
             return False
         
@@ -633,7 +633,6 @@ class TomAgent:
                                       self.username, "api", "agent")
                 
                 # Build conversation with context and history
-                from datetime import datetime
                 gps = ""
                 if position:
                     gps = f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}."
@@ -722,7 +721,6 @@ class TomAgent:
                 
                 # Execute with tools using the full conversation loop
                 # Need to run async function in event loop
-                import asyncio
                 try:
                     loop = asyncio.get_event_loop()
                 except RuntimeError:
@@ -772,7 +770,6 @@ class TomAgent:
                               self.username, "api", "agent")
                 
                 # Build simple conversation with history
-                from datetime import datetime
                 gps = ""
                 if position:
                     gps = f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}."

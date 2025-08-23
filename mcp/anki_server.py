@@ -178,7 +178,7 @@ def anki_list_decks() -> str:
         tomlogger.info("Tool call: anki_list_decks", module_name="anki")
     
     result = anki_service.list_decks()
-    return json.dumps(result, ensure_ascii=False, indent=2)
+    return json.dumps(result, ensure_ascii=False)
 
 
 @server.tool()
@@ -194,7 +194,7 @@ def anki_list_all_cards(deck_name: str) -> str:
         tomlogger.info(f"Tool call: anki_list_all_cards with deck={deck_name}", module_name="anki")
     
     result = anki_service.list_cards(deck_name)
-    return json.dumps(result, ensure_ascii=False, indent=2)
+    return json.dumps(result, ensure_ascii=False)
 
 
 @server.tool()
@@ -226,7 +226,7 @@ def anki_add_card(front: str, back: str, deck_name: str) -> str:
             "message": f"Failed to add card to deck '{deck_name}'"
         }
     
-    return json.dumps(result, ensure_ascii=False, indent=2)
+    return json.dumps(result, ensure_ascii=False)
 
 
 @server.resource("description://anki")
