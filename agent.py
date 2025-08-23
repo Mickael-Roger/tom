@@ -644,18 +644,17 @@ class TomAgent:
                 # Create temporal message (date/GPS) - never stored in history
                 temporal_message = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
                 
-                # Build current conversation (without temporal message or history)
+                # Create Tom prompt - never stored in history
+                tom_prompt = {"role": "system", "content": "You are Tom, a helpful personal assistant. Use the available tools to respond to user requests."}
+                
+                # Build current conversation (without temporal message, tom prompt, or history)
+                # Note: Response formatting will be added dynamically after tool responses
                 current_conversation = [
-                    {"role": "system", "content": "You are Tom, a helpful personal assistant. Use the available tools to respond to user requests."},
                     {"role": "user", "content": user_request}
                 ]
                 
-                # Add response context (module descriptions not needed here - only for triage)
-                response_context = self.tomllm.set_response_context(client_type)
-                current_conversation.append({"role": "system", "content": response_context})
-                
-                # Build full conversation with temporal message first, then history
-                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message)
+                # Build full conversation with proper order: temporal → tom → history → current
+                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message, tom_prompt)
                 
                 # Check if we have any tools to work with
                 if len(tools) == 0:
@@ -665,8 +664,10 @@ class TomAgent:
                     # Fall back to general knowledge response with context about unavailable services
                     # Re-use the temporal message already created
                     
+                    # Create special Tom prompt for this fallback case
+                    fallback_tom_prompt = {"role": "system", "content": f"You are Tom, a helpful personal assistant. The user requested information that would normally require external services ({', '.join(required_modules)}), but those services are currently unavailable. Provide a helpful response based on your general knowledge and suggest alternatives if possible."}
+                    
                     fallback_conversation = [
-                        {"role": "system", "content": f"You are Tom, a helpful personal assistant. The user requested information that would normally require external services ({', '.join(required_modules)}), but those services are currently unavailable. Provide a helpful response based on your general knowledge and suggest alternatives if possible."},
                         {"role": "user", "content": user_request}
                     ]
                     
@@ -674,8 +675,8 @@ class TomAgent:
                     response_context = self.tomllm.set_response_context(client_type)
                     fallback_conversation.append({"role": "system", "content": response_context})
                     
-                    # Build conversation with temporal message and history
-                    full_fallback_conversation = self.tomllm.get_conversation_with_history(client_type, fallback_conversation, temporal_message)
+                    # Build conversation with temporal message, fallback tom prompt, and history
+                    full_fallback_conversation = self.tomllm.get_conversation_with_history(client_type, fallback_conversation, temporal_message, fallback_tom_prompt)
                     
                     # Get fallback response
                     response = self.tomllm.callLLM(messages=full_fallback_conversation, complexity=1)
@@ -782,9 +783,11 @@ class TomAgent:
                 # Create temporal message (date/GPS) - never stored in history
                 temporal_message = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
                 
-                # Build current conversation (without temporal message or history)
+                # Create Tom prompt for general knowledge - never stored in history
+                tom_prompt = {"role": "system", "content": "You are Tom, a helpful personal assistant. Respond using your general knowledge."}
+                
+                # Build current conversation (without temporal message, tom prompt, or history)
                 current_conversation = [
-                    {"role": "system", "content": "You are Tom, a helpful personal assistant. Respond using your general knowledge."},
                     {"role": "user", "content": user_request}
                 ]
                 
@@ -792,8 +795,8 @@ class TomAgent:
                 response_context = self.tomllm.set_response_context(client_type)
                 current_conversation.append({"role": "system", "content": response_context})
                 
-                # Build full conversation with temporal message first, then history
-                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message)
+                # Build full conversation with proper order: temporal → tom → history → current
+                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message, tom_prompt)
                 
                 # Get direct response
                 response = self.tomllm.callLLM(messages=conversation, complexity=1)
