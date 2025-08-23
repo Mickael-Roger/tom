@@ -474,16 +474,164 @@ class TomAgent:
     @cherrypy.tools.json_in()
     @cherrypy.tools.json_out()
     def process(self):
-        """Handle process requests"""
-        # Echo back the received data for POST requests
+        """Handle process requests with triage system"""
         request_data = getattr(cherrypy.request, 'json', None)
         tomlogger.info(f"POST /process with data: {request_data}", self.username, "api", "agent")
-        return {
-            "status": "OK",
-            "message": "Process endpoint", 
-            "received_data": request_data,
-            "response": "This is a test response from the agent"
-        }
+        
+        if not request_data:
+            return {
+                "status": "ERROR",
+                "message": "No request data provided"
+            }
+        
+        # Extract request parameters
+        user_request = request_data.get('request')
+        position = request_data.get('position')  # Optional GPS coordinates
+        client_type = request_data.get('client_type', 'web')
+        sound_enabled = request_data.get('sound_enabled', False)
+        
+        if not user_request:
+            return {
+                "status": "ERROR", 
+                "message": "Missing 'request' field in request data"
+            }
+        
+        try:
+            # Get available MCP modules (ALWAYS include all configured services, even without tools)
+            available_modules = []
+            mcp_connections = self.mcp_client.get_mcp_connections()
+            
+            for service_name, connection_info in mcp_connections.items():
+                available_modules.append({
+                    'name': service_name,
+                    'description': connection_info.get('description', f'MCP service: {service_name}')
+                })
+            
+            tomlogger.info(f"🎯 Available modules for triage: {[m['name'] for m in available_modules]}", 
+                          self.username, "api", "agent")
+            
+            # Step 1: ALWAYS do triage first, even if no modules have tools yet
+            # (modules might initialize their tools after startup)
+            required_modules = self.tomllm.triage_modules(
+                user_request=user_request,
+                position=position,
+                available_modules=available_modules,
+                client_type=client_type
+            )
+            
+            if required_modules == ["reset_performed"]:
+                # Handle conversation reset
+                return {
+                    "status": "OK",
+                    "response": "Salut ! Comment puis-je t'aider ?",
+                    "conversation_reset": True
+                }
+            
+            # Step 2: Execute request with selected modules
+            if required_modules:
+                tomlogger.info(f"🚀 Executing request with modules: {required_modules}", 
+                              self.username, "api", "agent")
+                
+                # Build tools from selected modules
+                tools = []
+                selected_connections = {}
+                
+                for module_name in required_modules:
+                    if module_name in mcp_connections:
+                        connection_info = mcp_connections[module_name]
+                        module_tools = connection_info.get('tools', [])
+                        tools.extend(module_tools)
+                        selected_connections[module_name] = connection_info
+                        tomlogger.info(f"📦 Added {len(module_tools)} tools from module '{module_name}'", 
+                                      self.username, "api", "agent")
+                
+                # Build conversation with context
+                from datetime import datetime
+                gps = ""
+                if position:
+                    gps = f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}."
+                
+                today = datetime.now().strftime("%A %d %B %Y %H:%M:%S")
+                weeknumber = datetime.now().isocalendar().week
+                
+                conversation = [
+                    {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"},
+                    {"role": "system", "content": "You are Tom, a helpful personal assistant. Use the available tools to respond to user requests."},
+                    {"role": "user", "content": user_request}
+                ]
+                
+                # Add module descriptions as context
+                for module_name, connection_info in selected_connections.items():
+                    description = connection_info.get('description', '')
+                    if description:
+                        conversation.append({"role": "system", "content": f"Module {module_name}: {description}"})
+                
+                # Add response context
+                response_context = self.tomllm.set_response_context(client_type)
+                conversation.append({"role": "system", "content": response_context})
+                
+                # Execute with tools (this would need actual MCP tool execution implementation)
+                # For now, return a placeholder response
+                return {
+                    "status": "OK",
+                    "message": f"Would execute request with modules: {required_modules}",
+                    "selected_modules": required_modules,
+                    "available_tools_count": len(tools),
+                    "response": f"Je vais traiter votre demande '{user_request}' en utilisant les modules: {', '.join(required_modules)}"
+                }
+            else:
+                # No specific modules needed, use general knowledge
+                tomlogger.info(f"💭 No specific modules needed, using general LLM knowledge", 
+                              self.username, "api", "agent")
+                
+                # Build simple conversation
+                from datetime import datetime
+                gps = ""
+                if position:
+                    gps = f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}."
+                
+                today = datetime.now().strftime("%A %d %B %Y %H:%M:%S")
+                weeknumber = datetime.now().isocalendar().week
+                
+                conversation = [
+                    {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"},
+                    {"role": "system", "content": "You are Tom, a helpful personal assistant. Respond using your general knowledge."},
+                    {"role": "user", "content": user_request}
+                ]
+                
+                # Add response context
+                response_context = self.tomllm.set_response_context(client_type)
+                conversation.append({"role": "system", "content": response_context})
+                
+                # Get direct response
+                response = self.tomllm.callLLM(messages=conversation, complexity=1)
+                
+                if response and response.choices[0].finish_reason == "stop":
+                    response_content = response.choices[0].message.content
+                    
+                    if sound_enabled:
+                        return {
+                            "status": "OK",
+                            "text_display": response_content,
+                            "text_tts": response_content  # Could implement TTS synthesis here
+                        }
+                    else:
+                        return {
+                            "status": "OK",
+                            "response": response_content
+                        }
+                else:
+                    return {
+                        "status": "ERROR",
+                        "message": "Failed to get LLM response"
+                    }
+        
+        except Exception as e:
+            tomlogger.error(f"Error processing request: {str(e)}", self.username, "api", "agent")
+            return {
+                "status": "ERROR",
+                "message": f"Internal error: {str(e)}"
+            }
 
 
 def main():

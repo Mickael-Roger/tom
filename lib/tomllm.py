@@ -6,6 +6,7 @@ Handles LLM interactions and MCP server communication for Tom Agent
 import json
 import os
 import time
+import copy
 from typing import Dict, Any, Optional, List
 from litellm import completion
 import tomlogger
@@ -155,9 +156,23 @@ class TomLLM:
                 time.sleep(sleep_time)
             self.mistral_last_request = time.time()
         
-        # Debug logging
-        tomlogger.debug(f"📤 Messages to send: {str(messages)} | Tools available: {str(tools)}", 
-                       self.username, module_name="tomllm")
+        # Debug logging - log full JSON content when in DEBUG mode
+        if tomlogger.logger and tomlogger.logger.logger.level <= 10:  # DEBUG level = 10
+            try:
+                request_data = {
+                    "model": model,
+                    "messages": messages,
+                    "tools": tools,
+                    "complexity": complexity
+                }
+                tomlogger.debug(f"📤 Full LLM request JSON: {json.dumps(request_data, indent=2, ensure_ascii=False)}", 
+                               self.username, module_name="tomllm")
+            except Exception as json_error:
+                tomlogger.debug(f"📤 Messages to send: {str(messages)} | Tools available: {str(tools)} (JSON serialization failed: {json_error})", 
+                               self.username, module_name="tomllm")
+        else:
+            tomlogger.debug(f"📤 Messages to send: {str(messages)} | Tools available: {str(tools)}", 
+                           self.username, module_name="tomllm")
         
         # Handle DeepSeek specific tool parameter cleanup
         if llm == "deepseek" and tools:
@@ -212,8 +227,19 @@ class TomLLM:
                             messages=messages,
                         )
                 
-                tomlogger.debug(f"📥 LLM Response from {llm}: {str(response)}", 
-                               self.username, module_name="tomllm")
+                # Debug logging - log full JSON content when in DEBUG mode
+                if tomlogger.logger and tomlogger.logger.logger.level <= 10:  # DEBUG level = 10
+                    try:
+                        # Convert response to dict for JSON serialization
+                        response_dict = response.model_dump() if hasattr(response, 'model_dump') else str(response)
+                        tomlogger.debug(f"📥 Full LLM response JSON: {json.dumps(response_dict, indent=2, ensure_ascii=False)}", 
+                                       self.username, module_name="tomllm")
+                    except Exception as json_error:
+                        tomlogger.debug(f"📥 LLM Response from {llm}: {str(response)} (JSON serialization failed: {json_error})", 
+                                       self.username, module_name="tomllm")
+                else:
+                    tomlogger.debug(f"📥 LLM Response from {llm}: {str(response)}", 
+                                   self.username, module_name="tomllm")
                 
                 # Validate response
                 if not response:
@@ -259,3 +285,166 @@ class TomLLM:
                     raise e
         
         return False
+    
+    def set_response_context(self, client_type: str) -> str:
+        """Set response context based on client type"""
+        if client_type == 'tui':
+            return "Your response will be displayed in a TUI terminal application. You should use markdown to format your answer for better readability. You can use titles, lists, bold text, etc."
+        elif client_type == 'android':
+            return "Your response will be displayed in an Android mobile application. You should use markdown to format your answer for better readability. Keep responses concise and mobile-friendly."
+        else:  # web and pwa
+            return "Your response will be displayed in a web browser or in a mobile app that supports markdown. You should use markdown to format your answer for better readability. You can use titles, lists, bold text, etc. Use simple text and line breaks for readability. Unless the user explicitly asks for it, you must never directly write URL or stuff like that. Instead, you must use the tag [open:PLACE URL HERE]"
+    
+    def triage_modules(self, user_request: str, position: Optional[Dict[str, float]], 
+                      available_modules: List[Dict[str, str]], client_type: str) -> List[str]:
+        """
+        Triage modules needed to answer user request
+        
+        Args:
+            user_request: User's request text
+            position: Optional GPS position {'latitude': float, 'longitude': float}
+            available_modules: List of {'name': str, 'description': str}
+            client_type: 'web', 'tui', or 'android'
+            
+        Returns:
+            List of module names needed to answer the request
+        """
+        
+        # Create modules name list for enum
+        modules_name_list = [module['name'] for module in available_modules]
+        
+        # If no modules available, return empty list immediately
+        if not modules_name_list:
+            tomlogger.info(f"💭 No modules available for triage, will use general knowledge", 
+                          self.username, module_name="tomllm")
+            return []
+        
+        # Build triage tools
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "modules_needed_to_answer_user_prompt",
+                    "description": "This function is used to execute the appropriate module to get the required data to answer the user's request",
+                    "strict": True,
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "modules_name": {
+                                "type": "string",
+                                "enum": modules_name_list,
+                                "description": "Module name needed to answer the user's request",
+                            },
+                        },
+                        "required": ["modules_name"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "reset_conversation",
+                    "description": "Reset the conversation history when the user greets you with expressions like 'Hello', 'Hi', 'Salut', 'Hi Tom', 'Salut Tom', or similar greetings that indicate a fresh start to the conversation",
+                    "strict": True,
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+        ]
+        
+        # Build available tools description for prompt
+        tooling = json.dumps(available_modules)
+        
+        # Create triage prompt
+        prompt = f'''As an AI assistant, you have access to a wide range of functions, far more than your API allows. These functions are grouped into modules. A module is a logical grouping of functions for a specific theme.
+
+For each new user request, you have access to the conversation history.
+
+IMPORTANT: If the user greets you with expressions like "Hello", "Hi", "Salut", "Hi Tom", "Salut Tom", or similar greetings that indicate a fresh start to the conversation, you MUST call the 'reset_conversation' function first before processing any other request. This will clear the conversation history and provide a clean slate for the new conversation.
+
+If you need a function that is not in your list of tools to respond to the user's request, you should call the 'modules_needed_to_answer_user_prompt' function with the necessary modules. You can call the 'modules_needed_to_answer_user_prompt' function as many times as needed.
+
+It is very important that you do not invent module names—only the modules provided in the list exist.
+
+Once you call the 'modules_needed_to_answer_user_prompt' function, the user's request will be sent back to you with the functions from the requested modules added to your tools. At that point, you can choose the appropriate function(s) to respond to the user's request.
+
+```json
+{tooling}
+```
+'''
+        
+        # Build conversation for triage
+        triage_conversation = []
+        
+        # Add current time and GPS info if available
+        from datetime import datetime
+        gps = ""
+        if position:
+            gps = f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}."
+        
+        today = datetime.now().strftime("%A %d %B %Y %H:%M:%S")
+        weeknumber = datetime.now().isocalendar().week
+        today_msg = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
+        triage_conversation.append(today_msg)
+        
+        # Add main system prompt
+        triage_conversation.append({"role": "system", "content": prompt})
+        
+        # Add user request
+        triage_conversation.append({"role": "user", "content": user_request})
+        
+        # Add response context
+        response_context = self.set_response_context(client_type)
+        triage_conversation.append({"role": "system", "content": response_context})
+        
+        tomlogger.info(f"🔍 Starting module triage for request: {user_request[:100]}...", 
+                      self.username, module_name="tomllm")
+        
+        # Call LLM for triage (complexity 1 for good reasoning)
+        response = self.callLLM(messages=triage_conversation, tools=tools, complexity=1)
+        
+        load_modules = []
+        reset_requested = False
+        
+        if response and response.choices[0].finish_reason == "tool_calls":
+            for tool_call in response.choices[0].message.tool_calls:
+                if tool_call.function.name == "reset_conversation":
+                    reset_requested = True
+                    tomlogger.info(f"Reset conversation requested via greeting detection", 
+                                 self.username, module_name="tomllm")
+                elif tool_call.function.name == "modules_needed_to_answer_user_prompt":
+                    try:
+                        args = json.loads(tool_call.function.arguments)
+                        mod_name = args.get('modules_name')
+                        if mod_name in modules_name_list:
+                            load_modules.append(mod_name)
+                            tomlogger.info(f"📦 Triage selected module: {mod_name}", 
+                                         self.username, module_name="tomllm")
+                        else:
+                            tomlogger.warning(f"Invalid module name returned by triage: {mod_name}", 
+                                            self.username, module_name="tomllm")
+                    except json.JSONDecodeError as e:
+                        tomlogger.error(f"Failed to parse triage arguments: {tool_call.function.arguments}", 
+                                      self.username, module_name="tomllm")
+        
+        # Handle reset request
+        if reset_requested:
+            tomlogger.info(f"🔄 Conversation reset requested", self.username, module_name="tomllm")
+            return ["reset_performed"]  # Special indicator for reset
+        
+        # Remove duplicates and return
+        load_modules = list(set(load_modules))
+        
+        if load_modules:
+            tomlogger.info(f"✅ Triage completed - modules needed: {load_modules}", 
+                          self.username, module_name="tomllm")
+        else:
+            tomlogger.info(f"💭 Triage completed - no specific modules needed, will use general knowledge", 
+                          self.username, module_name="tomllm")
+        
+        return load_modules
