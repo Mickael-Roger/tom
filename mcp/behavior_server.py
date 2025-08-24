@@ -247,18 +247,6 @@ def get_all_behavior_prompts() -> str:
     return behavior_service.get_behavior_prompt()
 
 
-@server.resource("description://tom_notification")
-def get_notification_status() -> str:
-    """Return current background notification status for behavior tuning system."""
-    # Count how many modules have behavior prompts
-    module_count = len(behavior_service.get_all_modules())
-    
-    if module_count == 0:
-        return "No behavior adjustments configured"
-    elif module_count == 1:
-        return f"1 behavior adjustment configured"
-    else:
-        return f"{module_count} behavior adjustments configured"
 
 
 if __name__ == "__main__":

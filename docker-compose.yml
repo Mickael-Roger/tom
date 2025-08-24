@@ -150,7 +150,20 @@ services:
       - tom
     volumes:
       - /data/mcp/contacts/:/data/
-  
+
+  notifications:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/notifications/Dockerfile
+    container_name: notifications
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/notifications/:/data/
+ 
 
   # Personal
  
