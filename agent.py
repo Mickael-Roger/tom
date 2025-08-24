@@ -559,8 +559,8 @@ class TomAgent:
         
         tomlogger.info(f"POST /reset for client_type: {client_type}", self.username, "api", "agent")
         
-        # Reset history for the specific client type
-        self.tomllm.reset_history(client_type)
+        # Reset history for the specific client type with behavior tuning analysis
+        self.tomllm.reset_history(client_type, self.mcp_client)
         
         return {
             "status": "OK",
@@ -751,16 +751,18 @@ class TomAgent:
             
             # Step 1: ALWAYS do triage first, even if no modules have tools yet
             # (modules might initialize their tools after startup)
+            personal_context = self.mcp_client.get_personal_context()
             required_modules = self.tomllm.triage_modules(
                 user_request=user_request,
                 position=position,
                 available_modules=available_modules,
-                client_type=client_type
+                client_type=client_type,
+                personal_context=personal_context
             )
             
             if required_modules == ["reset_performed"]:
-                # Handle conversation reset - clear history for this client
-                self.tomllm.reset_history(client_type)
+                # Handle conversation reset - clear history for this client with behavior tuning analysis
+                self.tomllm.reset_history(client_type, self.mcp_client)
                 return {
                     "status": "OK",
                     "response": "Salut ! Comment puis-je t'aider ?",
@@ -824,16 +826,21 @@ class TomAgent:
                 # Create Tom prompt - never stored in history
                 tom_prompt = {"role": "system", "content": "You are Tom, a helpful personal assistant. Use the available tools to respond to user requests."}
                 
-                # Create formatting message - never stored in history, always in 3rd position
+                # Create personal context message - never stored in history, always in 3rd position
+                personal_context_message = None
+                if personal_context.strip():
+                    personal_context_message = {"role": "system", "content": f"USER PERSONAL CONTEXT: {personal_context}"}
+                
+                # Create formatting message - never stored in history, always in 4th position
                 formatting_message = {"role": "system", "content": self.tomllm.set_response_context(client_type)}
                 
-                # Build current conversation (without temporal message, tom prompt, formatting, or history)
+                # Build current conversation (without temporal message, tom prompt, personal context, formatting, or history)
                 current_conversation = [
                     {"role": "user", "content": user_request}
                 ]
                 
-                # Build full conversation with proper order: temporal → tom → formatting → history → current
-                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message, tom_prompt, formatting_message)
+                # Build full conversation with proper order: temporal → tom → personal_context → formatting → history → current
+                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message, tom_prompt, personal_context_message, formatting_message)
                 
                 # Check if we have any tools to work with
                 if len(tools) == 0:
@@ -850,11 +857,16 @@ class TomAgent:
                         {"role": "user", "content": user_request}
                     ]
                     
-                    # Create fallback formatting message - never stored in history, always in 3rd position
+                    # Create personal context message for fallback - never stored in history, always in 3rd position
+                    fallback_personal_context_message = None
+                    if personal_context.strip():
+                        fallback_personal_context_message = {"role": "system", "content": f"USER PERSONAL CONTEXT: {personal_context}"}
+                    
+                    # Create fallback formatting message - never stored in history, always in 4th position
                     fallback_formatting_message = {"role": "system", "content": self.tomllm.set_response_context(client_type)}
                     
-                    # Build conversation with temporal message, fallback tom prompt, formatting, and history
-                    full_fallback_conversation = self.tomllm.get_conversation_with_history(client_type, fallback_conversation, temporal_message, fallback_tom_prompt, fallback_formatting_message)
+                    # Build conversation with temporal message, fallback tom prompt, personal context, formatting, and history
+                    full_fallback_conversation = self.tomllm.get_conversation_with_history(client_type, fallback_conversation, temporal_message, fallback_tom_prompt, fallback_personal_context_message, fallback_formatting_message)
                     
                     # Get fallback response
                     response = self.tomllm.callLLM(messages=full_fallback_conversation, complexity=1)
@@ -915,7 +927,8 @@ class TomAgent:
                         max_iterations=10,
                         mcp_client=self.mcp_client,
                         client_type=client_type,
-                        track_history=True
+                        track_history=True,
+                        selected_modules=required_modules
                     )
                 )
                 
@@ -965,16 +978,21 @@ class TomAgent:
                 # Create Tom prompt for general knowledge - never stored in history
                 tom_prompt = {"role": "system", "content": "You are Tom, a helpful personal assistant. Respond using your general knowledge."}
                 
-                # Build current conversation (without temporal message, tom prompt, formatting, or history)
+                # Build current conversation (without temporal message, tom prompt, personal context, formatting, or history)
                 current_conversation = [
                     {"role": "user", "content": user_request}
                 ]
                 
-                # Create formatting message - never stored in history, always in 3rd position
+                # Create personal context message - never stored in history, always in 3rd position
+                no_tools_personal_context_message = None
+                if personal_context.strip():
+                    no_tools_personal_context_message = {"role": "system", "content": f"USER PERSONAL CONTEXT: {personal_context}"}
+                
+                # Create formatting message - never stored in history, always in 4th position
                 no_tools_formatting_message = {"role": "system", "content": self.tomllm.set_response_context(client_type)}
                 
-                # Build full conversation with proper order: temporal → tom → formatting → history → current
-                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message, tom_prompt, no_tools_formatting_message)
+                # Build full conversation with proper order: temporal → tom → personal_context → formatting → history → current
+                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message, tom_prompt, no_tools_personal_context_message, no_tools_formatting_message)
                 
                 # Get direct response
                 response = self.tomllm.callLLM(messages=conversation, complexity=1)

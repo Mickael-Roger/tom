@@ -7,6 +7,8 @@ import json
 import os
 import time
 import copy
+import threading
+import asyncio
 from typing import Dict, Any, Optional, List
 from litellm import completion
 import tomlogger
@@ -33,6 +35,7 @@ class TomLLM:
         self.llms_dict = {}  # Dict: llm_name -> {api, env_var, models}
         self.default_llm = self.global_config.get('llm', 'openai')
         self.tts_llm = self.global_config.get('llm_tts', self.default_llm)
+        self.behavior_llm = self.global_config.get('llm_behavior', self.default_llm)
         
         # Rate limiting for Mistral (1.5 seconds between requests)
         self.mistral_last_request = 0
@@ -301,7 +304,7 @@ class TomLLM:
             return "Your response will be displayed in a web browser or in a mobile app that supports markdown. You should use markdown to format your answer for better readability. You can use titles, lists, bold text, etc. Use simple text and line breaks for readability. Unless the user explicitly asks for it, you must never directly write URL or stuff like that. Instead, you must use the tag [open:PLACE URL HERE]"
     
     def triage_modules(self, user_request: str, position: Optional[Dict[str, float]], 
-                      available_modules: List[Dict[str, str]], client_type: str) -> List[str]:
+                      available_modules: List[Dict[str, str]], client_type: str, personal_context: str = "") -> List[str]:
         """
         Triage modules needed to answer user request
         
@@ -310,6 +313,7 @@ class TomLLM:
             position: Optional GPS position {'latitude': float, 'longitude': float}
             available_modules: List of {'name': str, 'description': str}
             client_type: 'web', 'tui', or 'android'
+            personal_context: User's personal context from configuration
             
         Returns:
             List of module names needed to answer the request
@@ -395,7 +399,12 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         # Create temporal message (date/GPS) - never stored in history
         temporal_message = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
         
-        # Build current triage conversation (without temporal message or history)
+        # Create personal context message if provided
+        personal_context_message = None
+        if personal_context.strip():
+            personal_context_message = {"role": "system", "content": f"USER PERSONAL CONTEXT: {personal_context}"}
+        
+        # Build current triage conversation (without temporal message, personal context or history)
         # Note: No response formatting context needed for triage since it doesn't generate user responses
         # Note: No Tom prompt needed for triage - it has its own specific prompt
         current_triage_conversation = [
@@ -403,9 +412,10 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             {"role": "user", "content": user_request}
         ]
         
-        # Build full triage conversation with temporal message first, then history
+        # Build full triage conversation with temporal message first, then personal context, then history
         # No tom_prompt for triage since it has its own specific system prompt
-        triage_conversation = self.get_conversation_with_history(client_type, current_triage_conversation, temporal_message)
+        # No formatting_message needed for triage
+        triage_conversation = self.get_conversation_with_history(client_type, current_triage_conversation, temporal_message, None, personal_context_message)
         
         tomlogger.info(f"🔍 Starting module triage for request: {user_request[:100]}...", 
                       self.username, module_name="tomllm")
@@ -456,7 +466,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
     
     async def execute_request_with_tools(self, conversation: List[Dict[str, str]], tools: List[Dict], 
                                         complexity: int = 1, max_iterations: int = 10, mcp_client=None, 
-                                        client_type: str = 'web', track_history: bool = True) -> Any:
+                                        client_type: str = 'web', track_history: bool = True, selected_modules: List[str] = None) -> Any:
         """
         Execute request with tools, handling multiple iterations of tool calls
         
@@ -468,12 +478,23 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             mcp_client: MCPClient instance for executing MCP tools
             client_type: Client type for history tracking ('web', 'android', 'tui')
             track_history: Whether to track conversation in history
+            selected_modules: List of selected module names for behavior prompts
             
         Returns:
             Final response content or error dict
         """
         
-        working_conversation = copy.deepcopy(conversation)
+        # Apply behavior prompts if behavior service is available
+        enhanced_conversation = conversation
+        if mcp_client and selected_modules:
+            try:
+                enhanced_conversation = await self._apply_behavior_prompts(conversation, selected_modules, mcp_client)
+                tomlogger.debug(f"Applied behavior prompts for modules: {selected_modules}", self.username, module_name="tomllm")
+            except Exception as e:
+                tomlogger.debug(f"Failed to apply behavior prompts: {e}", self.username, module_name="tomllm")
+                enhanced_conversation = conversation
+        
+        working_conversation = copy.deepcopy(enhanced_conversation)
         iteration = 0
         
         # Extract user request from conversation for history tracking
@@ -823,6 +844,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
     def get_conversation_with_history(self, client_type: str, current_conversation: List[Dict[str, Any]], 
                                       temporal_message: Optional[Dict[str, Any]] = None,
                                       tom_prompt: Optional[Dict[str, Any]] = None,
+                                      personal_context_message: Optional[Dict[str, Any]] = None,
                                       formatting_message: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
         Build conversation with history prepended in correct order
@@ -832,10 +854,11 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             current_conversation: Current conversation messages (user request, response formatting, etc)
             temporal_message: Optional temporal message (date/GPS) that goes first but never in history
             tom_prompt: Optional Tom prompt that goes second but never in history
-            formatting_message: Optional formatting message that goes third but never in history
+            personal_context_message: Optional personal context message that goes third but never in history
+            formatting_message: Optional formatting message that goes fourth but never in history
             
         Returns:
-            Full conversation: temporal → tom_prompt → formatting → history → current messages
+            Full conversation: temporal → tom_prompt → personal_context → formatting → history → current messages
         """
         if client_type not in self.history:
             tomlogger.warning(f"Invalid client type '{client_type}', using empty history", 
@@ -856,9 +879,10 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         # Build conversation in correct OpenAI order:
         # 1. Temporal message first (date/GPS - never stored in history)
         # 2. Tom prompt second (global context - never stored in history) 
-        # 3. Formatting message third (response context - never stored in history)
-        # 4. History (previous conversation - without formatage messages)
-        # 5. Current conversation messages (user request, etc)
+        # 3. Personal context message third (user context - never stored in history)
+        # 4. Formatting message fourth (response context - never stored in history)
+        # 5. History (previous conversation - without context messages)
+        # 6. Current conversation messages (user request, etc)
         
         full_conversation = []
         
@@ -870,31 +894,37 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         if tom_prompt:
             full_conversation.append(tom_prompt)
         
-        # 3. Add formatting message third if provided
+        # 3. Add personal context message third if provided
+        if personal_context_message:
+            full_conversation.append(personal_context_message)
+        
+        # 4. Add formatting message fourth if provided
         if formatting_message:
             full_conversation.append(formatting_message)
         
-        # 4. Add history (clean history without formatage messages)
+        # 5. Add history (clean history without context messages)
         if client_history:
             full_conversation.extend(client_history)
         
-        # 5. Add current conversation messages
+        # 6. Add current conversation messages
         full_conversation.extend(current_conversation)
         
         temporal_count = 1 if temporal_message else 0
         tom_prompt_count = 1 if tom_prompt else 0
+        personal_context_count = 1 if personal_context_message else 0
         formatting_count = 1 if formatting_message else 0
-        tomlogger.debug(f"Built conversation for {client_type}: {temporal_count} temporal + {tom_prompt_count} tom + {formatting_count} formatting + {len(client_history)} history + {len(current_conversation)} current = {len(full_conversation)} total", 
+        tomlogger.debug(f"Built conversation for {client_type}: {temporal_count} temporal + {tom_prompt_count} tom + {personal_context_count} personal_context + {formatting_count} formatting + {len(client_history)} history + {len(current_conversation)} current = {len(full_conversation)} total", 
                        self.username, module_name="tomllm")
         
         return full_conversation
     
-    def reset_history(self, client_type: str):
+    def reset_history(self, client_type: str, mcp_client=None):
         """
-        Reset conversation history for specific client type
+        Reset conversation history for specific client type, with optional behavior tuning analysis
         
         Args:
             client_type: 'web', 'android', or 'tui'
+            mcp_client: Optional MCPClient instance for behavior tuning analysis
         """
         if client_type not in self.history:
             tomlogger.warning(f"Invalid client type '{client_type}', cannot reset", 
@@ -902,6 +932,10 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             return
         
         history_length = len(self.history[client_type])
+        
+        # Analyze behavior tuning before clearing history if behavior service is available
+        if history_length > 0 and mcp_client:
+            self._analyze_behavior_tuning_async(client_type, mcp_client)
         
         # Debug logging - show what was cleared in DEBUG mode
         if tomlogger.logger and tomlogger.logger.logger.level <= 10 and history_length > 0:  # DEBUG level = 10
@@ -929,6 +963,267 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         if client_type not in self.history:
             return 0
         return len(self.history[client_type])
+    
+    def _analyze_behavior_tuning_async(self, client_type: str, mcp_client):
+        """Analyze session for behavior tuning insights and update behavior configuration asynchronously"""
+        
+        def analyze_tuning_thread():
+            try:
+                # Check if behavior service is available
+                behavior_connection = mcp_client.get_mcp_connection("behavior")
+                if not behavior_connection or not behavior_connection.get("tools"):
+                    tomlogger.debug(f"Behavior service not available for tuning analysis", self.username, module_name="tomllm")
+                    return
+                
+                tomlogger.info(f"🎯 Starting behavior tuning analysis for {client_type} client", self.username, module_name="tomllm")
+                
+                # Prepare conversation history as text (only user and assistant messages)
+                conversation_text = ""
+                history = self.history.get(client_type, [])
+                
+                for msg in history:
+                    if isinstance(msg, dict) and 'role' in msg and 'content' in msg:
+                        if msg['role'] in ['user', 'assistant'] and isinstance(msg['content'], str):
+                            # Truncate very long messages to avoid API limits
+                            content = msg['content']
+                            if len(content) > 1000:
+                                content = content[:1000] + "..."
+                            conversation_text += f"{msg['role']}: {content}\n"
+                
+                # Skip analysis if no meaningful conversation content
+                if len(conversation_text.strip()) < 50:
+                    tomlogger.debug(f"Conversation too short for behavior tuning analysis, skipping", self.username, module_name="tomllm")
+                    return
+                
+                # Limit conversation text size to avoid API limits
+                if len(conversation_text) > 3000:
+                    conversation_text = conversation_text[-3000:]  # Keep only the last 3000 chars
+                    conversation_text = "...\n" + conversation_text
+                
+                # Get current behavior configuration via MCP resource
+                current_behavior_prompts = ""
+                try:
+                    # Create async task to get behavior prompts
+                    async def get_behavior_prompts():
+                        try:
+                            from mcp.client.streamable_http import streamablehttp_client
+                            from mcp import ClientSession
+                            
+                            async with streamablehttp_client(behavior_connection['url']) as (read_stream, write_stream, _):
+                                async with ClientSession(read_stream, write_stream) as session:
+                                    await session.initialize()
+                                    
+                                    # Get all behavior prompts via resource
+                                    resource_uri = "description://behavior_prompts"
+                                    resource_result = await session.read_resource(resource_uri)
+                                    
+                                    if resource_result and resource_result.contents:
+                                        content = resource_result.contents[0]
+                                        if hasattr(content, 'text'):
+                                            return content.text
+                                        elif hasattr(content, 'data'):
+                                            return str(content.data)
+                                    return ""
+                        except Exception as e:
+                            tomlogger.debug(f"Error getting behavior prompts: {e}", self.username, module_name="tomllm")
+                            return ""
+                    
+                    # Run async function
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    
+                    current_behavior_prompts = loop.run_until_complete(get_behavior_prompts())
+                    
+                except Exception as e:
+                    tomlogger.debug(f"Error getting current behavior prompts: {e}", self.username, module_name="tomllm")
+                    current_behavior_prompts = ""
+                
+                if not current_behavior_prompts:
+                    current_behavior_prompts = "# No current behavior adjustments configured"
+                
+                # Prepare available modules description from MCP services
+                available_modules = []
+                mcp_connections = mcp_client.get_mcp_connections()
+                for service_name, connection_info in mcp_connections.items():
+                    available_modules.append(f"- {service_name}: {connection_info.get('description', 'MCP service')}")
+                
+                modules_description = "\n".join(available_modules)
+                
+                # Create analysis prompt (inspired by the old version)
+                tuning_prompt = f"""Analyze the following conversation to identify any information that would be useful for behavioral tuning of modules. Based on the conversation content, available modules, and current behavior configuration, determine if any updates would be beneficial.
+
+Available modules and their descriptions:
+{modules_description}
+
+Current behavior configuration:
+{current_behavior_prompts}
+
+Conversation history:
+{conversation_text}
+
+Instructions:
+1. Look for user preferences, specific requirements, or behavioral adjustments mentioned in the conversation
+2. Identify which modules could benefit from these insights, or if this should be a GLOBAL behavioral change
+3. Consider adding new behavioral adjustments for modules not currently configured
+4. Consider modifying existing behavioral adjustments if new information contradicts or enhances current settings
+5. Only suggest updates if there's clear, actionable information from the conversation
+6. Use the 'global' module for behavioral changes that apply to all modules (e.g., language preferences, response style)
+
+Examples of what to look for:
+- User preferences about response style or format (use 'global' module)
+- Language preferences (use 'global' module)
+- Specific requirements for how certain modules should behave
+- Corrections or feedback about module behavior
+- Contextual information that would improve module responses
+
+If behavioral adjustments are needed, use the update_behavior_prompt_for_module function to make the changes.
+If no updates are needed, simply respond with "NO_UPDATE".
+
+IMPORTANT: 
+- Use 'global' for changes that affect all modules (language, general response style, etc.)
+- Use specific module names for module-specific behavioral adjustments
+- Each behavioral adjustment should be a clear, actionable instruction
+- Be concise and specific in behavioral instructions"""
+
+                # Call LLM for tuning analysis using behavior LLM
+                tuning_messages = [
+                    {"role": "system", "content": "You are a behavioral tuning analyst specialized in identifying user preferences and module optimization opportunities from conversation history."},
+                    {"role": "user", "content": tuning_prompt}
+                ]
+                
+                # Validate message content before sending to LLM
+                for msg in tuning_messages:
+                    if not isinstance(msg.get('content'), str):
+                        tomlogger.error(f"Invalid message content type in behavior tuning analysis: {type(msg.get('content'))}", self.username, module_name="tomllm")
+                        return
+                    if len(msg['content']) > 15000:  # Limit to prevent API errors
+                        msg['content'] = msg['content'][:15000] + "...\n[Content truncated due to length]"
+                
+                # Get behavior tools from MCP connection
+                behavior_tools = behavior_connection.get("tools", [])
+                
+                # Execute LLM analysis with behavior tools
+                try:
+                    async def run_behavior_analysis():
+                        from mcp.client.streamable_http import streamablehttp_client
+                        from mcp import ClientSession
+                        
+                        async with streamablehttp_client(behavior_connection['url']) as (read_stream, write_stream, _):
+                            async with ClientSession(read_stream, write_stream) as session:
+                                await session.initialize()
+                                
+                                # Execute request with tools using the existing execution method
+                                execution_result = await self.execute_request_with_tools(
+                                    conversation=tuning_messages,
+                                    tools=behavior_tools,
+                                    complexity=1,
+                                    max_iterations=5,
+                                    mcp_client=mcp_client,
+                                    client_type=client_type,
+                                    track_history=False  # Don't add this to user history
+                                )
+                                
+                                return execution_result
+                    
+                    # Run the analysis
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    
+                    execution_result = loop.run_until_complete(run_behavior_analysis())
+                    
+                    if execution_result.get("status") == "OK":
+                        tomlogger.info(f"✅ Behavior tuning analysis completed successfully", self.username, module_name="tomllm")
+                    else:
+                        tomlogger.warning(f"Behavior tuning analysis completed with issues: {execution_result.get('message', 'Unknown error')}", self.username, module_name="tomllm")
+                        
+                except Exception as analysis_error:
+                    tomlogger.error(f"Error during behavior tuning analysis: {str(analysis_error)}", self.username, module_name="tomllm")
+                
+            except Exception as e:
+                tomlogger.error(f"Error during behavior tuning analysis: {str(e)}", self.username, module_name="tomllm")
+        
+        # Start analysis in background thread
+        thread = threading.Thread(target=analyze_tuning_thread)
+        thread.daemon = True
+        thread.start()
+        tomlogger.debug(f"Started behavior tuning analysis in background thread", self.username, module_name="tomllm")
+    
+    async def _apply_behavior_prompts(self, conversation: List[Dict[str, str]], selected_modules: List[str], mcp_client) -> List[Dict[str, str]]:
+        """Apply behavior prompts from the behavior service to the conversation"""
+        if not mcp_client:
+            return conversation
+        
+        # Check if behavior service is available
+        behavior_connection = mcp_client.get_mcp_connection("behavior")
+        if not behavior_connection or not behavior_connection.get("tools"):
+            return conversation
+        
+        try:
+            from mcp.client.streamable_http import streamablehttp_client
+            from mcp import ClientSession
+            
+            async with streamablehttp_client(behavior_connection['url']) as (read_stream, write_stream, _):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    
+                    enhanced_conversation = conversation.copy()
+                    
+                    # Get global behavior prompts first
+                    try:
+                        global_resource = await session.read_resource("description://behavior_prompts")
+                        if global_resource and global_resource.contents:
+                            content = global_resource.contents[0]
+                            global_prompts = ""
+                            if hasattr(content, 'text'):
+                                global_prompts = content.text
+                            elif hasattr(content, 'data'):
+                                global_prompts = str(content.data)
+                            
+                            if global_prompts:
+                                # Extract global behavioral adjustments
+                                if "GLOBAL BEHAVIOR ADJUSTMENTS:" in global_prompts:
+                                    global_section = global_prompts.split("GLOBAL BEHAVIOR ADJUSTMENTS:")[1]
+                                    if "\n\nMODULE" in global_section:
+                                        global_section = global_section.split("\n\nMODULE")[0]
+                                    global_section = global_section.strip()
+                                    
+                                    if global_section:
+                                        enhanced_conversation.append({
+                                            "role": "system", 
+                                            "content": f"BEHAVIORAL ADJUSTMENT (Global): {global_section}"
+                                        })
+                                        tomlogger.debug(f"Applied global behavior prompt", self.username, module_name="tomllm")
+                                
+                                # Extract module-specific behavioral adjustments for selected modules
+                                for module_name in selected_modules:
+                                    module_marker = f"MODULE '{module_name}' BEHAVIOR ADJUSTMENTS:"
+                                    if module_marker in global_prompts:
+                                        module_section = global_prompts.split(module_marker)[1]
+                                        if "\n\nMODULE" in module_section:
+                                            module_section = module_section.split("\n\nMODULE")[0]
+                                        module_section = module_section.strip()
+                                        
+                                        if module_section:
+                                            enhanced_conversation.append({
+                                                "role": "system", 
+                                                "content": f"BEHAVIORAL ADJUSTMENT ({module_name}): {module_section}"
+                                            })
+                                            tomlogger.debug(f"Applied behavior prompt for module {module_name}", self.username, module_name="tomllm")
+                    
+                    except Exception as e:
+                        tomlogger.debug(f"Could not get behavior prompts: {e}", self.username, module_name="tomllm")
+                    
+                    return enhanced_conversation
+        
+        except Exception as e:
+            tomlogger.debug(f"Error applying behavior prompts: {e}", self.username, module_name="tomllm")
+            return conversation
     
     def synthesize_tts_response(self, text_response: str) -> str:
         """

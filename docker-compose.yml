@@ -169,6 +169,20 @@ services:
     volumes:
       - /data/mcp/anki/:/data/
 
+  behavior-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/behavior/Dockerfile
+    container_name: behavior-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=mickael
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/behavior/:/data/
+
   youtube-mickael:
     build:
       context: .
