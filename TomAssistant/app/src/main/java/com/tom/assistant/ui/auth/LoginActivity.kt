@@ -82,7 +82,14 @@ class LoginActivity : AppCompatActivity() {
                     // Tester immédiatement la validité de la session
                     val testResponse = apiService.getTasks()
                     if (testResponse.isSuccessful) {
-                        // Connexion vraiment réussie
+                        // Connexion vraiment réussie, on réinitialise la conversation
+                        try {
+                            apiService.reset() // Appel à /reset pour vider l'historique
+                        } catch (e: Exception) {
+                            // Ne pas bloquer la connexion si le reset échoue.
+                            // L'erreur pourrait être logguée ici si nécessaire.
+                        }
+
                         sessionManager.saveLoginSession(username)
                         navigateToMain()
                     } else {
