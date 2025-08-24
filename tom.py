@@ -254,8 +254,8 @@ class TomWebService:
             raise cherrypy.HTTPError(400, "Token is required")
         
         # Store FCM token in database
-        db_path = self.config['global']['all_datadir']
-        db_notifs = os.path.join(db_path, "reminders.sqlite")
+        db_path = "/data/mcp/notifications/"
+        db_notifs = os.path.join(db_path, "notifications.sqlite")
         
         try:
             # Ensure directory exists

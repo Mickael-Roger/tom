@@ -12,8 +12,6 @@ global:
     appId: "1:123456789:web:abcdefghijklmnop"
     vapidkey: "your-vapid-key"
   
-  all_datadir: /data/all/  # Path for global data files
-
   # LLM Configuration
   llm: openai                    # Default LLM
   llm_tts: openrouter-gemini     # TTS LLM
