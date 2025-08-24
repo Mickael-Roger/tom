@@ -144,6 +144,20 @@ services:
     volumes:
       - /data/mcp/youtube/:/data/
 
+  news-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/news/Dockerfile
+    container_name: news-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=mickael
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/news/:/data/
+
   calendar-mickael:
     build:
       context: .
