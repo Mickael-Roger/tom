@@ -130,3 +130,45 @@ services:
     volumes:
       - /data/mcp/anki/:/data/
 
+  calendar-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/calendar/Dockerfile
+    container_name: calendar-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=mickael
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/calendar/:/data/
+
+  calendar-nina:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/calendar/Dockerfile
+    container_name: calendar-nina
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=nina
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/calendar/:/data/
+
+  calendar-ambre:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/calendar/Dockerfile
+    container_name: calendar-ambre
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=ambre
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/calendar/:/data/
+

@@ -304,7 +304,6 @@ class MCPClient:
                                     "function": {
                                         "name": tool.name,
                                         "description": tool.description,
-                                        "strict": True,
                                         "parameters": schema
                                     }
                                 }
