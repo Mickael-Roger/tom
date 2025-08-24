@@ -820,27 +820,23 @@ class TomAgent:
                 today = datetime.now(paris_tz).strftime("%A %d %B %Y %H:%M:%S")
                 weeknumber = datetime.now(paris_tz).isocalendar().week
                 
-                # Create temporal message (date/GPS) - never stored in history
-                temporal_message = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
-                
-                # Create Tom prompt - never stored in history
-                tom_prompt = {"role": "system", "content": "You are Tom, a helpful personal assistant. Use the available tools to respond to user requests."}
-                
-                # Create personal context message - never stored in history, always in 3rd position
-                personal_context_message = None
-                if personal_context.strip():
-                    personal_context_message = {"role": "system", "content": f"USER PERSONAL CONTEXT: {personal_context}"}
-                
-                # Create formatting message - never stored in history, always in 4th position
-                formatting_message = {"role": "system", "content": self.tomllm.set_response_context(client_type)}
-                
-                # Build current conversation (without temporal message, tom prompt, personal context, formatting, or history)
+                # Build current conversation
                 current_conversation = [
                     {"role": "user", "content": user_request}
                 ]
                 
-                # Build full conversation with proper order: temporal → tom → personal_context → formatting → history → current
-                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message, tom_prompt, personal_context_message, formatting_message)
+                # Build full conversation using new JSON format
+                conversation = self.tomllm.get_conversation_with_history(
+                    client_type=client_type, 
+                    current_conversation=current_conversation,
+                    # New JSON format parameters
+                    tom_persona="friendly and proactive personal assistant. Use the available tools to respond to user requests.",
+                    today=today,
+                    weeknumber=weeknumber,
+                    gps=gps,
+                    personal_context=personal_context,
+                    use_json_format=True
+                )
                 
                 # Check if we have any tools to work with
                 if len(tools) == 0:
@@ -848,25 +844,22 @@ class TomAgent:
                                     self.username, "api", "agent")
                     
                     # Fall back to general knowledge response with context about unavailable services
-                    # Re-use the temporal message already created
-                    
-                    # Create special Tom prompt for this fallback case
-                    fallback_tom_prompt = {"role": "system", "content": f"You are Tom, a helpful personal assistant. The user requested information that would normally require external services ({', '.join(required_modules)}), but those services are currently unavailable. Provide a helpful response based on your general knowledge and suggest alternatives if possible."}
-                    
                     fallback_conversation = [
                         {"role": "user", "content": user_request}
                     ]
                     
-                    # Create personal context message for fallback - never stored in history, always in 3rd position
-                    fallback_personal_context_message = None
-                    if personal_context.strip():
-                        fallback_personal_context_message = {"role": "system", "content": f"USER PERSONAL CONTEXT: {personal_context}"}
-                    
-                    # Create fallback formatting message - never stored in history, always in 4th position
-                    fallback_formatting_message = {"role": "system", "content": self.tomllm.set_response_context(client_type)}
-                    
-                    # Build conversation with temporal message, fallback tom prompt, personal context, formatting, and history
-                    full_fallback_conversation = self.tomllm.get_conversation_with_history(client_type, fallback_conversation, temporal_message, fallback_tom_prompt, fallback_personal_context_message, fallback_formatting_message)
+                    # Build fallback conversation using new JSON format
+                    full_fallback_conversation = self.tomllm.get_conversation_with_history(
+                        client_type=client_type, 
+                        current_conversation=fallback_conversation,
+                        # New JSON format parameters with fallback persona
+                        tom_persona=f"helpful personal assistant. The user requested information that would normally require external services ({', '.join(required_modules)}), but those services are currently unavailable. Provide a helpful response based on your general knowledge and suggest alternatives if possible.",
+                        today=today,
+                        weeknumber=weeknumber,
+                        gps=gps,
+                        personal_context=personal_context,
+                        use_json_format=True
+                    )
                     
                     # Get fallback response
                     response = self.tomllm.callLLM(messages=full_fallback_conversation, complexity=1)
@@ -972,27 +965,23 @@ class TomAgent:
                 today = datetime.now(paris_tz).strftime("%A %d %B %Y %H:%M:%S")
                 weeknumber = datetime.now(paris_tz).isocalendar().week
                 
-                # Create temporal message (date/GPS) - never stored in history
-                temporal_message = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
-                
-                # Create Tom prompt for general knowledge - never stored in history
-                tom_prompt = {"role": "system", "content": "You are Tom, a helpful personal assistant. Respond using your general knowledge."}
-                
-                # Build current conversation (without temporal message, tom prompt, personal context, formatting, or history)
+                # Build current conversation
                 current_conversation = [
                     {"role": "user", "content": user_request}
                 ]
                 
-                # Create personal context message - never stored in history, always in 3rd position
-                no_tools_personal_context_message = None
-                if personal_context.strip():
-                    no_tools_personal_context_message = {"role": "system", "content": f"USER PERSONAL CONTEXT: {personal_context}"}
-                
-                # Create formatting message - never stored in history, always in 4th position
-                no_tools_formatting_message = {"role": "system", "content": self.tomllm.set_response_context(client_type)}
-                
-                # Build full conversation with proper order: temporal → tom → personal_context → formatting → history → current
-                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message, tom_prompt, no_tools_personal_context_message, no_tools_formatting_message)
+                # Build full conversation using new JSON format for general knowledge
+                conversation = self.tomllm.get_conversation_with_history(
+                    client_type=client_type, 
+                    current_conversation=current_conversation,
+                    # New JSON format parameters for general knowledge
+                    tom_persona="helpful personal assistant. Respond using your general knowledge.",
+                    today=today,
+                    weeknumber=weeknumber,
+                    gps=gps,
+                    personal_context=personal_context,
+                    use_json_format=True
+                )
                 
                 # Get direct response
                 response = self.tomllm.callLLM(messages=conversation, complexity=1)

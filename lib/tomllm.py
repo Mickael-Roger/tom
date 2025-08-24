@@ -391,31 +391,29 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         from datetime import datetime
         gps = ""
         if position:
-            gps = f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}."
+            gps = f"My actual GPS position is \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}."
         
         today = datetime.now().strftime("%A %d %B %Y %H:%M:%S")
         weeknumber = datetime.now().isocalendar().week
         
-        # Create temporal message (date/GPS) - never stored in history
-        temporal_message = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
-        
-        # Create personal context message if provided
-        personal_context_message = None
-        if personal_context.strip():
-            personal_context_message = {"role": "system", "content": f"USER PERSONAL CONTEXT: {personal_context}"}
-        
-        # Build current triage conversation (without temporal message, personal context or history)
-        # Note: No response formatting context needed for triage since it doesn't generate user responses
-        # Note: No Tom prompt needed for triage - it has its own specific prompt
+        # Build current triage conversation - just the user request, system info will be in JSON message
         current_triage_conversation = [
-            {"role": "system", "content": prompt},
             {"role": "user", "content": user_request}
         ]
         
-        # Build full triage conversation with temporal message first, then personal context, then history
-        # No tom_prompt for triage since it has its own specific system prompt
-        # No formatting_message needed for triage
-        triage_conversation = self.get_conversation_with_history(client_type, current_triage_conversation, temporal_message, None, personal_context_message)
+        # For triage, use JSON format with the triage instructions in a dedicated section
+        triage_conversation = self.get_conversation_with_history(
+            client_type=client_type, 
+            current_conversation=current_triage_conversation,
+            # New JSON format parameters for triage
+            tom_persona="AI assistant specialized in module triage and tool selection",
+            today=today,
+            weeknumber=weeknumber,
+            gps=gps,
+            personal_context=personal_context,
+            use_json_format=True,
+            triage_instructions=prompt
+        )
         
         tomlogger.info(f"🔍 Starting module triage for request: {user_request[:100]}...", 
                       self.username, module_name="tomllm")
@@ -841,24 +839,125 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         tomlogger.debug(f"Added assistant response to {client_type} history: {response_content[:50]}...", 
                        self.username, module_name="tomllm")
     
+    def _create_json_system_message(self, tom_persona: str, today: str, weeknumber: int, gps: str, 
+                                   personal_context: str, client_type: str, 
+                                   available_tools: bool = False, triage_instructions: str = None) -> Dict[str, Any]:
+        """
+        Create a single JSON-formatted system message that replaces temporal, tom prompt, personal context messages
+        
+        Args:
+            tom_persona: Tom's persona description for the specific context
+            today: Current date/time string
+            weeknumber: Current week number
+            gps: GPS position string (empty if not available)
+            personal_context: User's personal context from config
+            client_type: 'web', 'android', or 'tui'
+            available_tools: Whether tools are available for this conversation
+            triage_instructions: Special instructions for triage mode (if provided)
+            
+        Returns:
+            JSON-formatted system message dict
+        """
+        import json
+        
+        # Build GPS position object
+        gps_position = None
+        if gps and "latitude:" in gps and "longitude:" in gps:
+            try:
+                # Extract GPS coordinates from the GPS string
+                lines = gps.strip().split('\n')
+                lat_line = next((line for line in lines if 'latitude:' in line), '')
+                lon_line = next((line for line in lines if 'longitude:' in line), '')
+                
+                if lat_line and lon_line:
+                    latitude = float(lat_line.split('latitude:')[1].strip().rstrip('.'))
+                    longitude = float(lon_line.split('longitude:')[1].strip().rstrip('.'))
+                    gps_position = {
+                        "latitude": latitude,
+                        "longitude": longitude
+                    }
+            except (ValueError, IndexError):
+                # If parsing fails, leave gps_position as None
+                pass
+        
+        # Build JSON content
+        json_content = {
+            "description": "Define the assistant's role, style, rules, and available tools.",
+            "persona": {
+                "name": "Tom",
+                "role": tom_persona,
+                "language_policy": "Always respond in the same language as the user (FR/EN); use informal 'tu' if the user writes in French.",
+                "style": "clear, structured, markdown-friendly"
+            },
+            "system_context": {
+                "current_date_time": today,
+                "week_number": weeknumber
+            },
+            "formatting": {
+                "markdown": True,
+                "language": "auto-detect to match user input",
+                "no_urls_direct": True if client_type in ['web', 'android'] else False
+            }
+        }
+        
+        # Add GPS position if available
+        if gps_position:
+            json_content["system_context"]["gps_position"] = gps_position
+        
+        # Add user profile if available
+        if personal_context and personal_context.strip():
+            json_content["user_profile"] = personal_context.strip()
+        
+        # Add triage instructions if provided (special mode for module triage)
+        if triage_instructions:
+            json_content["triage_instructions"] = triage_instructions
+        
+        # Add specific formatting rules based on client type
+        if client_type == 'tui':
+            json_content["formatting"]["context"] = "Response will be displayed in a TUI terminal application. Use markdown for better readability: titles, lists, bold text, etc."
+        else:
+            json_content["formatting"]["context"] = "Response will be displayed in a web browser or mobile app. Use markdown for better readability. Use [open:URL] tag instead of direct URLs unless explicitly asked."
+        
+        return {
+            "role": "system",
+            "content": json.dumps(json_content, ensure_ascii=False, separators=(',', ':'))
+        }
+
     def get_conversation_with_history(self, client_type: str, current_conversation: List[Dict[str, Any]], 
                                       temporal_message: Optional[Dict[str, Any]] = None,
                                       tom_prompt: Optional[Dict[str, Any]] = None,
                                       personal_context_message: Optional[Dict[str, Any]] = None,
-                                      formatting_message: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+                                      formatting_message: Optional[Dict[str, Any]] = None,
+                                      # New JSON-based parameters
+                                      tom_persona: Optional[str] = None,
+                                      today: Optional[str] = None,
+                                      weeknumber: Optional[int] = None,
+                                      gps: Optional[str] = None,
+                                      personal_context: Optional[str] = None,
+                                      use_json_format: bool = True,
+                                      triage_instructions: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Build conversation with history prepended in correct order
         
         Args:
             client_type: 'web', 'android', or 'tui'
             current_conversation: Current conversation messages (user request, response formatting, etc)
-            temporal_message: Optional temporal message (date/GPS) that goes first but never in history
-            tom_prompt: Optional Tom prompt that goes second but never in history
-            personal_context_message: Optional personal context message that goes third but never in history
-            formatting_message: Optional formatting message that goes fourth but never in history
+            temporal_message: DEPRECATED - Optional temporal message (date/GPS) that goes first but never in history
+            tom_prompt: DEPRECATED - Optional Tom prompt that goes second but never in history
+            personal_context_message: DEPRECATED - Optional personal context message that goes third but never in history
+            formatting_message: DEPRECATED - Optional formatting message that goes fourth but never in history
+            
+            # New JSON-based parameters:
+            tom_persona: Tom's persona description for the specific context
+            today: Current date/time string
+            weeknumber: Current week number  
+            gps: GPS position string (empty if not available)
+            personal_context: User's personal context from config
+            use_json_format: Whether to use new JSON format (default True) or legacy format
             
         Returns:
-            Full conversation: temporal → tom_prompt → personal_context → formatting → history → current messages
+            Full conversation: json_system_message → history → current messages (if use_json_format=True)
+            OR legacy: temporal → tom_prompt → personal_context → formatting → history → current messages (if use_json_format=False)
         """
         if client_type not in self.history:
             tomlogger.warning(f"Invalid client type '{client_type}', using empty history", 
@@ -876,45 +975,67 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                 tomlogger.debug(f"📚 History for {client_type} ({len(client_history)} messages): {str(client_history)} (JSON serialization failed: {json_error})", 
                                self.username, module_name="tomllm")
         
-        # Build conversation in correct OpenAI order:
-        # 1. Temporal message first (date/GPS - never stored in history)
-        # 2. Tom prompt second (global context - never stored in history) 
-        # 3. Personal context message third (user context - never stored in history)
-        # 4. Formatting message fourth (response context - never stored in history)
-        # 5. History (previous conversation - without context messages)
-        # 6. Current conversation messages (user request, etc)
-        
         full_conversation = []
         
-        # 1. Add temporal message first if provided (date/GPS)
-        if temporal_message:
-            full_conversation.append(temporal_message)
+        if use_json_format:
+            # NEW JSON FORMAT: Build conversation with single JSON system message
+            
+            # Use new JSON system message if all required parameters are provided
+            if tom_persona is not None and today is not None and weeknumber is not None:
+                json_system_message = self._create_json_system_message(
+                    tom_persona=tom_persona,
+                    today=today,
+                    weeknumber=weeknumber,
+                    gps=gps or "",
+                    personal_context=personal_context or "",
+                    client_type=client_type,
+                    triage_instructions=triage_instructions
+                )
+                full_conversation.append(json_system_message)
+                
+                tomlogger.debug(f"Built conversation for {client_type} with JSON format: 1 json_system + {len(client_history)} history + {len(current_conversation)} current = {len(full_conversation) + len(client_history) + len(current_conversation)} total", 
+                               self.username, module_name="tomllm")
+            else:
+                tomlogger.warning(f"Missing required parameters for JSON format (tom_persona: {tom_persona is not None}, today: {today is not None}, weeknumber: {weeknumber is not None}), falling back to legacy format", 
+                               self.username, module_name="tomllm")
+                use_json_format = False
         
-        # 2. Add Tom prompt second if provided 
-        if tom_prompt:
-            full_conversation.append(tom_prompt)
+        if not use_json_format:
+            # LEGACY FORMAT: Build conversation in correct OpenAI order:
+            # 1. Temporal message first (date/GPS - never stored in history)
+            # 2. Tom prompt second (global context - never stored in history) 
+            # 3. Personal context message third (user context - never stored in history)
+            # 4. Formatting message fourth (response context - never stored in history)
+            
+            # 1. Add temporal message first if provided (date/GPS)
+            if temporal_message:
+                full_conversation.append(temporal_message)
+            
+            # 2. Add Tom prompt second if provided 
+            if tom_prompt:
+                full_conversation.append(tom_prompt)
+            
+            # 3. Add personal context message third if provided
+            if personal_context_message:
+                full_conversation.append(personal_context_message)
+            
+            # 4. Add formatting message fourth if provided
+            if formatting_message:
+                full_conversation.append(formatting_message)
+            
+            temporal_count = 1 if temporal_message else 0
+            tom_prompt_count = 1 if tom_prompt else 0
+            personal_context_count = 1 if personal_context_message else 0
+            formatting_count = 1 if formatting_message else 0
+            tomlogger.debug(f"Built conversation for {client_type}: {temporal_count} temporal + {tom_prompt_count} tom + {personal_context_count} personal_context + {formatting_count} formatting + {len(client_history)} history + {len(current_conversation)} current = {len(full_conversation) + len(client_history) + len(current_conversation)} total", 
+                           self.username, module_name="tomllm")
         
-        # 3. Add personal context message third if provided
-        if personal_context_message:
-            full_conversation.append(personal_context_message)
-        
-        # 4. Add formatting message fourth if provided
-        if formatting_message:
-            full_conversation.append(formatting_message)
-        
-        # 5. Add history (clean history without context messages)
+        # Add history (clean history without context messages)
         if client_history:
             full_conversation.extend(client_history)
         
-        # 6. Add current conversation messages
+        # Add current conversation messages
         full_conversation.extend(current_conversation)
-        
-        temporal_count = 1 if temporal_message else 0
-        tom_prompt_count = 1 if tom_prompt else 0
-        personal_context_count = 1 if personal_context_message else 0
-        formatting_count = 1 if formatting_message else 0
-        tomlogger.debug(f"Built conversation for {client_type}: {temporal_count} temporal + {tom_prompt_count} tom + {personal_context_count} personal_context + {formatting_count} formatting + {len(client_history)} history + {len(current_conversation)} current = {len(full_conversation)} total", 
-                       self.username, module_name="tomllm")
         
         return full_conversation
     
