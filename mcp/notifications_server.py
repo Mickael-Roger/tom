@@ -13,7 +13,7 @@ import threading
 import time
 import functools
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 
 import firebase_admin
 from firebase_admin import credentials, messaging
@@ -60,18 +60,17 @@ class NotificationService:
         # Create data directory if it doesn't exist
         os.makedirs('/data', exist_ok=True)
         
-        # Load users from environment (simplified for MCP)
-        # In real implementation, this would come from configuration
-        self.users = os.environ.get('NOTIFICATION_USERS', 'alice,bob,charlie').split(',')
-        
-        if tomlogger:
-            tomlogger.info(f"Notification service initialized with {len(self.users)} users: {', '.join(self.users)}", module_name="notifications")
+        # Initialize users list - will be loaded from database after initialization
+        self.users = []
         
         # Initialize database
         self._init_database()
         
         # Initialize Firebase
         self._init_firebase()
+        
+        # Load users from database
+        self._load_users_from_database()
         
         # Start notification thread
         self._start_notification_thread()
@@ -130,6 +129,34 @@ class NotificationService:
                 tomlogger.error(f"Database initialization error: {e}", module_name="notifications")
             else:
                 print(f"Database initialization error: {e}")
+    
+    def _load_users_from_database(self):
+        """Load available users from the database"""
+        try:
+            dbconn = sqlite3.connect(self.db_path)
+            cursor = dbconn.cursor()
+            
+            # Get unique usernames from fcm_tokens table
+            cursor.execute("SELECT DISTINCT username FROM fcm_tokens ORDER BY username")
+            users_result = cursor.fetchall()
+            
+            self.users = [user[0] for user in users_result]
+            dbconn.close()
+            
+            if self.users:
+                if tomlogger:
+                    tomlogger.info(f"Loaded {len(self.users)} users from database: {', '.join(self.users)}", module_name="notifications")
+            else:
+                # Fallback to environment if no users in database yet
+                self.users = os.environ.get('NOTIFICATION_USERS', 'alice,bob,charlie').split(',')
+                if tomlogger:
+                    tomlogger.info(f"No users in database, using fallback users: {', '.join(self.users)}", module_name="notifications")
+                    
+        except Exception as e:
+            # Fallback to environment on error
+            self.users = os.environ.get('NOTIFICATION_USERS', 'alice,bob,charlie').split(',')
+            if tomlogger:
+                tomlogger.warning(f"Error loading users from database, using fallback: {e}", module_name="notifications")
     
     def _init_firebase(self):
         """Initialize Firebase Admin SDK"""
@@ -447,21 +474,20 @@ notification_service = NotificationService()
 @server.tool()
 def send_instant_message(
     message_text: str,
+    sender_username: str,
     message_recipient: str
 ) -> str:
     """Send an instant message to a family member via mobile notification. This sends the message immediately, not at a scheduled time. Use this when the user wants to communicate with another family member right away. For example: 'Send a message to mom saying I'll be late', 'Tell Jennifer that dinner is ready', or 'Notify dad that I arrived safely'.
     
     Args:
         message_text: The text of the message to send
-        message_recipient: Recipient of the message, must be one of the family members
+        sender_username: Username of the person sending the message (always use the current user's username)
+        message_recipient: Recipient of the message (can be the same as sender_username to send to yourself)
     """
     if tomlogger:
-        tomlogger.info(f"Tool call: send_instant_message to {message_recipient}", module_name="notifications")
+        tomlogger.info(f"Tool call: send_instant_message from {sender_username} to {message_recipient}", module_name="notifications")
     
-    # Get sender from environment (would be set by the agent)
-    sender = os.environ.get('TOM_USERNAME', 'system')
-    
-    result = notification_service.send_instant_message(message_text, message_recipient, sender)
+    result = notification_service.send_instant_message(message_text, message_recipient, sender_username)
     return json.dumps(result, ensure_ascii=False)
 
 
@@ -469,6 +495,7 @@ def send_instant_message(
 def add_reminder(
     reminder_text: str,
     reminder_datetime: str,
+    sender_username: str,
     reminder_recipient: str,
     recurrence: str = None
 ) -> str:
@@ -477,16 +504,34 @@ def add_reminder(
     Args:
         reminder_text: The text of the reminder
         reminder_datetime: The datetime you need to remind about this reminder. Must be in the form of 'YYYY-MM-DD HH:MM:SS'
-        reminder_recipient: Recipient of the reminder
+        sender_username: Username of the person creating the reminder (always use the current user's username)
+        reminder_recipient: Recipient of the reminder (can be the same as sender_username to remind yourself)
         recurrence: Optional recurrence pattern ('daily', 'weekly', 'monthly')
     """
     if tomlogger:
-        tomlogger.info(f"Tool call: add_reminder for {reminder_recipient} at {reminder_datetime}", module_name="notifications")
+        tomlogger.info(f"Tool call: add_reminder from {sender_username} for {reminder_recipient} at {reminder_datetime}", module_name="notifications")
     
-    # Get sender from environment
-    sender = os.environ.get('TOM_USERNAME', 'system')
+    result = notification_service.add_reminder(reminder_text, reminder_datetime, reminder_recipient, sender_username, recurrence)
+    return json.dumps(result, ensure_ascii=False)
+
+
+@server.tool()
+def get_available_users() -> str:
+    """Get list of available users who can receive notifications. Use this to know which users are available for sending messages or reminders.
     
-    result = notification_service.add_reminder(reminder_text, reminder_datetime, reminder_recipient, sender, recurrence)
+    Returns:
+        JSON string containing list of available users
+    """
+    if tomlogger:
+        tomlogger.info("Tool call: get_available_users", module_name="notifications")
+    
+    # Refresh users from database
+    notification_service._load_users_from_database()
+    
+    result = {
+        "available_users": notification_service.users,
+        "count": len(notification_service.users)
+    }
     return json.dumps(result, ensure_ascii=False)
 
 

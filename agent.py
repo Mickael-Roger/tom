@@ -302,11 +302,33 @@ class MCPClient:
                                         "additionalProperties": False
                                     }
                                 
+                                # For notification tools, enhance schema with user enums and descriptions
+                                description = tool.description
+                                if tool.name in ['send_instant_message', 'add_reminder'] and service_name == 'notifications':
+                                    # Get available users from the service by calling get_available_users tool
+                                    available_users = await self._get_available_users_from_service(session)
+                                    
+                                    # Inject current username into description
+                                    description = f"{description}\n\nIMPORTANT: For sender_username parameter, always use '{self.username}' (the current user)."
+                                    
+                                    # Enhance schema with user enums
+                                    if 'properties' in schema:
+                                        # Add enum for sender_username (always current user)
+                                        if 'sender_username' in schema['properties']:
+                                            schema['properties']['sender_username']['enum'] = [self.username]
+                                            schema['properties']['sender_username']['description'] = f"Username of the person sending the message/reminder (always '{self.username}')"
+                                        
+                                        # Add enum for message_recipient/reminder_recipient
+                                        recipient_field = 'message_recipient' if 'message_recipient' in schema['properties'] else 'reminder_recipient'
+                                        if recipient_field in schema['properties'] and available_users:
+                                            schema['properties'][recipient_field]['enum'] = available_users
+                                            schema['properties'][recipient_field]['description'] = f"Recipient of the message/reminder. Available users: {', '.join(available_users)}"
+                                
                                 openai_tool = {
                                     "type": "function",
                                     "function": {
                                         "name": tool.name,
-                                        "description": tool.description,
+                                        "description": description,
                                         "parameters": schema
                                     }
                                 }
@@ -472,6 +494,29 @@ class MCPClient:
                 ]
         
         return fixed_schema
+    
+    async def _get_available_users_from_service(self, session) -> List[str]:
+        """Get available users from notifications service"""
+        try:
+            # Call the get_available_users tool
+            result = await session.call_tool('get_available_users', {})
+            
+            if result and hasattr(result, 'content') and result.content:
+                # Extract content from MCP result
+                for content in result.content:
+                    if hasattr(content, 'text'):
+                        data = json.loads(content.text)
+                        return data.get('available_users', [])
+                    elif hasattr(content, 'data'):
+                        data = json.loads(str(content.data))
+                        return data.get('available_users', [])
+            
+            # Fallback if tool call fails
+            return ['alice', 'bob', 'charlie']
+            
+        except Exception as e:
+            tomlogger.debug(f"Failed to get available users: {e}", self.username, module_name="mcp")
+            return ['alice', 'bob', 'charlie']
     
     async def get_service_notification_status(self, service_name: str) -> Optional[str]:
         """
