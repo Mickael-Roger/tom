@@ -130,6 +130,20 @@ services:
     volumes:
       - /data/mcp/anki/:/data/
 
+  youtube-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/youtube/Dockerfile
+    container_name: youtube-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=mickael
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/youtube/:/data/
+
   calendar-mickael:
     build:
       context: .
