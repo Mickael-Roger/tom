@@ -25,6 +25,7 @@ from tomllm import TomLLM
 import asyncio
 import traceback
 from datetime import datetime
+import pytz
 
 def init_config(config_path: str = '/data/config.yml') -> Dict[str, Any]:
     """Load configuration from YAML file"""
@@ -697,8 +698,9 @@ class TomAgent:
                 if position:
                     gps = f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}."
                 
-                today = datetime.now().strftime("%A %d %B %Y %H:%M:%S")
-                weeknumber = datetime.now().isocalendar().week
+                paris_tz = pytz.timezone('Europe/Paris')
+                today = datetime.now(paris_tz).strftime("%A %d %B %Y %H:%M:%S")
+                weeknumber = datetime.now(paris_tz).isocalendar().week
                 
                 # Create temporal message (date/GPS) - never stored in history
                 temporal_message = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
@@ -835,8 +837,9 @@ class TomAgent:
                 if position:
                     gps = f"My actual GPS position is: \nlatitude: {position['latitude']}\nlongitude: {position['longitude']}."
                 
-                today = datetime.now().strftime("%A %d %B %Y %H:%M:%S")
-                weeknumber = datetime.now().isocalendar().week
+                paris_tz = pytz.timezone('Europe/Paris')
+                today = datetime.now(paris_tz).strftime("%A %d %B %Y %H:%M:%S")
+                weeknumber = datetime.now(paris_tz).isocalendar().week
                 
                 # Create temporal message (date/GPS) - never stored in history
                 temporal_message = {"role": "system", "content": f"Today is {today}. Week number is {weeknumber}. {gps}\n\n"}
