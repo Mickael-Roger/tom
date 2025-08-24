@@ -904,9 +904,9 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         if gps_position:
             json_content["system_context"]["gps_position"] = gps_position
         
-        # Add user profile if available
+        # Add user profile if available - convert from text/YAML to JSON
         if personal_context and personal_context.strip():
-            json_content["user_profile"] = personal_context.strip()
+            json_content["user_profile"] = self._parse_user_profile_to_json(personal_context.strip())
         
         # Add triage instructions if provided (special mode for module triage)
         if triage_instructions:
@@ -922,6 +922,47 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             "role": "system",
             "content": json.dumps(json_content, ensure_ascii=False, separators=(',', ':'))
         }
+
+    def _parse_user_profile_to_json(self, personal_context: str):
+        """
+        Parse user profile from text or YAML format to JSON-compatible structure
+        
+        Args:
+            personal_context: Raw personal context from config.yml
+            
+        Returns:
+            JSON-compatible object (string, dict, or list)
+        """
+        import yaml
+        
+        # First, try to parse as YAML to see if it's structured
+        try:
+            # Check if the content looks like structured YAML (contains colons, dashes, etc.)
+            if any(indicator in personal_context for indicator in [':', '-', '\n  ', '\n-']):
+                # Attempt to parse as YAML
+                parsed_yaml = yaml.safe_load(personal_context)
+                
+                # If parsing succeeded and returned a complex structure, use it
+                if parsed_yaml is not None and not isinstance(parsed_yaml, str):
+                    tomlogger.debug(f"Parsed user profile as YAML structure", self.username, module_name="tomllm")
+                    return parsed_yaml
+                else:
+                    # YAML parsing returned a simple string, treat as plain text
+                    tomlogger.debug(f"YAML parsing returned simple string, treating as plain text", self.username, module_name="tomllm")
+                    return personal_context.strip()
+            else:
+                # Content doesn't look like YAML, treat as plain text
+                tomlogger.debug(f"User profile treated as plain text", self.username, module_name="tomllm")
+                return personal_context.strip()
+                
+        except yaml.YAMLError as e:
+            # YAML parsing failed, fallback to plain text
+            tomlogger.debug(f"YAML parsing failed, fallback to plain text: {e}", self.username, module_name="tomllm")
+            return personal_context.strip()
+        except Exception as e:
+            # Any other error, fallback to plain text
+            tomlogger.debug(f"Error parsing user profile, fallback to plain text: {e}", self.username, module_name="tomllm")
+            return personal_context.strip()
 
     def get_conversation_with_history(self, client_type: str, current_conversation: List[Dict[str, Any]], 
                                       temporal_message: Optional[Dict[str, Any]] = None,
