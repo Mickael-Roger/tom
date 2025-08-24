@@ -929,3 +929,87 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         if client_type not in self.history:
             return 0
         return len(self.history[client_type])
+    
+    def synthesize_tts_response(self, text_response: str) -> str:
+        """
+        Synthesize a TTS-friendly version of the response using the configured LLM
+        
+        Args:
+            text_response: The original response text to synthesize
+            
+        Returns:
+            TTS-friendly text suitable for voice reading
+        """
+        try:
+            # Create TTS synthesis prompt (based on old version logic)
+            tts_prompt = f"""You must synthesize the following response to make it suitable for voice reading by a text-to-speech (TTS) system.
+
+Original response:
+{text_response}
+
+TTS synthesis guidelines:
+- IMPORTANT: Keep the same language as the original text (French/English/etc.)
+- Remove all Markdown formatting (links, bold, italic, lists, etc.)
+- Convert lists into short, natural sentences
+- Replace URLs with simple descriptions like "link" or "website"
+- Keep only essential information
+- Limit to 1-2 sentences maximum
+- IMPORTANT: Write as short as you can
+- Use fluid sentences for voice reading
+- Use informal tone ("tu" form in French, casual in English)
+- Remove polite endings like "let me know if you want to know more" or "tell me if you want me to do this or that"
+- For ACTION requests: respond with brief confirmation like "C'est fait" (French) or "Done" (English)
+- For INFORMATION requests: provide brief summary without "C'est fait", for example "Tu as 13 news, dont 4 en sciences, 6 en cyber et 3 en blog" or "You have 5 emails, 3 urgent"
+- Be direct and concise, avoid unnecessary politeness formulas
+- Use relative time references: say "demain" instead of "demain, le jeudi 12 septembre 2025", "aujourd'hui" instead of full dates
+- Avoid redundant temporal information
+
+Respond only with the text to be read, without explanation or formatting."""
+
+            # Create messages for TTS synthesis
+            tts_messages = [
+                {"role": "system", "content": "You are a text synthesis assistant specialized in creating TTS-friendly content."},
+                {"role": "user", "content": tts_prompt}
+            ]
+            
+            # Call LLM for TTS synthesis using TTS LLM and complexity 0 for speed
+            tts_response = self.callLLM(messages=tts_messages, complexity=0, llm=self.tts_llm)
+            
+            if tts_response and tts_response.choices[0].finish_reason == "stop":
+                tts_text = tts_response.choices[0].message.content.strip()
+                tomlogger.debug(f"TTS synthesis successful: {len(tts_text)} chars", 
+                              self.username, module_name="tomllm")
+                return tts_text
+            else:
+                tomlogger.warning(f"TTS synthesis failed, using fallback", 
+                                self.username, module_name="tomllm")
+                return self._create_fallback_tts_text(text_response)
+                
+        except Exception as e:
+            tomlogger.error(f"Error during TTS synthesis: {str(e)}", 
+                          self.username, module_name="tomllm")
+            return self._create_fallback_tts_text(text_response)
+    
+    def _create_fallback_tts_text(self, text_response: str) -> str:
+        """
+        Create simple fallback TTS text when synthesis fails
+        
+        Args:
+            text_response: Original text response
+            
+        Returns:
+            Simple cleaned text suitable for TTS
+        """
+        import re
+        
+        # Simple fallback: basic text cleaning
+        clean_text = re.sub(r'\[.*?\]', '', text_response)  # Remove markdown links
+        clean_text = re.sub(r'[*_`#]', '', clean_text)     # Remove markdown formatting
+        clean_text = re.sub(r'\n+', ' ', clean_text)       # Replace newlines with spaces
+        clean_text = clean_text.strip()
+        
+        # Limit to first 200 characters
+        if len(clean_text) > 200:
+            clean_text = clean_text[:200].rsplit(' ', 1)[0] + "..."
+            
+        return clean_text

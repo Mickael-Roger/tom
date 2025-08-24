@@ -751,10 +751,11 @@ class TomAgent:
                         self.tomllm.add_assistant_response(client_type, response_content)
                         
                         if sound_enabled:
+                            tts_response = self.tomllm.synthesize_tts_response(response_content)
                             return {
                                 "status": "OK",
                                 "text_display": response_content,
-                                "text_tts": response_content,
+                                "text_tts": tts_response,
                                 "selected_modules": required_modules,
                                 "warning": "Selected services unavailable, used general knowledge"
                             }
@@ -806,10 +807,11 @@ class TomAgent:
                     response_content = execution_result["response"]
                     
                     if sound_enabled:
+                        tts_response = self.tomllm.synthesize_tts_response(response_content)
                         return {
                             "status": "OK",
                             "text_display": response_content,
-                            "text_tts": response_content,  # Could implement TTS synthesis here
+                            "text_tts": tts_response,
                             "selected_modules": required_modules,
                             "iterations": execution_result.get("iterations", 1)
                         }
@@ -869,10 +871,11 @@ class TomAgent:
                     self.tomllm.add_assistant_response(client_type, response_content)
                     
                     if sound_enabled:
+                        tts_response = self.tomllm.synthesize_tts_response(response_content)
                         return {
                             "status": "OK",
                             "text_display": response_content,
-                            "text_tts": response_content  # Could implement TTS synthesis here
+                            "text_tts": tts_response
                         }
                     else:
                         return {
