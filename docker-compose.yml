@@ -85,7 +85,20 @@ services:
       - tom
     volumes:
       - /data/mcp/weather/:/data/
- 
+
+  idfm:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/idfm/Dockerfile
+    container_name: idfm
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/idfm/:/data/
+
   kwyk:
     build:
       context: .
