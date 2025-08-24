@@ -99,6 +99,19 @@ services:
     volumes:
       - /data/mcp/idfm/:/data/
 
+  homeconnect:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/homeconnect/Dockerfile
+    container_name: homeconnect
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/homeconnect/:/data/
+
   switchparentalcontrol:
     build:
       context: .
