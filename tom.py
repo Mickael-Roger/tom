@@ -314,6 +314,12 @@ class TomWebService:
         """Proxy tasks requests to user backend"""
         return self._proxy_request("/tasks")
 
+    @cherrypy.expose
+    @cherrypy.tools.allow(methods=['GET'])
+    def status(self):
+        """Proxy status requests to user backend"""
+        return self._proxy_request("/status")
+
 
 def main():
     """Main application entry point"""

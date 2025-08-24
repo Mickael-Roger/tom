@@ -524,6 +524,67 @@ class TomAgent:
         }
     
     @cherrypy.expose
+    @cherrypy.tools.allow(methods=['GET'])
+    @cherrypy.tools.json_out()
+    def status(self):
+        """Handle status requests - return MCP modules status"""
+        tomlogger.info("GET /status", self.username, "api", "agent")
+        
+        try:
+            # Get MCP connections info
+            mcp_connections = self.mcp_client.get_mcp_connections()
+            mcp_services = self.mcp_client.get_services()
+            
+            modules_status = []
+            
+            for service_name, connection_info in mcp_connections.items():
+                service_config = mcp_services.get(service_name, {})
+                
+                # Determine connection status
+                has_tools = len(connection_info.get('tools', [])) > 0
+                is_configured = service_name in mcp_services
+                is_enabled = service_config.get('enable', True) if service_config else False
+                
+                if has_tools and is_enabled:
+                    status = "connected"
+                elif is_configured and is_enabled:
+                    status = "configured_no_tools"
+                elif is_configured and not is_enabled:
+                    status = "disabled"
+                else:
+                    status = "error"
+                
+                module_status = {
+                    "name": service_name,
+                    "status": status,
+                    "description": connection_info.get('description', ''),
+                    "complexity": connection_info.get('complexity', 1),
+                    "tools_count": len(connection_info.get('tools', [])),
+                    "enabled": is_enabled,
+                    "url": service_config.get('url', '') if service_config else '',
+                    "llm": service_config.get('llm', '') if service_config else ''
+                }
+                
+                modules_status.append(module_status)
+            
+            # Sort by name for consistent output
+            modules_status.sort(key=lambda x: x['name'])
+            
+            return {
+                "status": "OK",
+                "message": "MCP modules status",
+                "modules_count": len(modules_status),
+                "modules": modules_status
+            }
+            
+        except Exception as e:
+            tomlogger.error(f"Error getting status: {str(e)}", self.username, "api", "agent")
+            return {
+                "status": "ERROR",
+                "message": f"Error getting status: {str(e)}"
+            }
+    
+    @cherrypy.expose
     @cherrypy.tools.allow(methods=['POST'])
     @cherrypy.tools.json_in()
     @cherrypy.tools.json_out()
