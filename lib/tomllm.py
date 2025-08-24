@@ -456,8 +456,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
     
     async def execute_request_with_tools(self, conversation: List[Dict[str, str]], tools: List[Dict], 
                                         complexity: int = 1, max_iterations: int = 10, mcp_client=None, 
-                                        client_type: str = 'web', track_history: bool = True, 
-                                        add_response_formatting: bool = True) -> Any:
+                                        client_type: str = 'web', track_history: bool = True) -> Any:
         """
         Execute request with tools, handling multiple iterations of tool calls
         
@@ -469,7 +468,6 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             mcp_client: MCPClient instance for executing MCP tools
             client_type: Client type for history tracking ('web', 'android', 'tui')
             track_history: Whether to track conversation in history
-            add_response_formatting: Whether to add response formatting before final response
             
         Returns:
             Final response content or error dict
@@ -524,28 +522,10 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                         "iterations": iteration
                     }
                 
-                # If no content but stop reason, add formatting and make final call
-                if add_response_formatting:
-                    formatting_message = {"role": "system", "content": self.set_response_context(client_type)}
-                    working_conversation.append(formatting_message)
-                    
-                    # Make final call for formatted response
-                    final_response = self.callLLM(messages=working_conversation, complexity=complexity)
-                    
-                    if final_response and final_response.choices[0].finish_reason == "stop":
-                        final_content = final_response.choices[0].message.content
-                        
-                        # Track final assistant response in history (not the formatting message)
-                        if track_history and final_content:
-                            self.add_assistant_response(client_type, final_content)
-                        
-                        tomlogger.info(f"✅ Tool execution completed after {iteration} iterations (with formatting)", 
-                                      self.username, module_name="tomllm")
-                        return {
-                            "status": "OK",
-                            "response": final_content,
-                            "iterations": iteration
-                        }
+                # Formatting is now handled at conversation build time, not here
+                # Track assistant response in history if we got content
+                if track_history and response_content:
+                    self.add_assistant_response(client_type, response_content)
                 
                 # Fallback if no content
                 tomlogger.info(f"✅ Tool execution completed after {iteration} iterations", 
@@ -842,7 +822,8 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
     
     def get_conversation_with_history(self, client_type: str, current_conversation: List[Dict[str, Any]], 
                                       temporal_message: Optional[Dict[str, Any]] = None,
-                                      tom_prompt: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+                                      tom_prompt: Optional[Dict[str, Any]] = None,
+                                      formatting_message: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
         Build conversation with history prepended in correct order
         
@@ -851,9 +832,10 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             current_conversation: Current conversation messages (user request, response formatting, etc)
             temporal_message: Optional temporal message (date/GPS) that goes first but never in history
             tom_prompt: Optional Tom prompt that goes second but never in history
+            formatting_message: Optional formatting message that goes third but never in history
             
         Returns:
-            Full conversation: temporal → tom_prompt → history → current messages
+            Full conversation: temporal → tom_prompt → formatting → history → current messages
         """
         if client_type not in self.history:
             tomlogger.warning(f"Invalid client type '{client_type}', using empty history", 
@@ -874,8 +856,9 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         # Build conversation in correct OpenAI order:
         # 1. Temporal message first (date/GPS - never stored in history)
         # 2. Tom prompt second (global context - never stored in history) 
-        # 3. History (previous conversation - without formatage messages)
-        # 4. Current conversation messages (user request, etc)
+        # 3. Formatting message third (response context - never stored in history)
+        # 4. History (previous conversation - without formatage messages)
+        # 5. Current conversation messages (user request, etc)
         
         full_conversation = []
         
@@ -887,16 +870,21 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         if tom_prompt:
             full_conversation.append(tom_prompt)
         
-        # 3. Add history (clean history without formatage messages)
+        # 3. Add formatting message third if provided
+        if formatting_message:
+            full_conversation.append(formatting_message)
+        
+        # 4. Add history (clean history without formatage messages)
         if client_history:
             full_conversation.extend(client_history)
         
-        # 4. Add current conversation messages
+        # 5. Add current conversation messages
         full_conversation.extend(current_conversation)
         
         temporal_count = 1 if temporal_message else 0
         tom_prompt_count = 1 if tom_prompt else 0
-        tomlogger.debug(f"Built conversation for {client_type}: {temporal_count} temporal + {tom_prompt_count} tom + {len(client_history)} history + {len(current_conversation)} current = {len(full_conversation)} total", 
+        formatting_count = 1 if formatting_message else 0
+        tomlogger.debug(f"Built conversation for {client_type}: {temporal_count} temporal + {tom_prompt_count} tom + {formatting_count} formatting + {len(client_history)} history + {len(current_conversation)} current = {len(full_conversation)} total", 
                        self.username, module_name="tomllm")
         
         return full_conversation

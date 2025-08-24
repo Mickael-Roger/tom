@@ -646,14 +646,16 @@ class TomAgent:
                 # Create Tom prompt - never stored in history
                 tom_prompt = {"role": "system", "content": "You are Tom, a helpful personal assistant. Use the available tools to respond to user requests."}
                 
-                # Build current conversation (without temporal message, tom prompt, or history)
-                # Note: Response formatting will be added dynamically after tool responses
+                # Create formatting message - never stored in history, always in 3rd position
+                formatting_message = {"role": "system", "content": self.tomllm.set_response_context(client_type)}
+                
+                # Build current conversation (without temporal message, tom prompt, formatting, or history)
                 current_conversation = [
                     {"role": "user", "content": user_request}
                 ]
                 
-                # Build full conversation with proper order: temporal → tom → history → current
-                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message, tom_prompt)
+                # Build full conversation with proper order: temporal → tom → formatting → history → current
+                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message, tom_prompt, formatting_message)
                 
                 # Check if we have any tools to work with
                 if len(tools) == 0:
@@ -670,12 +672,11 @@ class TomAgent:
                         {"role": "user", "content": user_request}
                     ]
                     
-                    # Add response context
-                    response_context = self.tomllm.set_response_context(client_type)
-                    fallback_conversation.append({"role": "system", "content": response_context})
+                    # Create fallback formatting message - never stored in history, always in 3rd position
+                    fallback_formatting_message = {"role": "system", "content": self.tomllm.set_response_context(client_type)}
                     
-                    # Build conversation with temporal message, fallback tom prompt, and history
-                    full_fallback_conversation = self.tomllm.get_conversation_with_history(client_type, fallback_conversation, temporal_message, fallback_tom_prompt)
+                    # Build conversation with temporal message, fallback tom prompt, formatting, and history
+                    full_fallback_conversation = self.tomllm.get_conversation_with_history(client_type, fallback_conversation, temporal_message, fallback_tom_prompt, fallback_formatting_message)
                     
                     # Get fallback response
                     response = self.tomllm.callLLM(messages=full_fallback_conversation, complexity=1)
@@ -783,17 +784,16 @@ class TomAgent:
                 # Create Tom prompt for general knowledge - never stored in history
                 tom_prompt = {"role": "system", "content": "You are Tom, a helpful personal assistant. Respond using your general knowledge."}
                 
-                # Build current conversation (without temporal message, tom prompt, or history)
+                # Build current conversation (without temporal message, tom prompt, formatting, or history)
                 current_conversation = [
                     {"role": "user", "content": user_request}
                 ]
                 
-                # Add response context
-                response_context = self.tomllm.set_response_context(client_type)
-                current_conversation.append({"role": "system", "content": response_context})
+                # Create formatting message - never stored in history, always in 3rd position
+                no_tools_formatting_message = {"role": "system", "content": self.tomllm.set_response_context(client_type)}
                 
-                # Build full conversation with proper order: temporal → tom → history → current
-                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message, tom_prompt)
+                # Build full conversation with proper order: temporal → tom → formatting → history → current
+                conversation = self.tomllm.get_conversation_with_history(client_type, current_conversation, temporal_message, tom_prompt, no_tools_formatting_message)
                 
                 # Get direct response
                 response = self.tomllm.callLLM(messages=conversation, complexity=1)
