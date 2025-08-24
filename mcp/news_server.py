@@ -634,6 +634,27 @@ def description() -> str:
     return SERVER_DESCRIPTION
 
 
+@server.resource("description://tom_notification")
+def notification_status() -> str:
+    """Return current background notification status - number of unread news."""
+    try:
+        dbconn = sqlite3.connect(news_service.db)
+        cursor = dbconn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM news WHERE read = 0")
+        unread_count = cursor.fetchone()[0]
+        dbconn.close()
+        
+        if unread_count > 0:
+            return str(unread_count)
+        else:
+            return ""  # No status to report when no unread news
+            
+    except Exception as e:
+        if tomlogger:
+            tomlogger.error(f"Error getting notification status: {str(e)}", module_name="news")
+        return ""  # Return empty string on error to avoid breaking the system
+
+
 def main():
     """Main function to run the MCP server"""
     if tomlogger:

@@ -823,6 +823,27 @@ def description() -> str:
     return SERVER_DESCRIPTION
 
 
+@server.resource("description://tom_notification")
+def notification_status() -> str:
+    """Return current background notification status - number of unviewed videos."""
+    try:
+        dbconn = sqlite3.connect(youtube_service.db)
+        cursor = dbconn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM videos WHERE viewed = 0")
+        unviewed_count = cursor.fetchone()[0]
+        dbconn.close()
+        
+        if unviewed_count > 0:
+            return str(unviewed_count)
+        else:
+            return ""  # No status to report when no unviewed videos
+            
+    except Exception as e:
+        if tomlogger:
+            tomlogger.error(f"Error getting notification status: {str(e)}", module_name="youtube")
+        return ""  # Return empty string on error to avoid breaking the system
+
+
 def main():
     """Main function to run the MCP server"""
     if tomlogger:

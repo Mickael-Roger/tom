@@ -162,6 +162,31 @@ class AnkiService:
             return True
         else:
             return False
+    
+    def get_total_due_cards(self) -> int:
+        """Get total number of cards due for review across all decks"""
+        try:
+            decks = self.anki_request("deckNames")
+            if not decks:
+                return 0
+            
+            stats = self.anki_request("getDeckStats", {"decks": decks})
+            if not stats:
+                return 0
+            
+            total_due = 0
+            for deck in stats:
+                deck_info = stats[deck]
+                # Sum review_count, new_count, and learn_count for each deck
+                due_cards = deck_info.get("review_count", 0) + deck_info.get("new_count", 0) + deck_info.get("learn_count", 0)
+                total_due += due_cards
+            
+            return total_due
+            
+        except Exception as e:
+            if tomlogger:
+                tomlogger.error(f"Error getting total due cards: {str(e)}", module_name="anki")
+            return 0
 
 
 # Initialize Anki service
@@ -233,6 +258,23 @@ def anki_add_card(front: str, back: str, deck_name: str) -> str:
 def description() -> str:
     """Return the server description."""
     return SERVER_DESCRIPTION
+
+
+@server.resource("description://tom_notification")
+def notification_status() -> str:
+    """Return current background notification status - number of cards due for review."""
+    try:
+        due_cards = anki_service.get_total_due_cards()
+        
+        if due_cards > 0:
+            return str(due_cards)
+        else:
+            return ""  # No status to report when no cards are due
+            
+    except Exception as e:
+        if tomlogger:
+            tomlogger.error(f"Error getting notification status: {str(e)}", module_name="anki")
+        return ""  # Return empty string on error to avoid breaking the system
 
 
 def main():

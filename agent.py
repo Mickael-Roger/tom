@@ -26,6 +26,7 @@ import asyncio
 import traceback
 from datetime import datetime
 import pytz
+import time
 
 def init_config(config_path: str = '/data/config.yml') -> Dict[str, Any]:
     """Load configuration from YAML file"""
@@ -464,6 +465,63 @@ class MCPClient:
                 ]
         
         return fixed_schema
+    
+    async def get_service_notification_status(self, service_name: str) -> Optional[str]:
+        """
+        Get notification status from an MCP service via the tom_notification resource
+        Returns the status string if available, None if the resource doesn't exist or fails
+        """
+        if service_name not in self.mcp_connections:
+            return None
+        
+        connection_info = self.mcp_connections[service_name]
+        url = connection_info.get('url')
+        headers = connection_info.get('headers', {})
+        
+        if not url:
+            return None
+        
+        resource_uri = "description://tom_notification"
+        
+        try:
+            # Create new session for the resource call
+            async with streamablehttp_client(url) as (read_stream, write_stream, _):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    
+                    # Try to read the tom_notification resource
+                    try:
+                        tomlogger.debug(f"Requesting tom_notification resource from '{service_name}'", 
+                                      self.username, module_name="mcp")
+                        resource_result = await session.read_resource(resource_uri)
+                        
+                        if resource_result and resource_result.contents:
+                            # Get the first content item
+                            content = resource_result.contents[0]
+                            if hasattr(content, 'text'):
+                                status = content.text.strip()
+                                tomlogger.debug(f"✅ Got notification status from '{service_name}': {status}", 
+                                              self.username, module_name="mcp")
+                                return status
+                            elif hasattr(content, 'data'):
+                                status = str(content.data).strip()
+                                tomlogger.debug(f"✅ Got notification status from '{service_name}': {status}", 
+                                              self.username, module_name="mcp")
+                                return status
+                        
+                        tomlogger.debug(f"Empty response from tom_notification resource for '{service_name}'", 
+                                      self.username, module_name="mcp")
+                        return None
+                        
+                    except Exception as resource_error:
+                        tomlogger.debug(f"Resource 'tom_notification' not available for '{service_name}': {resource_error}", 
+                                      self.username, module_name="mcp")
+                        return None
+                        
+        except Exception as e:
+            tomlogger.debug(f"Failed to connect to MCP service '{service_name}' for notification status: {str(e)}", 
+                          self.username, module_name="mcp")
+            return None
 
 
 class TomAgent:
@@ -514,14 +572,72 @@ class TomAgent:
     @cherrypy.tools.allow(methods=['GET'])
     @cherrypy.tools.json_out()
     def tasks(self):
-        """Handle tasks requests"""
+        """Handle tasks requests - get notification status from all MCP services"""
         tomlogger.info("GET /tasks", self.username, "api", "agent")
-        return {
-            "status": "OK", 
-            "message": "Tasks endpoint",
-            "background_tasks": [],
-            "id": 0
-        }
+        
+        try:
+            # Get all configured MCP services
+            mcp_connections = self.mcp_client.get_mcp_connections()
+            background_tasks = []
+            status_id = int(time.time())
+            
+            if not mcp_connections:
+                tomlogger.debug("No MCP services configured, returning empty tasks", self.username, "api", "agent")
+                return {
+                    "background_tasks": [],
+                    "id": status_id
+                }
+            
+            # Create async tasks for all services
+            async def collect_all_statuses():
+                tasks_list = []
+                for service_name in mcp_connections.keys():
+                    task = self.mcp_client.get_service_notification_status(service_name)
+                    tasks_list.append((service_name, task))
+                
+                # Execute all tasks concurrently
+                results = await asyncio.gather(*[task for _, task in tasks_list], return_exceptions=True)
+                
+                collected_tasks = []
+                for i, (service_name, _) in enumerate(tasks_list):
+                    result = results[i]
+                    if isinstance(result, Exception):
+                        tomlogger.debug(f"Error getting notification status from '{service_name}': {result}", 
+                                      self.username, "api", "agent")
+                        continue
+                    
+                    if result:  # Only add if we got a status
+                        collected_tasks.append({
+                            "module": service_name,
+                            "status": result
+                        })
+                        tomlogger.debug(f"Collected status from '{service_name}': {result}", 
+                                      self.username, "api", "agent")
+                
+                return collected_tasks
+            
+            # Run async collection in event loop
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            background_tasks = loop.run_until_complete(collect_all_statuses())
+            
+            tomlogger.info(f"Retrieved {len(background_tasks)} background task statuses", self.username, "api", "agent")
+            
+            return {
+                "background_tasks": background_tasks,
+                "id": status_id
+            }
+            
+        except Exception as e:
+            tomlogger.error(f"Error collecting background tasks: {str(e)}", self.username, "api", "agent")
+            return {
+                "background_tasks": [],
+                "id": int(time.time())
+            }
     
     @cherrypy.expose
     @cherrypy.tools.allow(methods=['GET'])
