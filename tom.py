@@ -153,13 +153,13 @@ class TomWebService:
         return self._get_static_file('index.html')
 
     @cherrypy.expose
-    @cherrypy.tools.allow(methods=['GET'])
+    @cherrypy.tools.allow(methods=['GET', 'POST'])
     def auth(self):
         """Authentication page"""
         return self._get_static_file('auth.html')
 
     @cherrypy.expose
-    @cherrypy.tools.allow(methods=['POST'])
+    @cherrypy.tools.allow(methods=['GET', 'POST'])
     def login(self, username: str, password: str):
         """Handle login requests"""
         user = self._validate_credentials(username, password)
@@ -169,7 +169,7 @@ class TomWebService:
             cherrypy.session['username'] = username
             
             tomlogger.info(f"🔐 Auth login: {username}", username, "web", "system")
-            raise cherrypy.HTTPRedirect("/")
+            raise cherrypy.HTTPRedirect("/index")
         else:
             tomlogger.warning(f"🔒 Auth login failed: {username}", username, "web", "system")
             return "Invalid credentials. <a href='/auth'>Try again</a>"

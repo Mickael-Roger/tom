@@ -138,6 +138,19 @@ services:
     volumes:
       - /data/mcp/kwyk/:/data/
   
+  cafetaria:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/cafetaria/Dockerfile
+    container_name: cafetaria
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/cafetaria/:/data/
+  
   contacts:
     build:
       context: .
