@@ -172,3 +172,59 @@ services:
     volumes:
       - /data/mcp/calendar/:/data/
 
+  todo-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/todo/Dockerfile
+    container_name: todo-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=mickael
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/todo/:/data/
+
+  todo-nina:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/todo/Dockerfile
+    container_name: todo-nina
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=nina
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/todo/:/data/
+
+  todo-ambre:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/todo/Dockerfile
+    container_name: todo-ambre
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=ambre
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/todo/:/data/
+
+  todo-charlotte:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/todo/Dockerfile
+    container_name: todo-charlotte
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=charlotte
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/todo/:/data/
+
