@@ -99,6 +99,19 @@ services:
     volumes:
       - /data/mcp/idfm/:/data/
 
+  switchparentalcontrol:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/switchparentalcontrol/Dockerfile
+    container_name: switchparentalcontrol
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/switchparentalcontrol/:/data/
+
   kwyk:
     build:
       context: .
