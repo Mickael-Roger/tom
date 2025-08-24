@@ -27,6 +27,7 @@ import traceback
 from datetime import datetime
 import pytz
 import time
+import threading
 
 def init_config(config_path: str = '/data/config.yml') -> Dict[str, Any]:
     """Load configuration from YAML file"""
@@ -405,30 +406,36 @@ class MCPClient:
             tomlogger.error(f"Failed to create MCP session for '{service_name}': {str(e)}", self.username, module_name="mcp")
             return None
     
-    def init_connections_sync(self):
-        """Synchronous wrapper to initialize MCP connections"""
-        if self.mcp_services:
-            tomlogger.info(f"Starting MCP connections initialization for {len(self.mcp_services)} services", self.username, module_name="mcp")
-            # Run the async initialization in a new event loop
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+    def init_connections_background(self):
+        """Initialize MCP connections in background thread"""
+        def background_init():
+            if self.mcp_services:
+                tomlogger.info(f"Starting MCP connections initialization for {len(self.mcp_services)} services in background", self.username, module_name="mcp")
+                # Run the async initialization in a new event loop
                 try:
-                    loop.run_until_complete(self.initialize_mcp_connections())
-                finally:
-                    # Ensure all pending tasks are properly cancelled
-                    pending_tasks = asyncio.all_tasks(loop)
-                    if pending_tasks:
-                        tomlogger.debug(f"Cancelling {len(pending_tasks)} pending tasks", self.username, module_name="mcp")
-                        for task in pending_tasks:
-                            task.cancel()
-                        # Wait for tasks to be cancelled
-                        loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
-                    loop.close()
-            except Exception as e:
-                tomlogger.error(f"Failed to initialize MCP connections: {str(e)}", self.username, module_name="mcp")
-        else:
-            tomlogger.info("No MCP services configured for initialization", self.username, module_name="mcp")
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(self.initialize_mcp_connections())
+                    finally:
+                        # Ensure all pending tasks are properly cancelled
+                        pending_tasks = asyncio.all_tasks(loop)
+                        if pending_tasks:
+                            tomlogger.debug(f"Cancelling {len(pending_tasks)} pending tasks", self.username, module_name="mcp")
+                            for task in pending_tasks:
+                                task.cancel()
+                            # Wait for tasks to be cancelled
+                            loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
+                        loop.close()
+                except Exception as e:
+                    tomlogger.error(f"Failed to initialize MCP connections: {str(e)}", self.username, module_name="mcp")
+            else:
+                tomlogger.info("No MCP services configured for initialization", self.username, module_name="mcp")
+        
+        # Start background thread
+        thread = threading.Thread(target=background_init, daemon=True)
+        thread.start()
+        tomlogger.info(f"MCP initialization thread started in background", self.username, module_name="mcp")
     
     def _fix_schema_additional_properties(self, schema):
         """
@@ -538,8 +545,8 @@ class TomAgent:
         # Initialize MCP client
         self.mcp_client = MCPClient(username, config)
         
-        # Initialize MCP connections
-        self.mcp_client.init_connections_sync()
+        # Initialize MCP connections in background
+        self.mcp_client.init_connections_background()
         
     @cherrypy.expose
     @cherrypy.tools.allow(methods=['GET'])
@@ -663,8 +670,8 @@ class TomAgent:
                 
                 if has_tools and is_enabled:
                     status = "connected"
-                elif is_configured and is_enabled:
-                    status = "configured_no_tools"
+                elif is_configured and is_enabled and not has_tools:
+                    status = "connecting"  # Background initialization in progress
                 elif is_configured and not is_enabled:
                     status = "disabled"
                 else:
