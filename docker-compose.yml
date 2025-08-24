@@ -70,7 +70,21 @@ services:
     volumes:
       - /data/:/data/
 
- ### MODULES MCP ###
+
+### MODULES MCP ###
+  # Global
+  weather:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/weather/Dockerfile
+    container_name: weather
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/weather/:/data/
  
   weather:
     build:
@@ -84,6 +98,22 @@ services:
       - tom
     volumes:
       - /data/mcp/weather/:/data/
+  
+  contacts:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/contacts/Dockerfile
+    container_name: contacts
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/contacts/:/data/
+  
+
+  # Personal
  
   anki-mickael:
     build:
