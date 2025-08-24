@@ -411,7 +411,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                       self.username, module_name="tomllm")
         
         # Call LLM for triage (complexity 1 for good reasoning)
-        response = self.callLLM(messages=triage_conversation, tools=tools, complexity=1)
+        response = self.callLLM(messages=triage_conversation, tools=tools, complexity=0)
         
         load_modules = []
         reset_requested = False

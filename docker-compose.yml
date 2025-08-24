@@ -295,3 +295,17 @@ services:
     volumes:
       - /data/mcp/todo/:/data/
 
+  gpodder-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/gpodder/Dockerfile
+    container_name: gpodder-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=mickael
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/gpodder/:/data/
+
