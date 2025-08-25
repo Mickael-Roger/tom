@@ -366,6 +366,85 @@ Each service exposes endpoints that can be used for health monitoring:
 
 2. The agent will automatically detect and log the new service on startup
 
+## MCP Services
+
+### Memory MCP Server
+
+A Model Context Protocol (MCP) server that provides memory management functionality using [mem0](https://github.com/mem0ai/mem0). This server allows AI agents to store, search, and manage memories for personalized interactions.
+
+#### Features
+
+- **Add Memories**: Store text-based memories with user context
+- **Search Memories**: Semantic search through stored memories
+- **Delete Memories**: Remove specific memories by ID
+- **User Isolation**: Each user has their own memory space
+- **Persistent Storage**: Uses Chroma vector database stored in `/data/memory_db`
+- **Configurable**: Supports different LLM and embedding providers
+
+#### Configuration
+
+Add memory service configuration to your `/data/config.yml`:
+
+```yaml
+# Memory service configuration
+memory:
+  openai_api_key: "your-openai-api-key"
+  llm_provider: "openai"
+  llm_model: "gpt-4o-mini"
+  embedder_provider: "openai"
+  embedder_model: "text-embedding-ada-002"
+
+users:
+  - username: alice
+    services:
+      memory:
+        url: "http://memory-service/mcp"
+        description: "Personal memory management"
+        enable: true
+```
+
+#### API Tools
+
+**add_memory**: Stores a new memory for a user
+- `text` (str): The memory content to store
+- `user_id` (str): Unique identifier for the user
+- `metadata` (str, optional): JSON string with additional metadata
+
+**search_memories**: Searches for relevant memories using semantic similarity
+- `query` (str): Search query text
+- `user_id` (str): User identifier
+- `limit` (int): Maximum results to return (default: 10)
+
+**delete_memory**: Removes a specific memory by its ID
+- `memory_id` (str): Unique identifier of the memory to delete
+
+**get_all_memories**: Retrieves all memories for a specific user
+- `user_id` (str): User identifier
+
+#### Docker Deployment
+
+```dockerfile
+FROM python:3.13-alpine
+WORKDIR /app
+RUN pip install --upgrade pip && \
+    pip install requests mcp fastmcp mem0ai PyYAML
+RUN addgroup -g 1000 memory && \
+    adduser -u 1000 -G memory -s /bin/sh -D memory
+COPY mcp/memory_server.py /app/
+COPY lib/ /app/lib/
+RUN chown -R memory:memory /app
+RUN mkdir -p /data && chown -R memory:memory /data
+USER 1000
+EXPOSE 80
+ENTRYPOINT ["python", "memory_server.py"]
+```
+
+#### Storage & Environment Variables
+
+- **Database**: `/data/memory_db/` (Chroma vector store with SQLite backend)
+- **Configuration**: `/data/config.yml`
+- **Environment**: `OPENAI_API_KEY` required for LLM and embedding operations
+
 ## Troubleshooting
 
 ### Common Issues

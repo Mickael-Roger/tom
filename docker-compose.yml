@@ -179,6 +179,23 @@ services:
  
 
   # Personal
+  
+  memory-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/memory/Dockerfile
+    container_name: memory-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    ports:
+      - "9999:80"
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/memory/config.yml:/config.yml:ro
+      - /data/mcp/memory/mickael/:/data/
+
  
   anki-mickael:
     build:
