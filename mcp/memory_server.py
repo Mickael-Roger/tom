@@ -10,10 +10,7 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 import yaml
-import threading
-import time
 from datetime import datetime, timedelta
-import schedule
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import Tool, TextContent
@@ -47,52 +44,24 @@ else:
     logger = logging.getLogger(__name__)
     logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
 
+# Validate required environment variables
+TOM_USER = os.environ.get('TOM_USER')
+if not TOM_USER or not TOM_USER.strip():
+    error_msg = "❌ TOM_USER environment variable is required but not set. Memory service cannot start."
+    if tomlogger:
+        tomlogger.error(error_msg, module_name="memory")
+    else:
+        print(error_msg)
+    sys.exit(1)
+
+TOM_USER = TOM_USER.strip()
+if tomlogger:
+    tomlogger.info(f"✅ Memory service initialized for user: {TOM_USER}", module_name="memory")
+
 # Server configuration and description
 SERVER_DESCRIPTION = """This module manages personal memories and context using mem0. 
 
-CRITICAL: You MUST AUTOMATICALLY store important information about the user WITHOUT asking for permission first. When the user shares ANY personal information, preferences, facts, activities, or context - store it immediately and respond with a brief acknowledgment like "OK" or "Noted" or "Got it".
-
-NEVER ask "Would you like me to remember this?" or "Should I store this information?" - Just store it automatically and give a brief confirmation.
-
-Store ALL of these types of information immediately:
-
-- Personal preferences (e.g., "I prefer technical explanations", "I like Python over JavaScript") 
-- Facts about the user (e.g., "I'm a software developer", "I work at Company X", "I live in Paris")
-- Personal codes, numbers, or identifiers (e.g., "My bank card code is 1234", "My employee ID is ABC123")
-- Things the user has done or accomplished (e.g., "I completed the authentication feature", "I fixed the bug in the login system")
-- User's projects, goals, or ongoing work (e.g., "I'm building a chatbot", "I'm learning React")
-- Daily activities and events (e.g., "I went to the garden today", "Yesterday I did the shopping", "This morning I had a meeting with the client")
-- Personal experiences and life events (e.g., "I visited my parents last weekend", "I started a new exercise routine", "I'm planning a vacation to Italy")
-- Routine activities and habits (e.g., "I usually work from home on Fridays", "I take my coffee without sugar")
-- Important context that would be useful in future conversations
-- User's workflow preferences, tools they use, or methodologies they follow
-
-MEMORY RETRIEVAL BEHAVIOR:
-MANDATORY: Before responding "I don't know" or "I don't have that information" to ANY user question, you MUST FIRST search the memory using the search_memories function. This includes:
-
-- Questions about personal preferences, facts, or past conversations
-- Requests for codes, numbers, or identifiers the user may have shared
-- Questions about work, projects, or activities
-- Any question that could potentially have been discussed before
-- Requests for context about the user's life, habits, or experiences
-
-SEARCH STRATEGY:
-1. ALWAYS search memory FIRST before claiming lack of knowledge
-2. Use relevant keywords from the user's question for the search
-3. Try multiple search variations if the first search doesn't find results
-4. Only say "I don't know" AFTER thoroughly searching memory
-5. If you find partial information in memory, share what you found and ask for clarification
-
-STORAGE BEHAVIOR:
-1. AUTOMATICALLY add information to memory when user shares personal details
-2. Do NOT search before adding - just add immediately to avoid friction
-3. Respond with brief confirmations: "OK", "Noted", "Got it", "Stored"
-4. Do NOT ask for permission to store information
-5. Do NOT explain what you stored unless specifically asked
-
-The system handles duplicate cleanup automatically in the background, so prioritize capturing information quickly over avoiding duplicates.
-
-The goal is to build a comprehensive understanding of the user over time to provide increasingly personalized and contextual assistance, remembering both professional and personal aspects of their life."""
+It provides functions to store, search, delete, and manage user memories. The memory system automatically processes conversations to extract and store relevant information about users."""
 
 # Initialize FastMCP server
 server = FastMCP(name="memory-server", stateless_http=True, host="0.0.0.0", port=80)
@@ -391,68 +360,6 @@ class MemoryService:
                 tomlogger.debug(f"Exception type: {type(e).__name__}, details: {str(e)}", module_name="memory")
             return {"error": error_msg}
     
-    def cleanup_duplicate_memories(self) -> Dict[str, Any]:
-        """Clean up duplicate and similar memories across all users"""
-        if tomlogger:
-            tomlogger.info("Starting daily memory cleanup process", module_name="memory")
-        
-        if not self.memory:
-            error_msg = "Memory service not initialized"
-            if tomlogger:
-                tomlogger.error(f"Cleanup failed: {error_msg}", module_name="memory")
-            return {"error": error_msg}
-        
-        try:
-            cleanup_stats = {"processed": 0, "duplicates_removed": 0, "errors": 0}
-            
-            if tomlogger:
-                tomlogger.debug("Starting memory deduplication process", module_name="memory")
-            
-            # mem0 cleanup uses LLM calls for intelligent deduplication
-            # This can be expensive, so we run it only once daily at 2 AM
-            
-            # Check if mem0 has built-in cleanup methods
-            if hasattr(self.memory, 'cleanup') and callable(getattr(self.memory, 'cleanup')):
-                if tomlogger:
-                    tomlogger.debug("Using mem0 built-in cleanup method (may use LLM for intelligent deduplication)", module_name="memory")
-                result = self.memory.cleanup()
-                if tomlogger:
-                    tomlogger.info(f"mem0 cleanup completed: {result}", module_name="memory")
-                cleanup_stats["processed"] = result.get("processed", 0) if isinstance(result, dict) else 1
-                
-            elif hasattr(self.memory, 'deduplicate') and callable(getattr(self.memory, 'deduplicate')):
-                if tomlogger:
-                    tomlogger.debug("Using mem0 built-in deduplicate method (may use LLM for similarity detection)", module_name="memory")
-                result = self.memory.deduplicate()
-                if tomlogger:
-                    tomlogger.info(f"mem0 deduplication completed: {result}", module_name="memory")
-                cleanup_stats["duplicates_removed"] = result.get("removed", 0) if isinstance(result, dict) else 1
-                
-            else:
-                # Simple vector-based cleanup without LLM calls
-                if tomlogger:
-                    tomlogger.debug("No built-in cleanup methods found, using simple vector similarity approach", module_name="memory")
-                
-                # TODO: Implement custom vector-based deduplication here
-                # This would use only embeddings similarity without LLM calls
-                # For now, we'll just log that cleanup was attempted
-                cleanup_stats["processed"] = 0  # No actual cleanup yet
-                
-                if tomlogger:
-                    tomlogger.info("Vector-based cleanup not yet implemented, skipping cleanup", module_name="memory")
-            
-            if tomlogger:
-                tomlogger.info(f"Memory cleanup completed: {cleanup_stats}", module_name="memory")
-            
-            return {"status": "success", "stats": cleanup_stats}
-            
-        except Exception as e:
-            error_msg = f"Error during memory cleanup: {str(e)}"
-            if tomlogger:
-                tomlogger.error(error_msg, module_name="memory")
-                tomlogger.debug(f"Exception type: {type(e).__name__}, details: {str(e)}", module_name="memory")
-            cleanup_stats["errors"] += 1
-            return {"error": error_msg, "stats": cleanup_stats}
 
 
 # Initialize memory service
@@ -468,70 +375,22 @@ if tomlogger:
         tomlogger.debug("Global memory service initialized but mem0 is not available", module_name="memory")
 
 
-def run_daily_cleanup():
-    """Function to run the daily cleanup process"""
-    if tomlogger:
-        tomlogger.info("🧹 Starting scheduled daily memory cleanup", module_name="memory")
-    
-    try:
-        result = memory_service.cleanup_duplicate_memories()
-        if "error" in result:
-            if tomlogger:
-                tomlogger.error(f"Daily cleanup failed: {result['error']}", module_name="memory")
-        else:
-            if tomlogger:
-                tomlogger.info(f"✅ Daily cleanup completed successfully: {result.get('stats', {})}", module_name="memory")
-    except Exception as e:
-        if tomlogger:
-            tomlogger.error(f"Daily cleanup crashed: {str(e)}", module_name="memory")
-
-
-def schedule_daily_cleanup():
-    """Set up the daily cleanup schedule"""
-    # Schedule cleanup at 2 AM every day
-    schedule.every().day.at("02:00").do(run_daily_cleanup)
-    
-    if tomlogger:
-        tomlogger.info("📅 Daily memory cleanup scheduled for 02:00", module_name="memory")
-    
-    # Run scheduler in background thread
-    def scheduler_worker():
-        while True:
-            schedule.run_pending()
-            time.sleep(60)  # Check every minute
-    
-    scheduler_thread = threading.Thread(target=scheduler_worker, daemon=True)
-    scheduler_thread.start()
-    
-    if tomlogger:
-        tomlogger.debug("Background scheduler thread started", module_name="memory")
-
-
-# Initialize daily cleanup scheduler
-if memory_service.memory:  # Only start scheduler if mem0 is available
-    try:
-        schedule_daily_cleanup()
-    except Exception as e:
-        if tomlogger:
-            tomlogger.error(f"Failed to initialize daily cleanup scheduler: {e}", module_name="memory")
 
 
 @server.tool()
 def add_memory(
     text: str,
-    user_id: str,
     metadata: Optional[str] = None
 ) -> str:
     """Add a memory to the system. Call this when you need to store information for later retrieval.
     
     Args:
         text: The text content to store as a memory
-        user_id: Unique identifier for the user
         metadata: Optional JSON string containing additional metadata
     """
     if tomlogger:
-        tomlogger.info(f"Tool call: add_memory for user={user_id}, text={text[:50]}...", module_name="memory")
-        tomlogger.debug(f"MCP tool add_memory called with full params: user_id={user_id}, text_length={len(text)}, metadata={metadata}", module_name="memory")
+        tomlogger.info(f"Tool call: add_memory for user={TOM_USER}, text={text[:50]}...", module_name="memory")
+        tomlogger.debug(f"MCP tool add_memory called with full params: user_id={TOM_USER}, text_length={len(text)}, metadata={metadata}", module_name="memory")
     
     metadata_dict = None
     if metadata:
@@ -544,7 +403,7 @@ def add_memory(
                 tomlogger.error(f"Invalid metadata JSON: {metadata}", module_name="memory")
             return json.dumps({"error": "Invalid metadata JSON format"})
     
-    result = memory_service.add_memory(text, user_id, metadata_dict)
+    result = memory_service.add_memory(text, TOM_USER, metadata_dict)
     
     if tomlogger:
         tomlogger.debug(f"MCP tool add_memory returning: {result}", module_name="memory")
@@ -555,20 +414,18 @@ def add_memory(
 @server.tool()
 def search_memories(
     query: str,
-    user_id: str,
     limit: int = 10
 ) -> str:
     """Search for memories based on a query. Call this when you need to find relevant stored information.
     
     Args:
         query: The search query to find relevant memories
-        user_id: Unique identifier for the user
         limit: Maximum number of results to return (default: 10)
     """
     if tomlogger:
-        tomlogger.info(f"Tool call: search_memories for user={user_id}, query={query[:50]}...", module_name="memory")
+        tomlogger.info(f"Tool call: search_memories for user={TOM_USER}, query={query[:50]}...", module_name="memory")
     
-    result = memory_service.search_memories(query, user_id, limit)
+    result = memory_service.search_memories(query, TOM_USER, limit)
     return json.dumps(result, ensure_ascii=False)
 
 
@@ -587,28 +444,85 @@ def delete_memory(memory_id: str) -> str:
 
 
 @server.tool()
-def get_all_memories(user_id: str) -> str:
-    """Get all memories for a specific user. Call this when you need to retrieve all stored information for a user.
-    
-    Args:
-        user_id: Unique identifier for the user
+def get_all_memories() -> str:
+    """Get all memories for the current user. Call this when you need to retrieve all stored information.
     """
     if tomlogger:
-        tomlogger.info(f"Tool call: get_all_memories for user={user_id}", module_name="memory")
+        tomlogger.info(f"Tool call: get_all_memories for user={TOM_USER}", module_name="memory")
     
-    result = memory_service.get_all_memories(user_id)
+    result = memory_service.get_all_memories(TOM_USER)
     return json.dumps(result, ensure_ascii=False)
 
 
 @server.tool()
-def list_all_memory_content(user_id: str) -> str:
-    """List all memory content with full details for a specific user. This returns all memories with their complete text content, not just IDs.
+def analyze_and_store_conversation(
+    conversation: str
+) -> str:
+    """Analyze conversation history and automatically store relevant memories.
     
     Args:
-        user_id: Unique identifier for the user
+        conversation: JSON string containing conversation history in format [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
     """
     if tomlogger:
-        tomlogger.info(f"Tool call: list_all_memory_content for user={user_id}", module_name="memory")
+        tomlogger.info(f"Tool call: analyze_and_store_conversation for user={TOM_USER}", module_name="memory")
+    
+    try:
+        import json
+        
+        # Parse the conversation JSON
+        conversation_data = json.loads(conversation)
+        
+        if not isinstance(conversation_data, list):
+            return json.dumps({"error": "Conversation must be a list of messages"}, ensure_ascii=False)
+        
+        # Filter to only user and assistant messages with content
+        filtered_conversation = []
+        for msg in conversation_data:
+            if (isinstance(msg, dict) and 
+                msg.get('role') in ['user', 'assistant'] and 
+                isinstance(msg.get('content'), str) and 
+                msg['content'].strip()):
+                filtered_conversation.append(msg)
+        
+        if not filtered_conversation:
+            return json.dumps({"status": "success", "message": "No meaningful conversation to analyze"}, ensure_ascii=False)
+        
+        # Convert conversation to text format for mem0
+        conversation_text = ""
+        for msg in filtered_conversation:
+            role = msg['role']
+            content = msg['content'].strip()
+            conversation_text += f"{role}: {content}\n"
+        
+        if tomlogger:
+            tomlogger.debug(f"Analyzing conversation text: {conversation_text[:200]}...", module_name="memory")
+        
+        # Add the conversation to mem0 - let mem0 handle the analysis and extraction
+        result = memory_service.add_memory(conversation_text, TOM_USER)
+        
+        if tomlogger:
+            tomlogger.info(f"Conversation analysis completed for user {TOM_USER}", module_name="memory")
+        
+        return json.dumps(result, ensure_ascii=False)
+        
+    except json.JSONDecodeError as e:
+        error_msg = f"Invalid conversation JSON format: {str(e)}"
+        if tomlogger:
+            tomlogger.error(error_msg, module_name="memory")
+        return json.dumps({"error": error_msg}, ensure_ascii=False)
+    except Exception as e:
+        error_msg = f"Error analyzing conversation: {str(e)}"
+        if tomlogger:
+            tomlogger.error(error_msg, module_name="memory")
+        return json.dumps({"error": error_msg}, ensure_ascii=False)
+
+
+@server.tool()
+def list_all_memory_content() -> str:
+    """List all memory content with full details for the current user. This returns all memories with their complete text content, not just IDs.
+    """
+    if tomlogger:
+        tomlogger.info(f"Tool call: list_all_memory_content for user={TOM_USER}", module_name="memory")
     
     if not memory_service.memory:
         error_msg = "Memory service not initialized"
@@ -618,10 +532,10 @@ def list_all_memory_content(user_id: str) -> str:
     
     try:
         if tomlogger:
-            tomlogger.debug(f"Calling mem0.get_all() for user: {user_id}", module_name="memory")
+            tomlogger.debug(f"Calling mem0.get_all() for user: {TOM_USER}", module_name="memory")
         
         # Get all memories for user
-        memories = memory_service.memory.get_all(user_id=user_id)
+        memories = memory_service.memory.get_all(user_id=TOM_USER)
         
         # Format the output to show all content clearly
         formatted_memories = []
@@ -638,13 +552,13 @@ def list_all_memory_content(user_id: str) -> str:
         
         result = {
             "status": "success",
-            "user_id": user_id,
+            "user_id": TOM_USER,
             "total_memories": len(formatted_memories),
             "memories": formatted_memories
         }
         
         if tomlogger:
-            tomlogger.info(f"Listed all memory content for user {user_id}: {len(formatted_memories)} memories", module_name="memory")
+            tomlogger.info(f"Listed all memory content for user {TOM_USER}: {len(formatted_memories)} memories", module_name="memory")
             tomlogger.debug(f"Memory content result: {result}", module_name="memory")
         
         return json.dumps(result, ensure_ascii=False, indent=2)

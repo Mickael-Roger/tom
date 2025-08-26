@@ -303,8 +303,72 @@ class TomLLM:
         else:  # android, web and pwa
             return "Your response will be displayed in a web browser or in a mobile app that supports markdown. You should use markdown to format your answer for better readability. You can use titles, lists, bold text, etc. Use simple text and line breaks for readability. Unless the user explicitly asks for it, you must never directly write URL or stuff like that. Instead, you must use the tag [open:PLACE URL HERE]"
     
+    async def _retrieve_memory_async(self, user_request: str, mcp_client) -> Optional[Dict[str, Any]]:
+        """Retrieve relevant memories asynchronously for the user request"""
+        if not mcp_client:
+            return None
+            
+        # Check if memory service is available
+        memory_connection = mcp_client.get_mcp_connection("memory")
+        if not memory_connection or not memory_connection.get("tools"):
+            tomlogger.debug(f"Memory service not available for retrieval", self.username, module_name="tomllm")
+            return None
+        
+        try:
+            from mcp.client.streamable_http import streamablehttp_client
+            from mcp import ClientSession
+            
+            async with streamablehttp_client(memory_connection['url']) as (read_stream, write_stream, _):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    
+                    # Search for relevant memories using the user request
+                    result = await session.call_tool(
+                        "search_memories",
+                        {
+                            "query": user_request,
+                            "limit": 5  # Limit to 5 most relevant memories
+                        }
+                    )
+                    
+                    tomlogger.debug(f"Memory search result: {result}", self.username, module_name="tomllm")
+                    
+                    # Extract content from MCP result
+                    if result and hasattr(result, 'content') and result.content:
+                        content_items = []
+                        for content in result.content:
+                            if hasattr(content, 'text'):
+                                content_items.append(content.text)
+                            elif hasattr(content, 'data'):
+                                content_items.append(str(content.data))
+                            else:
+                                content_items.append(str(content))
+                        
+                        result_text = '\n'.join(content_items) if content_items else None
+                        
+                        if result_text:
+                            try:
+                                # Parse the JSON result from memory service
+                                memory_data = json.loads(result_text)
+                                if memory_data.get("status") == "success" and memory_data.get("results"):
+                                    tomlogger.info(f"🧠 Retrieved {len(memory_data['results'])} relevant memories", self.username, module_name="tomllm")
+                                    return memory_data
+                                else:
+                                    tomlogger.debug(f"No relevant memories found", self.username, module_name="tomllm")
+                                    return None
+                            except json.JSONDecodeError:
+                                tomlogger.warning(f"Failed to parse memory search result", self.username, module_name="tomllm")
+                                return None
+                    
+                    return None
+        
+        except Exception as e:
+            tomlogger.debug(f"Error retrieving memories: {e}", self.username, module_name="tomllm")
+            return None
+    
     def triage_modules(self, user_request: str, position: Optional[Dict[str, float]], 
-                      available_modules: List[Dict[str, str]], client_type: str, personal_context: str = "") -> List[str]:
+                      available_modules: List[Dict[str, str]], client_type: str, personal_context: str = "", 
+                      mcp_client=None) -> List[str]:
         """
         Triage modules needed to answer user request
         
@@ -314,6 +378,7 @@ class TomLLM:
             available_modules: List of {'name': str, 'description': str}
             client_type: 'web', 'tui', or 'android'
             personal_context: User's personal context from configuration
+            mcp_client: Optional MCPClient instance for memory retrieval
             
         Returns:
             List of module names needed to answer the request
@@ -396,10 +461,46 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         today = datetime.now().strftime("%A %d %B %Y %H:%M:%S")
         weeknumber = datetime.now().isocalendar().week
         
-        # Build current triage conversation - just the user request, system info will be in JSON message
+        # Retrieve relevant memories in parallel with triage preparation
+        memory_data = None
+        if mcp_client:
+            try:
+                # Run memory retrieval asynchronously
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                
+                memory_data = loop.run_until_complete(self._retrieve_memory_async(user_request, mcp_client))
+            except Exception as e:
+                tomlogger.debug(f"Error during memory retrieval: {e}", self.username, module_name="tomllm")
+                memory_data = None
+        
+        # Build current triage conversation - user request + optional memory context
         current_triage_conversation = [
             {"role": "user", "content": user_request}
         ]
+        
+        # Add memory information as system message if available
+        if memory_data and memory_data.get("results"):
+            memory_info = {
+                "description": "Relevant information retrieved from memory that may help answer the user's request",
+                "source": "memory_system",
+                "retrieved_memories": memory_data["results"],
+                "total_memories_found": memory_data.get("count", len(memory_data["results"]))
+            }
+            
+            memory_message = {
+                "role": "system", 
+                "content": json.dumps(memory_info, ensure_ascii=False, separators=(',', ':'))
+            }
+            
+            # Insert memory message after user request
+            current_triage_conversation.append(memory_message)
+            
+            tomlogger.info(f"🧠 Added {len(memory_data['results'])} memories to triage context", self.username, module_name="tomllm")
         
         # For triage, use JSON format with the triage instructions in a dedicated section
         triage_conversation = self.get_conversation_with_history(
@@ -461,6 +562,12 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                           self.username, module_name="tomllm")
         
         return load_modules
+    
+    def triage_modules_sync(self, user_request: str, position: Optional[Dict[str, float]], 
+                           available_modules: List[Dict[str, str]], client_type: str, personal_context: str = "", 
+                           mcp_client=None) -> List[str]:
+        """Synchronous wrapper for triage_modules for backward compatibility"""
+        return self.triage_modules(user_request, position, available_modules, client_type, personal_context, mcp_client)
     
     async def execute_request_with_tools(self, conversation: List[Dict[str, str]], tools: List[Dict], 
                                         complexity: int = 1, max_iterations: int = 10, mcp_client=None, 
@@ -1097,7 +1204,21 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         
         # Analyze behavior tuning before clearing history if behavior service is available
         if history_length > 0 and mcp_client:
-            self._analyze_behavior_tuning_async(client_type, mcp_client)
+            # Check if behavior service is available before trying to analyze
+            behavior_connection = mcp_client.get_mcp_connection("behavior")
+            if behavior_connection and behavior_connection.get("tools"):
+                self._analyze_behavior_tuning_async(client_type, mcp_client)
+            else:
+                tomlogger.debug(f"Behavior service not available, skipping behavior tuning analysis", self.username, module_name="tomllm")
+        
+        # Analyze and store conversation in memory before clearing history if memory service is available
+        if history_length > 0 and mcp_client:
+            # Check if memory service is available before trying to store
+            memory_connection = mcp_client.get_mcp_connection("memory")
+            if memory_connection and memory_connection.get("tools"):
+                self._analyze_and_store_conversation_async(client_type, mcp_client)
+            else:
+                tomlogger.debug(f"Memory service not available, skipping conversation storage", self.username, module_name="tomllm")
         
         # Debug logging - show what was cleared in DEBUG mode
         if tomlogger.logger and tomlogger.logger.logger.level <= 10 and history_length > 0:  # DEBUG level = 10
@@ -1315,6 +1436,99 @@ IMPORTANT:
         thread.daemon = True
         thread.start()
         tomlogger.debug(f"Started behavior tuning analysis in background thread", self.username, module_name="tomllm")
+    
+    def _analyze_and_store_conversation_async(self, client_type: str, mcp_client):
+        """Analyze conversation and store in memory asynchronously"""
+        
+        def analyze_conversation_thread():
+            try:
+                # Check if memory service is available
+                memory_connection = mcp_client.get_mcp_connection("memory")
+                if not memory_connection or not memory_connection.get("tools"):
+                    tomlogger.debug(f"Memory service not available for conversation storage", self.username, module_name="tomllm")
+                    return
+                
+                tomlogger.info(f"🧠 Starting conversation analysis for memory storage ({client_type} client)", self.username, module_name="tomllm")
+                
+                # Prepare conversation history - filter to user and assistant messages only
+                history = self.history.get(client_type, [])
+                filtered_conversation = []
+                
+                for msg in history:
+                    if (isinstance(msg, dict) and 
+                        msg.get('role') in ['user', 'assistant'] and 
+                        isinstance(msg.get('content'), str) and 
+                        msg['content'].strip()):
+                        
+                        filtered_conversation.append({
+                            "role": msg['role'],
+                            "content": msg['content'].strip()
+                        })
+                
+                # Skip if no meaningful conversation
+                if not filtered_conversation:
+                    tomlogger.debug(f"No meaningful conversation content for memory storage", self.username, module_name="tomllm")
+                    return
+                
+                if len(filtered_conversation) < 2:  # Need at least one user + one assistant message
+                    tomlogger.debug(f"Conversation too short for memory storage (only {len(filtered_conversation)} messages)", self.username, module_name="tomllm")
+                    return
+                
+                # Convert conversation to JSON string
+                conversation_json = json.dumps(filtered_conversation, ensure_ascii=False)
+                
+                tomlogger.debug(f"Prepared conversation for memory analysis: {len(filtered_conversation)} messages", self.username, module_name="tomllm")
+                
+                # Call memory service to analyze and store conversation
+                try:
+                    async def store_conversation():
+                        try:
+                            from mcp.client.streamable_http import streamablehttp_client
+                            from mcp import ClientSession
+                            
+                            async with streamablehttp_client(memory_connection['url']) as (read_stream, write_stream, _):
+                                async with ClientSession(read_stream, write_stream) as session:
+                                    await session.initialize()
+                                    
+                                    # Call the analyze_and_store_conversation tool
+                                    result = await session.call_tool(
+                                        "analyze_and_store_conversation",
+                                        {
+                                            "conversation": conversation_json
+                                        }
+                                    )
+                                    
+                                    tomlogger.debug(f"Memory storage result: {result}", self.username, module_name="tomllm")
+                                    return result
+                        except Exception as e:
+                            tomlogger.debug(f"Error calling memory service: {e}", self.username, module_name="tomllm")
+                            return None
+                    
+                    # Run async function
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    
+                    storage_result = loop.run_until_complete(store_conversation())
+                    
+                    if storage_result:
+                        tomlogger.info(f"✅ Conversation successfully stored in memory", self.username, module_name="tomllm")
+                    else:
+                        tomlogger.warning(f"Failed to store conversation in memory", self.username, module_name="tomllm")
+                        
+                except Exception as storage_error:
+                    tomlogger.error(f"Error during conversation memory storage: {str(storage_error)}", self.username, module_name="tomllm")
+                
+            except Exception as e:
+                tomlogger.error(f"Error during conversation memory analysis: {str(e)}", self.username, module_name="tomllm")
+        
+        # Start analysis in background thread
+        thread = threading.Thread(target=analyze_conversation_thread)
+        thread.daemon = True
+        thread.start()
+        tomlogger.debug(f"Started conversation memory analysis in background thread", self.username, module_name="tomllm")
     
     async def _apply_behavior_prompts(self, conversation: List[Dict[str, str]], selected_modules: List[str], mcp_client) -> List[Dict[str, str]]:
         """Apply behavior prompts from the behavior service to the conversation"""

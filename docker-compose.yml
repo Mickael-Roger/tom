@@ -188,6 +188,7 @@ services:
     restart: always
     environment:
       - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=mickael
     ports:
       - "9999:80"
     networks:

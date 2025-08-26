@@ -809,7 +809,8 @@ class TomAgent:
                 position=position,
                 available_modules=available_modules,
                 client_type=client_type,
-                personal_context=personal_context
+                personal_context=personal_context,
+                mcp_client=self.mcp_client
             )
             
             if required_modules == ["reset_performed"]:
