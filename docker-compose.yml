@@ -189,6 +189,7 @@ services:
     environment:
       - TOM_LOG_LEVEL=DEBUG
       - TOM_USER=mickael
+      - MEM0_TELEMETRY=False
     ports:
       - "9999:80"
     networks:
