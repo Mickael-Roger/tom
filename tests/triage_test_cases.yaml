@@ -1,10 +1,16 @@
 llms:
-  - llm: deepseek
-    model: deepseek/deepseek-chat
+  - llm: openrouter-mistral
+    model: openrouter/mistralai/mistral-small-3.2-24b-instruct
     price:
-      cache_hit: 0.07
-      cache_miss: 0.56
-      output: 1.68
+      cache_hit: 0.10
+      cache_miss: 0.10
+      output: 0.30
+  #- llm: deepseek
+  #  model: deepseek/deepseek-chat
+  #  price:
+  #    cache_hit: 0.07
+  #    cache_miss: 0.56
+  #    output: 1.68
   - llm: openai
     model: openai/gpt-4.1-mini
     price:

@@ -538,14 +538,19 @@
             let llmCount = 0;
             let bestLLM = '';
             let bestRate = 0;
+            let bestTime = Infinity;
             
             Object.entries(llmResults).forEach(([llm, data]) => {
                 const rate = data.summary?.success_rate || 0;
+                const medianTime = data.summary?.median_time_ms || 0;
                 totalSuccessRate += rate;
                 llmCount++;
                 
-                if (rate > bestRate) {
+                // First priority: higher success rate
+                // Second priority: lower median time (in case of tie)
+                if (rate > bestRate || (rate === bestRate && medianTime < bestTime)) {
                     bestRate = rate;
+                    bestTime = medianTime;
                     bestLLM = llm;
                 }
             });

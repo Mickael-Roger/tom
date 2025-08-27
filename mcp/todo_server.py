@@ -40,7 +40,7 @@ else:
     logger = logging.getLogger(__name__)
 
 # Server configuration and description
-SERVER_DESCRIPTION = "This module manages various types of task lists including TODO lists, grocery/shopping lists, and custom lists. It provides comprehensive list management capabilities for organizing different types of tasks and items."
+SERVER_DESCRIPTION = "This module manages various types of task lists including TODO lists, grocery/shopping lists, and custom lists. It provides comprehensive list management capabilities for organizing different types of tasks and items. Common list names include: 'TODO', 'Tasks', 'Groceries', 'Shopping', 'Shopping List', 'Courses', 'Music', but users can create custom lists with any name."
 
 # Initialize FastMCP server
 server = FastMCP(name="todo-server", stateless_http=True, host="0.0.0.0", port=80)

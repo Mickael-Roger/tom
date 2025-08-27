@@ -41,7 +41,7 @@ else:
     logger = logging.getLogger(__name__)
 
 # Server configuration and description
-SERVER_DESCRIPTION = "This module is used to get information from Kwyk. Kwyk is an online platform for math and French exercises."
+SERVER_DESCRIPTION = "This module is used to get information from Kwyk. Kwyk is an online platform for math and French exercises. Note: Kwyk may sometimes be misspelled as 'Quick' or similar variations in user queries."
 
 # Initialize FastMCP server
 server = FastMCP(name="kwyk-server", stateless_http=True, host="0.0.0.0", port=80)

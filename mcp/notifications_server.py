@@ -40,7 +40,7 @@ else:
     logger = logging.getLogger(__name__)
 
 # Server configuration and description
-SERVER_DESCRIPTION = """This module is used to send instant messages to family members via Firebase notifications and manage reminders. Use this when the user wants to send a message, notification, or alert to another family member immediately, or when they want to be reminded about something at a specific time. For example: 'Send a message to mom saying I'll be late', 'Tell Jennifer that dinner is ready', 'Remind me in 2 hours to take out the laundry', or 'Remind me tomorrow morning at 9 a.m. to buy bread'."""
+SERVER_DESCRIPTION = """This module is the primary service for sending instant messages to family members and managing reminders. Use this module whenever the user wants to communicate with someone (send a message, notify someone, alert someone, tell someone something) or set up reminders. This handles all messaging and notification needs including: sending instant messages to family members via mobile notifications, creating time-based reminders for yourself or others, and managing reminder schedules. Examples: 'Send a message to mom saying I'll be late', 'Tell Jennifer that dinner is ready', 'Notify dad that I'm home', 'Message Alice about the meeting', 'Remind me in 2 hours to take out the laundry', 'Remind me tomorrow morning at 9 a.m. to buy bread', 'Set a daily reminder to take medicine at 8pm'."""
 
 # Initialize FastMCP server
 server = FastMCP(name="notifications-server", stateless_http=True, host="0.0.0.0", port=80)
