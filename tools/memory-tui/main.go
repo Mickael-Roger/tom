@@ -2,15 +2,21 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/http/cookiejar"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbletea"
@@ -40,21 +46,53 @@ type APIResponse struct {
 	Error   string        `json:"error"`
 }
 
-// API Client
-type MemoryAPI struct {
-	BaseURL string
-	Client  *http.Client
+// Authentication types
+type (
+	loginSuccessMsg   struct{}
+	disconnectMsg     struct{}
+	autoLoginMsg      struct{ username, password, serverURL, sessionCookie string; useSession bool }
+	errorMsg          struct{ error }
+)
+
+type credentials struct {
+	Username      string `json:"username"`
+	Password      string `json:"password"`
+	ServerURL     string `json:"server_url"`
+	SessionCookie string `json:"session_cookie"`
 }
 
-func NewMemoryAPI(baseURL string) *MemoryAPI {
+// API Client
+type MemoryAPI struct {
+	ServerURL string // Tom server URL (e.g., https://tom.example.com)
+	Client    *http.Client
+}
+
+func NewMemoryAPI(serverURL string) *MemoryAPI {
+	jar, _ := cookiejar.New(nil)
 	return &MemoryAPI{
-		BaseURL: baseURL,
-		Client:  &http.Client{Timeout: 30 * time.Second},
+		ServerURL: serverURL,
+		Client: &http.Client{
+			Jar:     jar,
+			Timeout: 30 * time.Second,
+		},
 	}
 }
 
+func NewMemoryAPIWithClient(serverURL string, client *http.Client) *MemoryAPI {
+	return &MemoryAPI{
+		ServerURL: serverURL,
+		Client:    client,
+	}
+}
+
+// buildURL constructs the full URL for memory API endpoints
+func (api *MemoryAPI) buildURL(endpoint string) string {
+	// Always use /memory as the base path on the Tom server
+	return api.ServerURL + "/memory" + endpoint
+}
+
 func (api *MemoryAPI) GetAllMemories() ([]Memory, error) {
-	resp, err := api.Client.Get(api.BaseURL + "/memories")
+	resp, err := api.Client.Get(api.buildURL("/memories"))
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +111,7 @@ func (api *MemoryAPI) GetAllMemories() ([]Memory, error) {
 }
 
 func (api *MemoryAPI) GetMemory(id string) (Memory, error) {
-	resp, err := api.Client.Get(api.BaseURL + "/memory/" + id)
+	resp, err := api.Client.Get(api.buildURL("/memory/" + id))
 	if err != nil {
 		return Memory{}, err
 	}
@@ -102,7 +140,7 @@ func (api *MemoryAPI) AddMemory(text string, metadata map[string]interface{}) er
 		return err
 	}
 
-	resp, err := api.Client.Post(api.BaseURL+"/add", "application/json", bytes.NewBuffer(jsonData))
+	resp, err := api.Client.Post(api.buildURL("/add"), "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return err
 	}
@@ -131,7 +169,7 @@ func (api *MemoryAPI) SearchMemories(query string, limit int) ([]Memory, error) 
 		return nil, err
 	}
 
-	resp, err := api.Client.Post(api.BaseURL+"/search", "application/json", bytes.NewBuffer(jsonData))
+	resp, err := api.Client.Post(api.buildURL("/search"), "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +188,7 @@ func (api *MemoryAPI) SearchMemories(query string, limit int) ([]Memory, error) 
 }
 
 func (api *MemoryAPI) DeleteMemory(id string) error {
-	req, err := http.NewRequest("DELETE", api.BaseURL+"/delete/"+id, nil)
+	req, err := http.NewRequest("DELETE", api.buildURL("/delete/"+id), nil)
 	if err != nil {
 		return err
 	}
@@ -185,6 +223,12 @@ var (
 
 	helpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#626262"))
+
+	// Auth styles
+	loginBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("63")).
+			Padding(1, 2)
 
 	promptBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -251,7 +295,9 @@ func formatTime(timeStr string) string {
 type viewState int
 
 const (
-	listView viewState = iota
+	connectingView viewState = iota
+	loginView
+	listView
 	detailView
 	addView
 	searchView
@@ -268,6 +314,15 @@ const (
 
 // Main model
 type model struct {
+	// Authentication fields
+	spinner         spinner.Model
+	usernameInput   textinput.Model
+	passwordInput   textinput.Model
+	serverInput     textinput.Model
+	client          *http.Client
+	serverURL       string
+	
+	// Original memory app fields
 	api           *MemoryAPI
 	state         viewState
 	focus         focusState
@@ -287,7 +342,7 @@ type model struct {
 }
 
 func (m model) Init() tea.Cmd {
-	return m.loadMemories()
+	return tea.Batch(m.spinner.Tick, checkAuth)
 }
 
 func (m model) loadMemories() tea.Cmd {
@@ -309,8 +364,100 @@ type errMsg struct{ error }
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
+	// Handle authentication messages
+	switch msg := msg.(type) {
+	case autoLoginMsg:
+		if msg.username != "" && msg.serverURL != "" {
+			m.usernameInput.SetValue(msg.username)
+			m.passwordInput.SetValue(msg.password)
+			m.serverInput.SetValue(msg.serverURL)
+			m.serverURL = msg.serverURL
+			
+			if msg.useSession && msg.sessionCookie != "" {
+				// Use session cookie for authentication
+				return m, sessionLogin(m, msg.sessionCookie)
+			} else {
+				// Use username/password for authentication
+				return m, login(m)
+			}
+		} else {
+			m.state = loginView
+			return m, nil
+		}
+
+	case loginSuccessMsg:
+		m.err = nil
+		m.state = listView
+		m.serverURL = m.serverInput.Value()
+		
+		// Initialize API client with the authenticated server URL and reuse the auth client
+		m.api = NewMemoryAPIWithClient(m.serverURL, m.client)
+		
+		m.loading = true
+		return m, m.loadMemories()
+
+	case disconnectMsg:
+		m.state = loginView
+		m.usernameInput.Reset()
+		m.passwordInput.Reset()
+		m.serverInput.Reset()
+		m.memories = nil
+		m.usernameInput.Focus()
+		return m, nil
+
+	case errorMsg:
+		m.err = msg
+		if m.state == connectingView {
+			return m, tea.Batch(m.spinner.Tick, func() tea.Msg {
+				time.Sleep(3 * time.Second)
+				return checkAuth()
+			})
+		}
+		return m, nil
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Handle authentication views
+		if m.state == connectingView {
+			if msg.Type == tea.KeyCtrlC {
+				return m, tea.Quit
+			}
+			return m, nil
+		}
+		
+		if m.state == loginView {
+			switch msg.Type {
+			case tea.KeyCtrlC:
+				return m, tea.Quit
+			case tea.KeyEnter:
+				m.state = connectingView
+				m.serverInput.SetValue(strings.TrimSuffix(m.serverInput.Value(), "/"))
+				return m, tea.Batch(m.spinner.Tick, login(m))
+			case tea.KeyTab:
+				if m.usernameInput.Focused() {
+					m.usernameInput.Blur()
+					m.passwordInput.Focus()
+				} else if m.passwordInput.Focused() {
+					m.passwordInput.Blur()
+					m.serverInput.Focus()
+				} else {
+					m.serverInput.Blur()
+					m.usernameInput.Focus()
+				}
+			}
+			
+			// Update auth inputs
+			m.usernameInput, cmd = m.usernameInput.Update(msg)
+			cmds := []tea.Cmd{cmd}
+			m.passwordInput, cmd = m.passwordInput.Update(msg)
+			cmds = append(cmds, cmd)
+			m.serverInput, cmd = m.serverInput.Update(msg)
+			cmds = append(cmds, cmd)
+			
+			return m, tea.Batch(cmds...)
+		}
+
 		if m.loading {
 			return m, nil
 		}
@@ -402,6 +549,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.searchInput.Width = msg.Width - 20 // Adjust for box padding and "Command: " text
 		m.promptInput.Width = msg.Width - 20 // Adjust for box padding and "Command: " text
 		return m, nil
+
+	case spinner.TickMsg:
+		if m.state == connectingView {
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
 	}
 
 	// Update the active component
@@ -475,8 +629,10 @@ func (m model) handlePromptCommand() (tea.Model, tea.Cmd) {
 		m.focus = focusContent
 		m.promptInput.Blur()
 		return m, m.loadMemories()
+	case "/disconnect", "/logout":
+		return m, disconnect
 	default:
-		m.message = fmt.Sprintf("Unknown command: %s. Available: /quit /add TEXT /search QUERY /refresh", cmd)
+		m.message = fmt.Sprintf("Unknown command: %s. Available: /quit /add TEXT /search QUERY /refresh /disconnect", cmd)
 		return m, nil
 	}
 }
@@ -585,6 +741,35 @@ func (m model) updateConfirmDeleteView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
+	// Handle authentication views first
+	if m.err != nil && (m.state == connectingView || m.state == loginView) {
+		return fmt.Sprintf("\nError: %v\n\nPress Ctrl+C to quit.\n", m.err)
+	}
+
+	if m.state == connectingView {
+		var s strings.Builder
+		s.WriteString(m.spinner.View())
+		s.WriteString(" Connecting to server...")
+		if m.err != nil {
+			s.WriteString("\n\nConnection failed. Retrying...")
+		}
+		ui := loginBoxStyle.Render(s.String())
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, ui)
+	}
+
+	if m.state == loginView {
+		var b strings.Builder
+		b.WriteString("Memory Manager Login\n\n")
+		b.WriteString(m.usernameInput.View())
+		b.WriteString("\n")
+		b.WriteString(m.passwordInput.View())
+		b.WriteString("\n")
+		b.WriteString(m.serverInput.View())
+		b.WriteString("\n\n(tab to switch, enter to login)")
+		ui := loginBoxStyle.Render(b.String())
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, ui)
+	}
+
 	if m.loading {
 		return "\n  Loading...\n\n"
 	}
@@ -642,7 +827,7 @@ func (m model) renderPromptBox() string {
 
 	promptText := m.promptInput.View()
 	if promptText == "" && m.focus != focusPrompt {
-		promptText = "Press Tab to focus, then type: /quit /add TEXT /search QUERY /refresh"
+		promptText = "Press Tab to focus, then type: /quit /add TEXT /search QUERY /refresh /disconnect"
 	}
 
 	return style.Render("Command: " + promptText)
@@ -826,22 +1011,227 @@ func (m model) renderConfirmDeleteModal() string {
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modalContent)
 }
 
-func main() {
-	// Get API base URL from command line argument (required)
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: memory-tui <API_BASE_URL>")
-		fmt.Println("Example: memory-tui http://localhost:8080")
-		os.Exit(1)
+// Authentication functions
+func getAuthFilePath() (string, error) {
+	usr, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
 	}
-	
-	baseURL := os.Args[1]
-	
-	// Allow environment variable override
-	if envURL := os.Getenv("MEMORY_API_URL"); envURL != "" {
-		baseURL = envURL
+	return filepath.Join(usr, ".tom", "auth"), nil
+}
+
+func saveCredentials(username, password, serverURL, sessionCookie string) error {
+	authPath, err := getAuthFilePath()
+	if err != nil {
+		return err
 	}
 
-	api := NewMemoryAPI(baseURL)
+	if err := os.MkdirAll(filepath.Dir(authPath), 0700); err != nil {
+		return err
+	}
+
+	creds := credentials{
+		Username:      username,
+		Password:      password,
+		ServerURL:     serverURL,
+		SessionCookie: sessionCookie,
+	}
+
+	data, err := json.Marshal(creds)
+	if err != nil {
+		return err
+	}
+
+	encodedData := base64.StdEncoding.EncodeToString(data)
+
+	return os.WriteFile(authPath, []byte(encodedData), 0600)
+}
+
+func loadCredentials() (string, string, string, string, error) {
+	authPath, err := getAuthFilePath()
+	if err != nil {
+		return "", "", "", "", err
+	}
+
+	encodedData, err := os.ReadFile(authPath)
+	if err != nil {
+		return "", "", "", "", err
+	}
+
+	decodedData, err := base64.StdEncoding.DecodeString(string(encodedData))
+	if err != nil {
+		return "", "", "", "", err	
+	}
+
+	var creds credentials
+	if err := json.Unmarshal(decodedData, &creds); err != nil {
+		return "", "", "", "", err
+	}
+
+	return creds.Username, creds.Password, creds.ServerURL, creds.SessionCookie, nil
+}
+
+func deleteCredentials() error {
+	authPath, err := getAuthFilePath()
+	if err != nil {
+		return err
+	}
+	return os.Remove(authPath)
+}
+
+func validateSessionCookie(serverURL, sessionCookie string, client *http.Client) bool {
+	if sessionCookie == "" {
+		return false
+	}
+	
+	// Create a test request to verify the session cookie - use a simple endpoint
+	req, err := http.NewRequest("GET", serverURL+"/status", nil)
+	if err != nil {
+		return false
+	}
+	
+	// Set the session cookie
+	req.Header.Set("Cookie", sessionCookie)
+	
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	
+	// If we get a 200 response, the session is valid
+	return resp.StatusCode == http.StatusOK
+}
+
+func checkAuth() tea.Msg {
+	username, password, serverURL, sessionCookie, err := loadCredentials()
+	if err != nil {
+		return autoLoginMsg{} // No credentials, stay on login view
+	}
+	
+	// Create a temporary client to test the session cookie
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{
+		Jar:     jar,
+		Timeout: 30 * time.Second,
+	}
+	
+	// First, try to use the session cookie if it exists
+	if sessionCookie != "" && validateSessionCookie(serverURL, sessionCookie, client) {
+		return autoLoginMsg{username, password, serverURL, sessionCookie, true}
+	}
+	
+	// If session cookie is invalid or doesn't exist, use username/password
+	return autoLoginMsg{username, password, serverURL, sessionCookie, false}
+}
+
+func disconnect() tea.Msg {
+	if err := deleteCredentials(); err != nil {
+		return errorMsg{fmt.Errorf("failed to disconnect: %w", err)}
+	}
+	return disconnectMsg{}
+}
+
+func sessionLogin(m model, sessionCookie string) tea.Cmd {
+	return func() tea.Msg {
+		// Set the session cookie in the client
+		if sessionCookie != "" {
+			req, err := http.NewRequest("GET", m.serverURL+"/status", nil)
+			if err != nil {
+				return errorMsg{err}
+			}
+			req.Header.Set("Cookie", sessionCookie)
+			
+			// Test the session cookie
+			resp, err := m.client.Do(req)
+			if err != nil {
+				return errorMsg{err}
+			}
+			defer resp.Body.Close()
+			
+			if resp.StatusCode == http.StatusOK {
+				return loginSuccessMsg{}
+			}
+		}
+		
+		// If session cookie is invalid, fall back to username/password login
+		return login(m)()
+	}
+}
+
+func login(m model) tea.Cmd {
+	return func() tea.Msg {
+		serverURL := m.serverInput.Value()
+		if serverURL == "" {
+			return errorMsg{fmt.Errorf("server URL is required")}
+		}
+
+		resp, err := m.client.PostForm(serverURL+"/login", url.Values{
+			"username": {m.usernameInput.Value()},
+			"password": {m.passwordInput.Value()},
+		})
+		if err != nil {
+			return errorMsg{err}
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			return errorMsg{fmt.Errorf("login failed: %s (%s)", resp.Status, string(bodyBytes))}
+		}
+
+		// Extract session cookie from response
+		sessionCookie := ""
+		for _, cookie := range resp.Cookies() {
+			if cookie.Name == "session_id" {
+				sessionCookie = cookie.String()
+				break
+			}
+		}
+
+		if err := saveCredentials(m.usernameInput.Value(), m.passwordInput.Value(), serverURL, sessionCookie); err != nil {
+			return errorMsg{fmt.Errorf("failed to save credentials: %w", err)}
+		}
+
+		return loginSuccessMsg{}
+	}
+}
+
+func initialModel() model {
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{
+		Jar:     jar,
+		Timeout: 5 * time.Minute,
+	}
+
+	// Auth inputs
+	username := textinput.New()
+	username.Placeholder = "Username"
+	username.Focus()
+	username.Width = 20
+
+	password := textinput.New()
+	password.Placeholder = "Password"
+	password.EchoMode = textinput.EchoPassword
+	password.Width = 20
+
+	server := textinput.New()
+	server.Placeholder = "Server URL"
+	server.Width = 40
+
+	// Memory app inputs
+	searchInput := textinput.New()
+	searchInput.Placeholder = "Enter search query..."
+	searchInput.Width = 50
+
+	textArea := textarea.New()
+	textArea.Placeholder = "Enter your memory content here..."
+	textArea.SetWidth(80)
+	textArea.SetHeight(10)
+
+	promptInput := textinput.New()
+	promptInput.Placeholder = "/quit /add TEXT /search QUERY /refresh /disconnect"
+	promptInput.Width = 50
 
 	// Create list
 	items := []list.Item{}
@@ -853,37 +1243,32 @@ func main() {
 	memoryList.Title = "Memories"
 	memoryList.SetShowStatusBar(false)
 
-	// Create text input for search
-	searchInput := textinput.New()
-	searchInput.Placeholder = "Enter search query..."
-	searchInput.Width = 50 // Will be adjusted on window resize
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
-	// Create textarea for adding memories
-	textArea := textarea.New()
-	textArea.Placeholder = "Enter your memory content here..."
-	textArea.SetWidth(80) // Will be adjusted on window resize
-	textArea.SetHeight(10)
-
-	// Create prompt input
-	promptInput := textinput.New()
-	promptInput.Placeholder = "/quit /add TEXT /search QUERY /refresh"
-	promptInput.Width = 50 // Will be adjusted on window resize
-
-	// Create model
-	m := model{
-		api:         api,
-		state:       listView,
+	return model{
+		// Auth fields
+		spinner:       s,
+		usernameInput: username,
+		passwordInput: password,
+		serverInput:   server,
+		client:        client,
+		
+		// Memory app fields
+		state:       connectingView,
 		focus:       focusContent,
 		list:        memoryList,
 		searchInput: searchInput,
 		textArea:    textArea,
 		promptInput: promptInput,
-		loading:     true,
+		loading:     false,
 	}
+}
 
-	// Start the program
-	p := tea.NewProgram(m, tea.WithAltScreen())
+func main() {
+	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
-		log.Fatalf("Error running program: %v", err)
+		log.Fatal(err)
 	}
 }

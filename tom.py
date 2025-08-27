@@ -143,6 +143,84 @@ class TomWebService:
             tomlogger.error(f"Proxy error for user {username}: {str(e)}", username, "web", "proxy")
             raise cherrypy.HTTPError(500, f"Proxy error: {str(e)}")
 
+    def _proxy_memory_request(self, endpoint: str) -> str:
+        """Proxy request to user's memory service container"""
+        if not self._check_auth():
+            raise cherrypy.HTTPError(401, "Authentication required")
+            
+        username = cherrypy.session['username']
+        
+        # Build target URL to memory service
+        target_url = f"http://memory-{username}:8080{endpoint}"
+        
+        # Get original request data
+        method = cherrypy.request.method
+        headers = dict(cherrypy.request.headers)
+        query_string = cherrypy.request.query_string
+        
+        # Remove host-specific headers that shouldn't be forwarded
+        headers_to_remove = ['host', 'content-length']
+        for header in headers_to_remove:
+            headers.pop(header, None)
+        
+        # Add query string if present
+        if query_string:
+            target_url += f"?{query_string}"
+        
+        try:
+            # Get request body for POST/PUT requests
+            body = None
+            content_length = int(cherrypy.request.headers.get('Content-Length', 0))
+            
+            if method in ['POST', 'PUT', 'PATCH'] or (method == 'DELETE' and content_length > 0):
+                if hasattr(cherrypy.request, 'json') and cherrypy.request.json:
+                    body = json.dumps(cherrypy.request.json)
+                    headers['content-type'] = 'application/json'
+                elif content_length > 0:
+                    # Handle form data or raw body only if there is content
+                    try:
+                        body = cherrypy.request.body.read()
+                    except TypeError:
+                        # Handle different CherryPy versions
+                        body = cherrypy.request.body.read(content_length)
+                    if isinstance(body, bytes):
+                        body = body.decode('utf-8')
+            
+            tomlogger.debug(f"Proxying {method} {endpoint} to memory service {target_url}", username, "web", "memory")
+            
+            # Make the proxy request
+            response = requests.request(
+                method=method,
+                url=target_url,
+                headers=headers,
+                data=body,
+                timeout=30,
+                allow_redirects=False
+            )
+            
+            # Set response headers
+            for header_name, header_value in response.headers.items():
+                # Skip headers that shouldn't be forwarded
+                if header_name.lower() not in ['content-encoding', 'content-length', 'transfer-encoding']:
+                    cherrypy.response.headers[header_name] = header_value
+            
+            # Set response status
+            cherrypy.response.status = response.status_code
+            
+            tomlogger.debug(f"Memory proxy response: {response.status_code}", username, "web", "memory")
+            
+            return response.content
+            
+        except requests.exceptions.ConnectionError:
+            tomlogger.error(f"Memory service connection failed for user {username}", username, "web", "memory")
+            raise cherrypy.HTTPError(503, f"Memory service unavailable for user {username}")
+        except requests.exceptions.Timeout:
+            tomlogger.error(f"Memory service timeout for user {username}", username, "web", "memory")
+            raise cherrypy.HTTPError(504, f"Memory service timeout for user {username}")
+        except Exception as e:
+            tomlogger.error(f"Memory proxy error for user {username}: {str(e)}", username, "web", "memory")
+            raise cherrypy.HTTPError(500, f"Memory proxy error: {str(e)}")
+
     @cherrypy.expose
     @cherrypy.tools.allow(methods=['GET'])
     def index(self):
@@ -319,6 +397,21 @@ class TomWebService:
     def status(self):
         """Proxy status requests to user backend"""
         return self._proxy_request("/status")
+
+    @cherrypy.expose
+    @cherrypy.tools.allow(methods=['GET', 'POST', 'PUT', 'DELETE'])
+    def memory(self, *args, **kwargs):
+        """Proxy memory requests to user memory service"""
+        # Build the endpoint from the remaining path components
+        # The memory service listens on root /, so we forward the sub-path directly
+        if args:
+            # Handle sub-paths: /memory/memories -> /memories, /memory/search -> /search
+            endpoint = '/' + '/'.join(args)
+        else:
+            # /memory -> / (root of memory service)
+            endpoint = '/'
+        
+        return self._proxy_memory_request(endpoint)
 
 
 def main():
