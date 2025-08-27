@@ -12,7 +12,7 @@ llms:
       cache_miss: 0.80
       output: 3.20
   - llm: openrouter-gemini
-    model: openrouter/gemini/gemini-2.5-flash
+    model: openrouter/google/gemini-2.5-flash
     price:
       cache_hit: 0.075
       cache_miss: 0.30
@@ -81,11 +81,11 @@ test_cases:
     description: "Check Quick exercises completed today"
 
   - prompt: envois moi un message de test2
-    expected_modules: ["notification"]
+    expected_modules: ["notifications"]
     description: "Send test notification message"
 
   - prompt: Envois un message a anais pour lui dire bonjour
-    expected_modules: ["notification"]
+    expected_modules: ["notifications"]
     description: "Send greeting message to Anais"
 
   - prompt: est-ce qu'il va pleuvoir

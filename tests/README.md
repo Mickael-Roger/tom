@@ -147,10 +147,12 @@ docker stop tom-test && docker rm tom-test
 - **Status Indicator**: Visual indication of test running state
 
 ### Results Visualization
-- **Performance Chart**: Comparative bar chart showing min/max/median response times for successful requests
+- **Performance Charts**: 
+  - Response Time Chart: Comparative bar chart showing min/max/median response times for successful requests
+  - Success Rate Chart: Color-coded bars showing LLM accuracy with performance-based coloring (red to green)
 - **Results Grid**: Card-based view of all test runs
 - **LLM Filtering**: Filter results by specific LLM providers
-- **Detailed View**: Modal with comprehensive test data and statistics
+- **Detailed View**: Modal with comprehensive test data, failure analysis, and per-LLM statistics
 - **Download Links**: Direct access to generated report files
 
 ### Interactive Features

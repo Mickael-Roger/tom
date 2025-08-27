@@ -75,17 +75,33 @@
             </div>
         </div>
 
-        <!-- LLM Performance Chart -->
+        <!-- LLM Performance Charts -->
         <div class="mt-8 bg-white rounded-lg shadow-md p-6">
             <h2 class="text-2xl font-semibold mb-4">LLM Performance Comparison</h2>
             <div class="mb-4">
                 <select id="chartResultSelect" class="border rounded px-3 py-1 mr-4">
                     <option value="">Select Test Result</option>
                 </select>
-                <span class="text-sm text-gray-600">Showing min/max/median response times for successful requests only</span>
+                <div class="mt-2 flex gap-4">
+                    <button id="showTimeChart" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm">
+                        Response Times
+                    </button>
+                    <button id="showSuccessChart" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm">
+                        Success Rates
+                    </button>
+                </div>
             </div>
-            <div class="relative" style="height: 400px;">
+            
+            <!-- Response Time Chart -->
+            <div id="timeChartContainer" class="relative" style="height: 400px;">
                 <canvas id="performanceChart"></canvas>
+                <div class="text-sm text-gray-600 mt-2">Showing min/max/median response times for successful requests only</div>
+            </div>
+            
+            <!-- Success Rate Chart -->
+            <div id="successChartContainer" class="relative hidden" style="height: 400px;">
+                <canvas id="successChart"></canvas>
+                <div class="text-sm text-gray-600 mt-2">Success rate percentage for each LLM</div>
             </div>
         </div>
 
@@ -132,6 +148,7 @@
         let currentResults = [];
         let updateInterval = null;
         let performanceChart = null;
+        let successChart = null;
 
         // DOM elements
         const startBtn = document.getElementById('startBtn');
@@ -153,6 +170,10 @@
         const progressBar = document.getElementById('progressBar');
         const progressText = document.getElementById('progressText');
         const currentLLM = document.getElementById('currentLLM');
+        const showTimeChart = document.getElementById('showTimeChart');
+        const showSuccessChart = document.getElementById('showSuccessChart');
+        const timeChartContainer = document.getElementById('timeChartContainer');
+        const successChartContainer = document.getElementById('successChartContainer');
 
         // Event listeners
         startBtn.addEventListener('click', () => startTest(false));
@@ -162,6 +183,8 @@
         closeModal.addEventListener('click', () => detailModal.classList.add('hidden'));
         llmFilter.addEventListener('change', filterResults);
         chartResultSelect.addEventListener('change', updatePerformanceChart);
+        showTimeChart.addEventListener('click', () => switchChart('time'));
+        showSuccessChart.addEventListener('click', () => switchChart('success'));
 
         // Start test function
         async function startTest(debug = false) {
@@ -453,7 +476,28 @@
             // If no selection and we have results, select the latest
             if (!currentValue && results.length > 0) {
                 chartResultSelect.value = results[0].timestamp;
+                switchChart('time'); // Default to time chart
+            }
+        }
+
+        // Switch between different charts
+        function switchChart(chartType) {
+            if (chartType === 'time') {
+                timeChartContainer.classList.remove('hidden');
+                successChartContainer.classList.add('hidden');
+                showTimeChart.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+                showTimeChart.classList.add('bg-blue-600');
+                showSuccessChart.classList.remove('bg-green-600');
+                showSuccessChart.classList.add('bg-green-500', 'hover:bg-green-600');
                 updatePerformanceChart();
+            } else if (chartType === 'success') {
+                timeChartContainer.classList.add('hidden');
+                successChartContainer.classList.remove('hidden');
+                showSuccessChart.classList.remove('bg-green-500', 'hover:bg-green-600');
+                showSuccessChart.classList.add('bg-green-600');
+                showTimeChart.classList.remove('bg-blue-600');
+                showTimeChart.classList.add('bg-blue-500', 'hover:bg-blue-600');
+                updateSuccessChart();
             }
         }
 
@@ -568,6 +612,123 @@
                                 text: 'Response Time (milliseconds)'
                             },
                             beginAtZero: true
+                        }
+                    },
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    }
+                }
+            });
+        }
+
+        // Update success rate chart
+        function updateSuccessChart() {
+            const selectedTimestamp = chartResultSelect.value;
+            if (!selectedTimestamp) {
+                if (successChart) {
+                    successChart.destroy();
+                    successChart = null;
+                }
+                return;
+            }
+            
+            const selectedResult = currentResults.find(r => r.timestamp === selectedTimestamp);
+            if (!selectedResult) return;
+            
+            const llmResults = selectedResult.data.triage_performance?.llm_results || {};
+            
+            // Prepare data for success rate chart
+            const llmData = Object.entries(llmResults)
+                .map(([llm, data]) => {
+                    const summary = data.summary || {};
+                    return {
+                        llm: llm,
+                        successRate: (summary.success_rate || 0) * 100, // Convert to percentage
+                        totalTests: summary.total_tests || 0,
+                        successfulTests: summary.successful_tests || 0
+                    };
+                })
+                .sort((a, b) => b.successRate - a.successRate); // Sort by success rate descending
+            
+            if (llmData.length === 0) {
+                if (successChart) {
+                    successChart.destroy();
+                    successChart = null;
+                }
+                return;
+            }
+            
+            const ctx = document.getElementById('successChart').getContext('2d');
+            
+            if (successChart) {
+                successChart.destroy();
+            }
+            
+            // Color gradient from red (low) to green (high)
+            const colors = llmData.map(data => {
+                const rate = data.successRate;
+                if (rate >= 90) return 'rgba(34, 197, 94, 0.8)'; // Green
+                if (rate >= 80) return 'rgba(132, 204, 22, 0.8)'; // Lime
+                if (rate >= 70) return 'rgba(234, 179, 8, 0.8)'; // Yellow
+                if (rate >= 60) return 'rgba(249, 115, 22, 0.8)'; // Orange
+                return 'rgba(239, 68, 68, 0.8)'; // Red
+            });
+
+            const borderColors = colors.map(color => color.replace('0.8', '1'));
+            
+            successChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: llmData.map(d => d.llm),
+                    datasets: [{
+                        label: 'Success Rate (%)',
+                        data: llmData.map(d => d.successRate),
+                        backgroundColor: colors,
+                        borderColor: borderColors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'LLM Success Rate Comparison'
+                        },
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(context) {
+                                    const llmIndex = context.dataIndex;
+                                    const data = llmData[llmIndex];
+                                    return `${data.successfulTests}/${data.totalTests} tests passed`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'LLM Models'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Success Rate (%)'
+                            },
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
                         }
                     },
                     interaction: {
