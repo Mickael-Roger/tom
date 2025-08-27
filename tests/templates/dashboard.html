@@ -41,6 +41,17 @@
                     <span id="statusText" class="text-gray-600">Ready</span>
                 </div>
             </div>
+            
+            <!-- Progress Bar (hidden by default) -->
+            <div id="progressContainer" class="mt-4 hidden">
+                <div class="flex justify-between items-center mb-2">
+                    <span id="currentLLM" class="text-sm font-medium text-gray-700">Testing...</span>
+                    <span id="progressText" class="text-sm text-gray-500">0/0</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div id="progressBar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -100,7 +111,7 @@
         <!-- Detailed View Modal -->
         <div id="detailModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
             <div class="flex items-center justify-center min-h-screen p-4">
-                <div class="bg-white rounded-lg max-w-6xl w-full max-h-screen overflow-y-auto">
+                <div class="bg-white rounded-lg max-w-7xl w-full max-h-screen overflow-y-auto">
                     <div class="p-6">
                         <div class="flex justify-between items-center mb-4">
                             <h3 class="text-xl font-semibold">Detailed Results</h3>
@@ -138,6 +149,10 @@
         const closeModal = document.getElementById('closeModal');
         const detailContent = document.getElementById('detailContent');
         const chartResultSelect = document.getElementById('chartResultSelect');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const currentLLM = document.getElementById('currentLLM');
 
         // Event listeners
         startBtn.addEventListener('click', () => startTest(false));
@@ -193,9 +208,40 @@
             if (testRunning) {
                 statusDot.className = 'w-3 h-3 rounded-full bg-green-400 animate-pulse';
                 statusText.textContent = 'Running';
+                progressContainer.classList.remove('hidden');
             } else {
                 statusDot.className = 'w-3 h-3 rounded-full bg-gray-400';
                 statusText.textContent = 'Ready';
+                progressContainer.classList.add('hidden');
+                resetProgress();
+            }
+        }
+
+        // Reset progress indicators
+        function resetProgress() {
+            progressBar.style.width = '0%';
+            progressText.textContent = '0/0';
+            currentLLM.textContent = 'Initializing...';
+        }
+
+        // Update progress from log message
+        function updateProgress(progressMatch) {
+            if (!progressMatch) return;
+            
+            const [, current, total, llmName] = progressMatch;
+            const currentNum = parseInt(current);
+            const totalNum = parseInt(total);
+            const percentage = totalNum > 0 ? (currentNum / totalNum) * 100 : 0;
+            
+            progressBar.style.width = `${percentage}%`;
+            progressText.textContent = `${current}/${total}`;
+            
+            if (llmName === 'Initializing tests') {
+                currentLLM.textContent = 'Initializing tests...';
+            } else if (llmName === 'Tests completed') {
+                currentLLM.textContent = 'Tests completed!';
+            } else {
+                currentLLM.textContent = `Testing ${llmName}`;
             }
         }
 
@@ -241,8 +287,17 @@
             const logHtml = logs.map(log => {
                 const timestamp = new Date(log.timestamp).toLocaleTimeString();
                 const levelClass = `log-${log.level.toLowerCase()}`;
+                
+                // Check for progress messages
+                const progressMatch = log.message.match(/^PROGRESS: (\d+)\/(\d+) - Testing (.+)$/);
+                if (progressMatch) {
+                    updateProgress(progressMatch);
+                    // Don't show progress messages in the log display
+                    return '';
+                }
+                
                 return `<div class="${levelClass}">[${timestamp}] ${log.level}: ${log.message}</div>`;
-            }).join('');
+            }).filter(html => html !== '').join('');
             
             logsContainer.innerHTML = logHtml;
             logsContainer.scrollTop = logsContainer.scrollHeight;
@@ -539,8 +594,42 @@
                 detailHtml += '<div><h4 class="font-semibold mb-2">Test Summary</h4>';
                 detailHtml += `<div class="bg-gray-50 p-4 rounded">${JSON.stringify(triageData.test_summary, null, 2)}</div></div>`;
                 
+                // Failed Tests Analysis
+                const failedTestsAnalysis = analyzeFailedTests(llmResults);
+                if (failedTestsAnalysis.length > 0) {
+                    detailHtml += '<div><h4 class="font-semibold mb-2">Failed Tests Analysis</h4>';
+                    detailHtml += '<div class="bg-red-50 p-4 rounded">';
+                    detailHtml += '<p class="text-sm text-red-600 mb-3">Tests sorted by failure frequency across all LLMs:</p>';
+                    detailHtml += '<div class="space-y-2">';
+                    
+                    failedTestsAnalysis.forEach((failedTest, index) => {
+                        const failureRate = ((failedTest.failures / failedTest.total) * 100).toFixed(1);
+                        detailHtml += `
+                            <div class="border-l-4 border-red-400 pl-3">
+                                <div class="flex justify-between items-start">
+                                    <div class="flex-1">
+                                        <div class="font-medium text-sm">${index + 1}. "${failedTest.prompt}"</div>
+                                        <div class="text-xs text-gray-600">Expected: ${failedTest.expected.join(', ')}</div>
+                                    </div>
+                                    <div class="text-right ml-4">
+                                        <div class="text-sm font-medium text-red-600">${failedTest.failures}/${failedTest.total} failed</div>
+                                        <div class="text-xs text-red-500">${failureRate}% failure rate</div>
+                                    </div>
+                                </div>
+                                <div class="mt-1 text-xs">
+                                    <span class="text-gray-500">Failed on:</span>
+                                    <span class="text-red-600">${failedTest.failedLLMs.join(', ')}</span>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    detailHtml += '</div></div></div>';
+                }
+                
                 // LLM Results
                 Object.entries(llmResults).forEach(([llm, data]) => {
+                    const failures = data.failures || [];
                     detailHtml += `
                         <div>
                             <h4 class="font-semibold mb-2">${llm} Results</h4>
@@ -551,6 +640,19 @@
                                     <div>Max Time: ${data.summary?.max_time_ms || 0}ms</div>
                                     <div>Median Time: ${data.summary?.median_time_ms || 0}ms</div>
                                 </div>
+                                ${failures.length > 0 ? `
+                                    <div class="mt-4">
+                                        <h5 class="font-medium text-sm mb-2 text-red-600">Failed Tests (${failures.length})</h5>
+                                        <div class="space-y-1 max-h-40 overflow-y-auto">
+                                            ${failures.map(failure => `
+                                                <div class="text-xs bg-red-100 p-2 rounded">
+                                                    <div class="font-medium">"${failure.prompt}"</div>
+                                                    <div class="text-red-600">Expected: ${failure.expected.join(', ')} | Got: ${failure.received.join(', ')}</div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                ` : ''}
                             </div>
                         </div>
                     `;
@@ -563,6 +665,64 @@
             } catch (error) {
                 alert('Error loading details: ' + error.message);
             }
+        }
+
+        // Analyze failed tests across all LLMs
+        function analyzeFailedTests(llmResults) {
+            const testFailures = {};
+            const totalLLMs = Object.keys(llmResults).length;
+            
+            // First pass: collect all unique prompts and initialize counters
+            Object.entries(llmResults).forEach(([llmName, data]) => {
+                const tests = data.tests || [];
+                tests.forEach(test => {
+                    const key = test.prompt || '';
+                    if (!testFailures[key]) {
+                        testFailures[key] = {
+                            prompt: test.prompt,
+                            expected: test.expected || [],
+                            failures: 0,
+                            total: 0,
+                            failedLLMs: []
+                        };
+                    }
+                });
+            });
+            
+            // Second pass: count failures and totals
+            Object.entries(llmResults).forEach(([llmName, data]) => {
+                const failures = data.failures || [];
+                const tests = data.tests || [];
+                
+                // Count total attempts for each test
+                tests.forEach(test => {
+                    const key = test.prompt || '';
+                    if (testFailures[key]) {
+                        testFailures[key].total++;
+                    }
+                });
+                
+                // Count failures
+                failures.forEach(failure => {
+                    const key = failure.prompt;
+                    if (testFailures[key]) {
+                        testFailures[key].failures++;
+                        if (!testFailures[key].failedLLMs.includes(llmName)) {
+                            testFailures[key].failedLLMs.push(llmName);
+                        }
+                    }
+                });
+            });
+            
+            // Sort by failure count (descending) then by failure rate
+            return Object.values(testFailures)
+                .filter(test => test.failures > 0) // Only show tests that actually failed
+                .sort((a, b) => {
+                    if (b.failures !== a.failures) {
+                        return b.failures - a.failures; // Sort by failure count first
+                    }
+                    return (b.failures / b.total) - (a.failures / a.total); // Then by failure rate
+                });
         }
 
         // Initialize page

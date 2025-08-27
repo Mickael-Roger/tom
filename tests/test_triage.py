@@ -374,11 +374,16 @@ def run_triage_tests() -> Dict[str, Any]:
     }
     
     # Test each LLM
-    for llm_config in test_llms:
+    total_llms = len(test_llms)
+    print(f"PROGRESS: 0/{total_llms} - Initializing tests")
+    
+    for llm_index, llm_config in enumerate(test_llms):
         llm_name = llm_config['llm']
         model = llm_config['model']
         
         print(f"\nTesting LLM: {llm_name} ({model})")
+        # Progress indicator for web interface
+        print(f"PROGRESS: {llm_index + 1}/{total_llms} - Testing {llm_name}")
         
         # Check if LLM is configured in main config
         if llm_name not in llm_configs:
@@ -471,6 +476,9 @@ def run_triage_tests() -> Dict[str, Any]:
     
     # Add end time
     results['test_summary']['end_time'] = datetime.now().isoformat()
+    
+    # Final progress message
+    print(f"PROGRESS: {total_llms}/{total_llms} - Tests completed")
     
     return results
 
