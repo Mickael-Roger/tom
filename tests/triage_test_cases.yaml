@@ -1,0 +1,154 @@
+llms:
+  - llm: deepseek
+    model: deepseek/deepseek-chat
+    price:
+      cache_hit: 0.07
+      cache_miss: 0.56
+      output: 1.68
+  - llm: openai
+    model: openai/gpt-4.1-mini
+    price:
+      cache_hit: 0.20 
+      cache_miss: 0.80
+      output: 3.20
+  - llm: openrouter-gemini
+    model: openrouter/gemini/gemini-2.5-flash
+    price:
+      cache_hit: 0.075
+      cache_miss: 0.30
+      output: 2.50
+  - llm: openrouter-kimi-k2
+    model: openrouter/moonshotai/kimi-k2
+    price:
+      cache_hit: 0.50
+      cache_miss: 0.50
+      output: 2.40
+  - llm: openrouter-llama3
+    model: openrouter/meta-llama/llama-3.3-70b-instruct
+    price:
+      cache_hit: 0.038
+      cache_miss: 0.12
+      output: 0.12
+  - llm: openrouter-llama4
+    model: openrouter/meta-llama/llama-4-maverick
+    price:
+      cache_hit: 0.15
+      cache_miss: 0.15
+      output: 0.8
+  - llm: openrouter-qwen3
+    model: openrouter/qwen/qwen3-235b-a22b-2507
+    price:
+      cache_hit: 0.15
+      cache_miss: 0.15
+      output: 0.80
+
+test_cases:
+  # Calendar-related prompts
+  - prompt: "What's on my schedule for tomorrow?"
+    expected_modules: ["calendar"]
+    description: "Basic calendar query"
+
+  - prompt: "Add a meeting with John at 3pm next Tuesday"
+    expected_modules: ["calendar"]
+    description: "Calendar event creation"
+
+  - prompt: "Cancel my 2pm appointment and reschedule it for Friday"
+    expected_modules: ["calendar"]
+    description: "Calendar modification"
+
+  # Grocery-related prompts (now handled by todo module)
+  - prompt: "Add milk and bread to my shopping list"
+    expected_modules: ["todo"]
+    description: "Basic grocery list addition"
+
+  - prompt: "What's on my grocery list?"
+    expected_modules: ["todo"]
+    description: "Grocery list query"
+
+  - prompt: "Remove tomatoes from my shopping list"
+    expected_modules: ["todo"]
+    description: "Grocery list removal"
+
+  # IDFM (transport) related prompts
+  - prompt: "How do I get from Châtelet to République by metro?"
+    expected_modules: ["idfm"]
+    description: "Transport route planning"
+
+  - prompt: "What's the next train from Gare du Nord?"
+    expected_modules: ["idfm"]
+    description: "Transport schedule query"
+
+  - prompt: "Are there any disruptions on line 1?"
+    expected_modules: ["idfm"]
+    description: "Transport status check"
+
+  # Todo-related prompts
+  - prompt: "Add 'buy groceries' to my todo list"
+    expected_modules: ["todo"]
+    description: "Basic todo addition"
+
+  - prompt: "Mark 'call dentist' as completed"
+    expected_modules: ["todo"]
+    description: "Todo completion"
+
+  - prompt: "What tasks do I have for today?"
+    expected_modules: ["todo"]
+    description: "Todo list query"
+
+  # Multiple modules needed
+  - prompt: "Add 'buy groceries' to my todo list and also add milk to my shopping list"
+    expected_modules: ["todo"]
+    description: "Combined todo and grocery action"
+
+  - prompt: "What's my schedule for tomorrow and what's on my shopping list?"
+    expected_modules: ["calendar", "todo"]
+    description: "Multiple information queries"
+
+  - prompt: "Schedule a meeting for 2pm and start the vacuum cleaner"
+    expected_modules: ["calendar", "deebot"]
+    description: "Calendar and device control"
+
+  - prompt: "How do I get to my 3pm meeting at République and add the travel time to my calendar?"
+    expected_modules: ["idfm", "calendar"]
+    description: "Transport planning with calendar integration"
+
+  # Complex multi-module scenarios
+  - prompt: "Plan my day: check my schedule, review my todo list, and see what groceries I need"
+    expected_modules: ["calendar", "todo"]
+    description: "Daily planning with multiple modules"
+
+  # No modules needed (general conversation)
+  - prompt: "Hello, how are you?"
+    expected_modules: []
+    description: "Basic greeting - no modules needed"
+
+  # French language prompts (to test language handling)
+  - prompt: "Qu'est-ce que j'ai dans mon agenda demain ?"
+    expected_modules: ["calendar"]
+    description: "French calendar query"
+
+  - prompt: "Ajoute du lait à ma liste de courses"
+    expected_modules: ["todo"]
+    description: "French grocery addition"
+
+  - prompt: "Comment aller de Châtelet à République ?"
+    expected_modules: ["idfm"]
+    description: "French transport query"
+
+  - prompt: "Enregistre l'adresse de Joe au 5 rue de de la paix"
+    expected_modules: ["contacts"]
+    description: "Contact add query"
+
+  - prompt: "Quelle est l'adresse de grand pere?"
+    expected_modules: ["contacts"]
+    description: "Contact search query"
+
+
+  # Weather-like prompts (should not match any available modules)
+  - prompt: "What's the weather like today?"
+    expected_modules: ["weather"]
+    description: "Weather query - no weather module available"
+
+  - prompt: "Will it rain tomorrow?"
+    expected_modules: ["weather"]
+    description: "Weather forecast - no weather module available"
