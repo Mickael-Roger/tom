@@ -36,6 +36,7 @@ class TomLLM:
         self.default_llm = self.global_config.get('llm', 'openai')
         self.tts_llm = self.global_config.get('llm_tts', self.default_llm)
         self.behavior_llm = self.global_config.get('llm_behavior', self.default_llm)
+        self.triage_llm = self.global_config.get('llm_triage', self.default_llm)
         
         # Rate limiting for Mistral (1.5 seconds between requests)
         self.mistral_last_request = 0
@@ -119,9 +120,16 @@ class TomLLM:
                             self.username, module_name="tomllm")
             self.tts_llm = self.default_llm
         
+        # Validate Triage LLM configuration
+        if self.triage_llm not in self.llms_dict:
+            tomlogger.warning(f"Triage LLM '{self.triage_llm}' not configured, falling back to default LLM", 
+                            self.username, module_name="tomllm")
+            self.triage_llm = self.default_llm
+        
         # Log final configuration
         tomlogger.info(f"✅ Default LLM: {self.default_llm}", self.username, module_name="tomllm")
         tomlogger.info(f"✅ TTS LLM: {self.tts_llm}", self.username, module_name="tomllm")
+        tomlogger.info(f"✅ Triage LLM: {self.triage_llm}", self.username, module_name="tomllm")
 
     def callLLM(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict]] = None, 
                 complexity: int = 0, llm: Optional[str] = None) -> Any:
@@ -519,8 +527,8 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         tomlogger.info(f"🔍 Starting module triage for request: {user_request[:100]}...", 
                       self.username, module_name="tomllm")
         
-        # Call LLM for triage (complexity 1 for good reasoning)
-        response = self.callLLM(messages=triage_conversation, tools=tools, complexity=0)
+        # Call LLM for triage (complexity 0 for speed, using triage LLM)
+        response = self.callLLM(messages=triage_conversation, tools=tools, complexity=0, llm=self.triage_llm)
         
         load_modules = []
         reset_requested = False
