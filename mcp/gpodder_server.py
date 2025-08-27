@@ -190,8 +190,8 @@ class GPodderService:
                 if tomlogger:
                     tomlogger.error(f"Error in background sync: {e}", module_name="gpodder")
             
-            # Wait 60 minutes (3600 seconds)
-            time.sleep(3600)
+            # Wait 15 minutes (900 seconds)
+            time.sleep(900)
 
     def _sync_subscriptions(self):
         """Synchronize subscriptions from GPodder.net to local database."""

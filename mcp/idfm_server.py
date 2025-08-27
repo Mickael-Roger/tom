@@ -584,6 +584,55 @@ def description() -> str:
     return SERVER_DESCRIPTION
 
 
+@server.resource("description://prompt_consign")
+def prompt_consign() -> str:
+    """Returns upstream instructions with station cache in JSON format to optimize LLM performance."""
+    
+    # Build station cache from database
+    cached_stations = {}
+    try:
+        dbconn = sqlite3.connect(idfm_service.db)
+        cursor = dbconn.cursor()
+        cursor.execute('SELECT station_id, station_name, city FROM station_cache')
+        rows = cursor.fetchall()
+        dbconn.close()
+        
+        for row in rows:
+            station_id, station_name, city = row
+            cached_stations[station_name] = {
+                "station_id": station_id,
+                "city": city or ""
+            }
+    except Exception as e:
+        if tomlogger:
+            tomlogger.error(f"Error loading station cache for prompt_consign: {e}", module_name="idfm")
+    
+    # Build prompt consign in JSON format
+    consign_data = {
+        "description": "Station cache optimization instructions for IDFM public transportation requests",
+        "cache_status": {
+            "total_stations": len(cached_stations),
+            "stations_available": len(cached_stations) > 0
+        },
+        "cached_stations": cached_stations,
+        "optimization_instructions": {
+            "before_search": "Always check if the requested station is already available in the cached_stations list above",
+            "when_station_cached": "If the station is found in cache, use its station_id directly for journey planning functions",
+            "when_station_not_cached": "Only use search_station tool if the station is not found in the cached_stations list",
+            "performance_benefit": "Using cached station IDs avoids unnecessary search API calls and improves response time"
+        },
+        "usage_priority": [
+            "1. Check cached_stations list for requested station name",
+            "2. If found, extract station_id from cache",
+            "3. Use station_id directly in plan_a_journey function",
+            "4. If not found, use search_station then plan_a_journey"
+        ],
+        "cache_format": "Station names are keys, values contain station_id and city information"
+    }
+    
+    return json.dumps(consign_data, ensure_ascii=False, separators=(',', ':'))
+
+
 def main():
     """Main function to run the MCP server"""
     if tomlogger:

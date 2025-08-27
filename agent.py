@@ -575,6 +575,85 @@ class MCPClient:
                           self.username, module_name="mcp")
             return None
 
+    async def get_mcp_prompt_consigns(self, selected_modules: List[str]) -> List[Dict[str, str]]:
+        """
+        Get prompt consigns from MCP services that have the prompt_consign resource
+        
+        Args:
+            selected_modules: List of selected module names to check for prompt consigns
+            
+        Returns:
+            List of dicts with 'service' and 'consign' keys for each service that provides consigns
+        """
+        if not selected_modules:
+            return []
+        
+        consigns = []
+        
+        # Check each selected module for prompt_consign resource
+        for service_name in selected_modules:
+            if service_name not in self.mcp_connections:
+                continue
+            
+            connection_info = self.mcp_connections[service_name]
+            url = connection_info.get('url')
+            headers = connection_info.get('headers', {})
+            
+            if not url:
+                continue
+            
+            resource_uri = "description://prompt_consign"
+            
+            try:
+                # Create new session for the resource call
+                async with streamablehttp_client(url) as (read_stream, write_stream, _):
+                    async with ClientSession(read_stream, write_stream) as session:
+                        await session.initialize()
+                        
+                        # Try to read the prompt_consign resource
+                        try:
+                            tomlogger.debug(f"Requesting prompt_consign resource from '{service_name}'", 
+                                          self.username, module_name="mcp")
+                            resource_result = await session.read_resource(resource_uri)
+                            
+                            if resource_result and resource_result.contents:
+                                # Get the first content item
+                                content = resource_result.contents[0]
+                                consign_text = ""
+                                if hasattr(content, 'text'):
+                                    consign_text = content.text.strip()
+                                elif hasattr(content, 'data'):
+                                    consign_text = str(content.data).strip()
+                                
+                                if consign_text:
+                                    consigns.append({
+                                        'service': service_name,
+                                        'consign': consign_text
+                                    })
+                                    tomlogger.debug(f"✅ Got prompt consign from '{service_name}': {consign_text[:100]}...", 
+                                                  self.username, module_name="mcp")
+                                else:
+                                    tomlogger.debug(f"Empty prompt_consign resource for '{service_name}'", 
+                                                  self.username, module_name="mcp")
+                        
+                        except Exception as resource_error:
+                            tomlogger.debug(f"Resource 'prompt_consign' not available for '{service_name}': {resource_error}", 
+                                          self.username, module_name="mcp")
+                            continue
+                            
+            except Exception as e:
+                tomlogger.debug(f"Failed to connect to MCP service '{service_name}' for prompt consigns: {str(e)}", 
+                              self.username, module_name="mcp")
+                continue
+        
+        if consigns:
+            tomlogger.info(f"🎯 Collected {len(consigns)} prompt consigns from MCP services: {[c['service'] for c in consigns]}", 
+                          self.username, module_name="mcp")
+        else:
+            tomlogger.debug(f"No prompt consigns found from selected modules", self.username, module_name="mcp")
+        
+        return consigns
+
 
 class TomAgent:
     """Individual Tom agent service"""
@@ -890,6 +969,28 @@ class TomAgent:
                     personal_context=personal_context,
                     use_json_format=True
                 )
+                
+                # Get MCP prompt consigns after conversation construction but before tool execution
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                
+                mcp_consigns = loop.run_until_complete(
+                    self.mcp_client.get_mcp_prompt_consigns(required_modules)
+                )
+                
+                # Add MCP consigns as system messages
+                if mcp_consigns:
+                    for consign in mcp_consigns:
+                        system_message = {
+                            "role": "system",
+                            "content": f"{consign['consign']}"
+                        }
+                        conversation.append(system_message)
+                        tomlogger.debug(f"Added MCP consign from '{consign['service']}' to conversation", 
+                                      self.username, "api", "agent")
                 
                 # Check if we have any tools to work with
                 if len(tools) == 0:

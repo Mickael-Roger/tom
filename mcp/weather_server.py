@@ -281,5 +281,45 @@ def description() -> str:
     """Renvoie la description du serveur."""
     return SERVER_DESCRIPTION
 
+
+@server.resource("description://prompt_consign")
+def prompt_consign() -> str:
+    """Returns upstream instructions with GPS cities cache in JSON format to optimize LLM performance."""
+    
+    # Build cache summary with available cities
+    cached_cities = []
+    for city_data in weather_service.gps_cache.get('cities_gps_position', []):
+        cached_cities.append({
+            "city_name": city_data['city_name'],
+            "country": city_data['country'], 
+            "latitude": city_data['gps_latitude'],
+            "longitude": city_data['gps_longitude']
+        })
+    
+    # Build prompt consign in JSON format
+    consign_data = {
+        "description": "GPS positions cache optimization instructions for weather requests",
+        "cache_status": {
+            "total_cities": len(cached_cities),
+            "cities_available": len(cached_cities) > 0
+        },
+        "cached_cities": cached_cities,
+        "optimization_instructions": {
+            "before_geocoding": "Always check if the requested city is already available in the cached_cities list above",
+            "when_city_cached": "If the city is found in cache, use its GPS coordinates directly to call weather_get_by_gps_position tool",
+            "when_city_not_cached": "Only use get_gps_position_by_city_name tool if the city is not found in the cached_cities list",
+            "performance_benefit": "Using cached GPS coordinates avoids unnecessary geocoding API calls and improves response time"
+        },
+        "usage_priority": [
+            "1. Check cached_cities list for requested city",
+            "2. If found, extract latitude/longitude from cache", 
+            "3. Call weather_get_by_gps_position with cached coordinates",
+            "4. If not found, use get_gps_position_by_city_name then weather_get_by_gps_position"
+        ]
+    }
+    
+    return json.dumps(consign_data, ensure_ascii=False, separators=(',', ':'))
+
+
 if __name__ == "__main__":
     main()
