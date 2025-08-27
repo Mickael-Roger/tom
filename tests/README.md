@@ -22,13 +22,32 @@ A comprehensive testing script that performs two main operations:
 
 ## Usage
 
-### Basic Usage
+### Web Dashboard (Recommended)
+The easiest way to run tests and view results is through the web dashboard:
+
 ```bash
-python /app/tests/test_triage.py
+# Build and run the container with web interface
+docker build -t tom-test -f dockerfiles/test/Dockerfile .
+docker run -it --rm -p 8080:80 -v /path/to/data:/data tom-test
+
+# Open your browser to http://localhost:8080
 ```
 
-### Debug Mode
+The web dashboard provides:
+- ✨ **Interactive Interface**: Start/stop tests with buttons
+- 📊 **Real-time Logs**: Watch test progress live
+- 📈 **Visual Results**: Charts and graphs of LLM performance  
+- 🔍 **Filtering**: Filter results by LLM, success rate, etc.
+- 📥 **Downloads**: Download result files directly
+
+### Command Line Usage
+You can still run tests directly from command line:
+
 ```bash
+# Inside the container
+python /app/tests/test_triage.py
+
+# With debug mode
 python /app/tests/test_triage.py --debug
 ```
 
@@ -37,7 +56,10 @@ python /app/tests/test_triage.py --debug
 ```
 tests/
 ├── README.md                          # This documentation
-├── test_triage.py                     # Main testing script
+├── test_triage.py                     # Main testing script (CLI)
+├── web_dashboard.py                   # Web dashboard server
+├── templates/
+│   └── dashboard.html                 # Web interface template
 ├── triage_test_cases.yaml            # Test cases and LLM configurations
 ├── combined_test_report_*.yaml       # Generated combined reports
 └── mcp_descriptions_*.json           # Generated MCP analysis
@@ -84,30 +106,65 @@ The script requires:
 4. Python packages: `litellm`, `yaml`, `statistics`, `ast`, `mcp`, `fastmcp`
 
 ### Docker Container
-The test should run in the Tom test container. All source files (mcp/, lib/, tests/) are copied into the container during build. **Note**: If you get "No module named 'litellm'" errors, rebuild the container:
+The test container includes a web dashboard and CLI tools. All source files (mcp/, lib/, tests/) are copied during build.
 
-#### Build the Test Container
+#### Web Dashboard Mode (Default)
 ```bash
-# Build the test container (copies all source files and includes litellm)
+# Build and run with web interface
 docker build -t tom-test -f dockerfiles/test/Dockerfile .
+docker run -it --rm -p 8080:80 -v /path/to/data:/data tom-test
+
+# Access dashboard at http://localhost:8080
 ```
 
-#### Run the Test Container
+#### Interactive CLI Mode
 ```bash
-# Only mount the data directory - all source files are copied into the container
-docker run -it --rm \
-  -v /path/to/data:/data \
-  tom-test bash
-```
+# Run container with bash for manual testing
+docker run -it --rm -v /path/to/data:/data tom-test bash
 
-#### Inside the Container
-```bash
-# Run the tests
-python /app/tests/test_triage.py
-
-# Or with debug mode
+# Inside the container
 python /app/tests/test_triage.py --debug
 ```
+
+#### Background Service Mode
+```bash
+# Run as detached service
+docker run -d --name tom-test -p 8080:80 -v /path/to/data:/data tom-test
+
+# View logs
+docker logs -f tom-test
+
+# Stop service
+docker stop tom-test && docker rm tom-test
+```
+
+## Web Dashboard Features
+
+### Main Interface
+- **Test Control Panel**: Start/stop tests with debug mode option
+- **Live Logs**: Real-time test execution logs with color coding
+- **Quick Stats**: Overview of latest test results and performance
+- **Status Indicator**: Visual indication of test running state
+
+### Results Visualization
+- **Results Grid**: Card-based view of all test runs
+- **LLM Filtering**: Filter results by specific LLM providers
+- **Detailed View**: Modal with comprehensive test data and statistics
+- **Download Links**: Direct access to generated report files
+
+### Interactive Features
+- **Real-time Updates**: Auto-refresh during test execution
+- **Responsive Design**: Works on desktop and mobile devices
+- **Error Handling**: Graceful handling of test failures and API errors
+- **Log Management**: Automatic log rotation and archiving
+
+### API Endpoints
+- `POST /api/start_test` - Start new test run (with optional debug)
+- `GET /api/test_status` - Get current test status and live logs
+- `GET /api/results` - Get all test results summary
+- `GET /api/results/<id>` - Get detailed results for specific run
+- `POST /api/stop_test` - Stop currently running test
+- `GET /download/<filename>` - Download result files
 
 ## Output Reports
 

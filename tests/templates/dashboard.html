@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tom Triage Testing Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .log-info { @apply text-blue-600; }
+        .log-error { @apply text-red-600; }
+        .log-warning { @apply text-yellow-600; }
+        .log-success { @apply text-green-600; }
+        .log-container { height: 400px; overflow-y: auto; }
+        .result-card:hover { transform: translateY(-2px); }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">🤖 Tom Triage Testing Dashboard</h1>
+            <p class="text-gray-600">Run and analyze LLM triage performance tests</p>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-2xl font-semibold mb-4">Test Control</h2>
+            <div class="flex gap-4 items-center">
+                <button id="startBtn" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors">
+                    Start Tests
+                </button>
+                <button id="startDebugBtn" class="bg-purple-500 hover:bg-purple-600 text-white px-6 py-2 rounded-lg transition-colors">
+                    Start with Debug
+                </button>
+                <button id="stopBtn" class="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg transition-colors disabled:opacity-50" disabled>
+                    Stop Tests
+                </button>
+                <div id="statusIndicator" class="flex items-center gap-2">
+                    <div id="statusDot" class="w-3 h-3 rounded-full bg-gray-400"></div>
+                    <span id="statusText" class="text-gray-600">Ready</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Live Logs -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-2xl font-semibold mb-4">Live Test Logs</h2>
+                <div id="logsContainer" class="log-container bg-gray-900 text-gray-100 p-4 rounded font-mono text-sm">
+                    <div class="text-gray-400">No tests running...</div>
+                </div>
+                <div class="mt-2 text-sm text-gray-600">
+                    <span id="logCount">0</span> log entries
+                </div>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-2xl font-semibold mb-4">Quick Stats</h2>
+                <div id="quickStats" class="space-y-3">
+                    <div class="text-gray-600">No test results available</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="mt-8">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-semibold">Test Results</h2>
+                <div class="flex gap-4">
+                    <select id="llmFilter" class="border rounded px-3 py-1">
+                        <option value="">All LLMs</option>
+                    </select>
+                    <button id="refreshResults" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded transition-colors">
+                        Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div id="resultsContainer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                <!-- Results will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Detailed View Modal -->
+        <div id="detailModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+            <div class="flex items-center justify-center min-h-screen p-4">
+                <div class="bg-white rounded-lg max-w-6xl w-full max-h-screen overflow-y-auto">
+                    <div class="p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-semibold">Detailed Results</h3>
+                            <button id="closeModal" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+                        </div>
+                        <div id="detailContent">
+                            <!-- Detailed content will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let testRunning = false;
+        let currentResults = [];
+        let updateInterval = null;
+
+        // DOM elements
+        const startBtn = document.getElementById('startBtn');
+        const startDebugBtn = document.getElementById('startDebugBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const logsContainer = document.getElementById('logsContainer');
+        const logCount = document.getElementById('logCount');
+        const quickStats = document.getElementById('quickStats');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const llmFilter = document.getElementById('llmFilter');
+        const refreshResults = document.getElementById('refreshResults');
+        const detailModal = document.getElementById('detailModal');
+        const closeModal = document.getElementById('closeModal');
+        const detailContent = document.getElementById('detailContent');
+
+        // Event listeners
+        startBtn.addEventListener('click', () => startTest(false));
+        startDebugBtn.addEventListener('click', () => startTest(true));
+        stopBtn.addEventListener('click', stopTest);
+        refreshResults.addEventListener('click', loadResults);
+        closeModal.addEventListener('click', () => detailModal.classList.add('hidden'));
+        llmFilter.addEventListener('change', filterResults);
+
+        // Start test function
+        async function startTest(debug = false) {
+            try {
+                const response = await fetch('/api/start_test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ debug })
+                });
+                
+                if (response.ok) {
+                    testRunning = true;
+                    updateUI();
+                    startStatusUpdates();
+                } else {
+                    const error = await response.json();
+                    alert('Error starting test: ' + error.message);
+                }
+            } catch (error) {
+                alert('Error starting test: ' + error.message);
+            }
+        }
+
+        // Stop test function
+        async function stopTest() {
+            try {
+                const response = await fetch('/api/stop_test', { method: 'POST' });
+                if (response.ok) {
+                    testRunning = false;
+                    updateUI();
+                    stopStatusUpdates();
+                }
+            } catch (error) {
+                alert('Error stopping test: ' + error.message);
+            }
+        }
+
+        // Update UI based on test status
+        function updateUI() {
+            startBtn.disabled = testRunning;
+            startDebugBtn.disabled = testRunning;
+            stopBtn.disabled = !testRunning;
+            
+            if (testRunning) {
+                statusDot.className = 'w-3 h-3 rounded-full bg-green-400 animate-pulse';
+                statusText.textContent = 'Running';
+            } else {
+                statusDot.className = 'w-3 h-3 rounded-full bg-gray-400';
+                statusText.textContent = 'Ready';
+            }
+        }
+
+        // Start status updates
+        function startStatusUpdates() {
+            updateInterval = setInterval(updateStatus, 2000);
+        }
+
+        // Stop status updates
+        function stopStatusUpdates() {
+            if (updateInterval) {
+                clearInterval(updateInterval);
+                updateInterval = null;
+            }
+        }
+
+        // Update test status
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/test_status');
+                const data = await response.json();
+                
+                if (!data.running && testRunning) {
+                    testRunning = false;
+                    updateUI();
+                    stopStatusUpdates();
+                    loadResults(); // Reload results when test completes
+                }
+                
+                // Update logs
+                updateLogs(data.logs);
+                logCount.textContent = data.total_logs;
+                
+            } catch (error) {
+                console.error('Error updating status:', error);
+            }
+        }
+
+        // Update logs display
+        function updateLogs(logs) {
+            if (logs.length === 0) return;
+            
+            const logHtml = logs.map(log => {
+                const timestamp = new Date(log.timestamp).toLocaleTimeString();
+                const levelClass = `log-${log.level.toLowerCase()}`;
+                return `<div class="${levelClass}">[${timestamp}] ${log.level}: ${log.message}</div>`;
+            }).join('');
+            
+            logsContainer.innerHTML = logHtml;
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+
+        // Load test results
+        async function loadResults() {
+            try {
+                const response = await fetch('/api/results');
+                const data = await response.json();
+                currentResults = data.results;
+                
+                displayResults(currentResults);
+                updateQuickStats(currentResults);
+                updateLLMFilter(currentResults);
+                
+            } catch (error) {
+                console.error('Error loading results:', error);
+            }
+        }
+
+        // Display results
+        function displayResults(results) {
+            if (results.length === 0) {
+                resultsContainer.innerHTML = '<div class="col-span-full text-center text-gray-600">No test results available</div>';
+                return;
+            }
+            
+            const html = results.map(result => {
+                const data = result.data;
+                const triageData = data.triage_performance || {};
+                const summary = triageData.test_summary || {};
+                
+                return `
+                    <div class="result-card bg-white rounded-lg shadow-md p-6 cursor-pointer hover:shadow-lg transition-all" 
+                         onclick="showDetails('${result.timestamp}')">
+                        <div class="flex justify-between items-start mb-4">
+                            <h3 class="font-semibold text-lg">Test Run</h3>
+                            <span class="text-sm text-gray-500">${result.timestamp}</span>
+                        </div>
+                        <div class="space-y-2 text-sm">
+                            <div>LLMs Tested: <span class="font-medium">${summary.total_llms || 0}</span></div>
+                            <div>Test Cases: <span class="font-medium">${summary.total_test_cases || 0}</span></div>
+                            <div>Total Tests: <span class="font-medium">${summary.total_tests || 0}</span></div>
+                        </div>
+                        <div class="mt-4">
+                            <button class="text-blue-600 hover:text-blue-800 text-sm">View Details →</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            resultsContainer.innerHTML = html;
+        }
+
+        // Update quick stats
+        function updateQuickStats(results) {
+            if (results.length === 0) {
+                quickStats.innerHTML = '<div class="text-gray-600">No test results available</div>';
+                return;
+            }
+            
+            const latest = results[0];
+            const triageData = latest.data.triage_performance || {};
+            const llmResults = triageData.llm_results || {};
+            
+            let totalSuccessRate = 0;
+            let llmCount = 0;
+            let bestLLM = '';
+            let bestRate = 0;
+            
+            Object.entries(llmResults).forEach(([llm, data]) => {
+                const rate = data.summary?.success_rate || 0;
+                totalSuccessRate += rate;
+                llmCount++;
+                
+                if (rate > bestRate) {
+                    bestRate = rate;
+                    bestLLM = llm;
+                }
+            });
+            
+            const avgSuccessRate = llmCount > 0 ? totalSuccessRate / llmCount : 0;
+            
+            quickStats.innerHTML = `
+                <div class="flex justify-between">
+                    <span>Average Success Rate:</span>
+                    <span class="font-medium">${(avgSuccessRate * 100).toFixed(1)}%</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Best Performing LLM:</span>
+                    <span class="font-medium">${bestLLM || 'N/A'}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Latest Test:</span>
+                    <span class="font-medium">${latest.timestamp}</span>
+                </div>
+            `;
+        }
+
+        // Update LLM filter options
+        function updateLLMFilter(results) {
+            const llms = new Set();
+            results.forEach(result => {
+                const llmResults = result.data.triage_performance?.llm_results || {};
+                Object.keys(llmResults).forEach(llm => llms.add(llm));
+            });
+            
+            const currentValue = llmFilter.value;
+            llmFilter.innerHTML = '<option value="">All LLMs</option>';
+            
+            Array.from(llms).sort().forEach(llm => {
+                const option = document.createElement('option');
+                option.value = llm;
+                option.textContent = llm;
+                llmFilter.appendChild(option);
+            });
+            
+            llmFilter.value = currentValue;
+        }
+
+        // Filter results by LLM
+        function filterResults() {
+            const selectedLLM = llmFilter.value;
+            if (!selectedLLM) {
+                displayResults(currentResults);
+                return;
+            }
+            
+            const filtered = currentResults.filter(result => {
+                const llmResults = result.data.triage_performance?.llm_results || {};
+                return selectedLLM in llmResults;
+            });
+            
+            displayResults(filtered);
+        }
+
+        // Show detailed results
+        async function showDetails(resultId) {
+            try {
+                const response = await fetch(`/api/results/${resultId}`);
+                const result = await response.json();
+                
+                // Create detailed view
+                const triageData = result.data.triage_performance || {};
+                const llmResults = triageData.llm_results || {};
+                
+                let detailHtml = '<div class="space-y-6">';
+                
+                // Summary section
+                detailHtml += '<div><h4 class="font-semibold mb-2">Test Summary</h4>';
+                detailHtml += `<div class="bg-gray-50 p-4 rounded">${JSON.stringify(triageData.test_summary, null, 2)}</div></div>`;
+                
+                // LLM Results
+                Object.entries(llmResults).forEach(([llm, data]) => {
+                    detailHtml += `
+                        <div>
+                            <h4 class="font-semibold mb-2">${llm} Results</h4>
+                            <div class="bg-gray-50 p-4 rounded">
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                                    <div>Success Rate: ${((data.summary?.success_rate || 0) * 100).toFixed(1)}%</div>
+                                    <div>Min Time: ${data.summary?.min_time_ms || 0}ms</div>
+                                    <div>Max Time: ${data.summary?.max_time_ms || 0}ms</div>
+                                    <div>Median Time: ${data.summary?.median_time_ms || 0}ms</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                detailHtml += '</div>';
+                detailContent.innerHTML = detailHtml;
+                detailModal.classList.remove('hidden');
+                
+            } catch (error) {
+                alert('Error loading details: ' + error.message);
+            }
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', () => {
+            loadResults();
+        });
+    </script>
+</body>
+</html>
