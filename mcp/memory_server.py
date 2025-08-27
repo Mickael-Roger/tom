@@ -517,6 +517,203 @@ def analyze_and_store_conversation(
         return json.dumps({"error": error_msg}, ensure_ascii=False)
 
 
+# HTTP Server for REST API
+import cherrypy
+from threading import Thread
+
+class MemoryRestAPI:
+    """REST API for memory management using CherryPy"""
+    
+    def __init__(self, memory_service, tom_user):
+        self.memory_service = memory_service
+        self.tom_user = tom_user
+    
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    @cherrypy.tools.allow(methods=['GET'])
+    def memories(self):
+        """GET /memories - Get all memories"""
+        if tomlogger:
+            tomlogger.info(f"REST API: GET /memories for user={self.tom_user}", module_name="memory")
+        
+        result = self.memory_service.get_all_memories(self.tom_user)
+        
+        if "error" in result:
+            cherrypy.response.status = 500
+        
+        return result
+    
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    @cherrypy.tools.json_in()
+    @cherrypy.tools.allow(methods=['POST'])
+    def search(self):
+        """POST /search - Search memories"""
+        try:
+            request_data = cherrypy.request.json
+            
+            if tomlogger:
+                query_preview = request_data.get('query', '')[:50] if request_data.get('query') else ''
+                tomlogger.info(f"REST API: POST /search for user={self.tom_user}, query={query_preview}...", module_name="memory")
+            
+            query = request_data.get("query")
+            limit = request_data.get("limit", 10)
+            
+            if not query:
+                cherrypy.response.status = 400
+                return {"error": "Query parameter is required"}
+            
+            result = self.memory_service.search_memories(query, self.tom_user, limit)
+            
+            if "error" in result:
+                cherrypy.response.status = 500
+            
+            return result
+            
+        except Exception as e:
+            if tomlogger:
+                tomlogger.error(f"REST API search error: {str(e)}", module_name="memory")
+            cherrypy.response.status = 500
+            return {"error": f"Search failed: {str(e)}"}
+    
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    @cherrypy.tools.json_in()
+    @cherrypy.tools.allow(methods=['POST'])
+    def add(self):
+        """POST /add - Add a new memory"""
+        try:
+            request_data = cherrypy.request.json
+            
+            if tomlogger:
+                tomlogger.info(f"REST API: POST /add for user={self.tom_user}", module_name="memory")
+            
+            text = request_data.get("text")
+            metadata = request_data.get("metadata")
+            
+            if not text:
+                cherrypy.response.status = 400
+                return {"error": "Text parameter is required"}
+            
+            result = self.memory_service.add_memory(text, self.tom_user, metadata)
+            
+            if "error" in result:
+                cherrypy.response.status = 500
+            else:
+                cherrypy.response.status = 201
+            
+            return result
+            
+        except Exception as e:
+            if tomlogger:
+                tomlogger.error(f"REST API add memory error: {str(e)}", module_name="memory")
+            cherrypy.response.status = 500
+            return {"error": f"Add memory failed: {str(e)}"}
+    
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    @cherrypy.tools.allow(methods=['GET'])
+    def memory(self, memory_id):
+        """GET /memory/{id} - Get single memory by ID"""
+        if tomlogger:
+            tomlogger.info(f"REST API: GET /memory/{memory_id}", module_name="memory")
+        
+        try:
+            # Get all memories and find the specific one
+            all_memories_result = self.memory_service.get_all_memories(self.tom_user)
+            
+            if "error" in all_memories_result:
+                cherrypy.response.status = 500
+                return {"error": all_memories_result["error"]}
+            
+            # Find the memory with the specified ID
+            memories = all_memories_result.get("results", [])
+            target_memory = None
+            
+            for memory in memories:
+                if memory.get("id") == memory_id:
+                    target_memory = memory
+                    break
+            
+            if not target_memory:
+                cherrypy.response.status = 404
+                return {"error": f"Memory with ID '{memory_id}' not found"}
+            
+            return {
+                "status": "success",
+                "result": target_memory
+            }
+            
+        except Exception as e:
+            if tomlogger:
+                tomlogger.error(f"REST API get memory error: {str(e)}", module_name="memory")
+            cherrypy.response.status = 500
+            return {"error": f"Get memory failed: {str(e)}"}
+    
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    @cherrypy.tools.allow(methods=['DELETE'])
+    def delete(self, memory_id):
+        """DELETE /delete/{id} - Delete memory by ID"""
+        if tomlogger:
+            tomlogger.info(f"REST API: DELETE /delete/{memory_id}", module_name="memory")
+        
+        result = self.memory_service.delete_memory(memory_id)
+        
+        if "error" in result:
+            cherrypy.response.status = 500
+        
+        return result
+
+
+def start_rest_api(memory_service, tom_user, port=8080):
+    """Start the REST API server in a separate thread"""
+    try:
+        if tomlogger:
+            tomlogger.info(f"Starting REST API server on port {port}", module_name="memory")
+        
+        # Configure CherryPy
+        cherrypy.config.update({
+            'server.socket_host': '0.0.0.0',
+            'server.socket_port': port,
+            'log.screen': False,
+            'log.access_file': '',
+            'log.error_file': '',
+            'engine.autoreload.on': False
+        })
+        
+        # Create API instance
+        api = MemoryRestAPI(memory_service, tom_user)
+        
+        # Mount the API
+        cherrypy.tree.mount(api, '/', {
+            '/': {
+                'tools.response_headers.on': True,
+                'tools.response_headers.headers': [('Content-Type', 'application/json')],
+            }
+        })
+        
+        # Start the server
+        cherrypy.engine.start()
+        cherrypy.engine.wait(cherrypy.engine.states.STARTED)
+        
+        if tomlogger:
+            tomlogger.info(f"✅ REST API server started successfully on port {port}", module_name="memory")
+            
+    except Exception as e:
+        if tomlogger:
+            tomlogger.error(f"❌ Failed to start REST API server: {str(e)}", module_name="memory")
+
+
+# Start REST API server in background thread
+def init_rest_api_background():
+    """Initialize REST API in background thread"""
+    api_thread = Thread(target=start_rest_api, args=(memory_service, TOM_USER), daemon=True)
+    api_thread.start()
+    if tomlogger:
+        tomlogger.info("REST API initialization thread started in background", module_name="memory")
+
+
 @server.tool()
 def list_all_memory_content() -> str:
     """List all memory content with full details for the current user. This returns all memories with their complete text content, not just IDs.
@@ -595,6 +792,9 @@ def main():
         tomlogger.info("🚀 Starting Memory MCP Server on port 80", module_name="memory")
     else:
         print("Starting Memory MCP Server on port 80")
+    
+    # Start REST API in background
+    init_rest_api_background()
     
     # Run the FastMCP server with streamable HTTP transport
     server.run(transport="streamable-http")

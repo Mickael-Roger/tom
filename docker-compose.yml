@@ -191,7 +191,7 @@ services:
       - TOM_USER=mickael
       - MEM0_TELEMETRY=False
     ports:
-      - "9999:80"
+      - "9999:8080"
     networks:
       - tom
     volumes:
