@@ -330,14 +330,17 @@ def extract_all_mcp_descriptions() -> Dict[str, Any]:
 def run_triage_tests() -> Dict[str, Any]:
     """Run all triage tests"""
     print("\nRunning Triage Performance Tests...")
+    print("INIT_PROGRESS: Starting test suite initialization...")
     print("=" * 50)
     
     # Load configuration
+    print("INIT_PROGRESS: Loading configuration from /data/config.yml...")
     config = load_config()
     if not config:
         return {"error": "Failed to load configuration"}
     
     # Load test cases
+    print("INIT_PROGRESS: Loading test cases and LLM configurations...")
     test_data = load_test_cases()
     if not test_data:
         return {"error": "Failed to load test cases"}
@@ -355,9 +358,12 @@ def run_triage_tests() -> Dict[str, Any]:
         return {"error": "No test LLMs or test cases found"}
     
     print(f"Found {len(test_llms)} test LLMs and {len(test_cases)} test cases")
+    print(f"INIT_PROGRESS: Found {len(test_llms)} LLMs and {len(test_cases)} test cases")
     
     # Create available modules and tools
+    print("INIT_PROGRESS: Extracting MCP server descriptions...")
     available_modules = create_available_modules()
+    print("INIT_PROGRESS: Building triage prompt and tools...")
     triage_instructions = create_triage_prompt()
     system_message = create_json_system_message(triage_instructions, available_modules)
     tools = create_triage_tools(available_modules)
@@ -375,6 +381,7 @@ def run_triage_tests() -> Dict[str, Any]:
     
     # Test each LLM
     total_llms = len(test_llms)
+    print("INIT_PROGRESS: All initialization completed, starting LLM tests...")
     print(f"PROGRESS: 0/{total_llms} - Initializing tests")
     
     for llm_index, llm_config in enumerate(test_llms):
@@ -415,12 +422,15 @@ def run_triage_tests() -> Dict[str, Any]:
         }
         
         # Test each prompt
+        total_test_cases = len(test_cases)
         for i, test_case in enumerate(test_cases):
             prompt = test_case['prompt']
             expected_modules = test_case['expected_modules']
             description = test_case['description']
             
-            print(f"  Test {i+1}/{len(test_cases)}: {description}")
+            print(f"  Test {i+1}/{total_test_cases}: {description}")
+            # Progress indicator for web interface
+            print(f"TEST_PROGRESS: {llm_index + 1}/{total_llms} - {i + 1}/{total_test_cases} - {llm_name} - {description}")
             
             # Run the test
             test_result = test_single_prompt(

@@ -55,14 +55,40 @@
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- Live Logs -->
+            <!-- Test Progress -->
             <div class="bg-white rounded-lg shadow-md p-6">
-                <h2 class="text-2xl font-semibold mb-4">Live Test Logs</h2>
-                <div id="logsContainer" class="log-container bg-gray-900 text-gray-100 p-4 rounded font-mono text-sm">
-                    <div class="text-gray-400">No tests running...</div>
+                <h2 class="text-2xl font-semibold mb-4">Test Progress</h2>
+                
+                <!-- Overall Progress -->
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm font-medium text-gray-700">Overall Progress</span>
+                        <span id="overallProgressText" class="text-sm text-gray-500">0/0 LLMs</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-3">
+                        <div id="overallProgressBar" class="bg-blue-600 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                    <div id="currentLLMStatus" class="text-sm text-gray-600 mt-2">Ready to start...</div>
                 </div>
-                <div class="mt-2 text-sm text-gray-600">
-                    <span id="logCount">0</span> log entries
+
+                <!-- Current Test Progress -->
+                <div id="testProgressSection" class="hidden">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm font-medium text-gray-700">Current LLM Tests</span>
+                        <span id="testProgressText" class="text-sm text-gray-500">0/0 tests</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div id="testProgressBar" class="bg-green-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                    <div id="currentTestDescription" class="text-xs text-gray-500 mt-2">No test running...</div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="mt-6">
+                    <h3 class="text-sm font-medium text-gray-700 mb-2">Recent Activity</h3>
+                    <div id="recentActivity" class="space-y-1 max-h-32 overflow-y-auto">
+                        <div class="text-sm text-gray-500">No activity yet...</div>
+                    </div>
                 </div>
             </div>
 
@@ -156,9 +182,15 @@
         const stopBtn = document.getElementById('stopBtn');
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
-        const logsContainer = document.getElementById('logsContainer');
-        const logCount = document.getElementById('logCount');
         const quickStats = document.getElementById('quickStats');
+        const overallProgressBar = document.getElementById('overallProgressBar');
+        const overallProgressText = document.getElementById('overallProgressText');
+        const currentLLMStatus = document.getElementById('currentLLMStatus');
+        const testProgressSection = document.getElementById('testProgressSection');
+        const testProgressBar = document.getElementById('testProgressBar');
+        const testProgressText = document.getElementById('testProgressText');
+        const currentTestDescription = document.getElementById('currentTestDescription');
+        const recentActivity = document.getElementById('recentActivity');
         const resultsContainer = document.getElementById('resultsContainer');
         const llmFilter = document.getElementById('llmFilter');
         const refreshResults = document.getElementById('refreshResults');
@@ -245,6 +277,16 @@
             progressBar.style.width = '0%';
             progressText.textContent = '0/0';
             currentLLM.textContent = 'Initializing...';
+            
+            // Reset detailed progress
+            overallProgressBar.style.width = '0%';
+            overallProgressText.textContent = '0/0 LLMs';
+            currentLLMStatus.textContent = 'Ready to start...';
+            testProgressSection.classList.add('hidden');
+            testProgressBar.style.width = '0%';
+            testProgressText.textContent = '0/0 tests';
+            currentTestDescription.textContent = 'No test running...';
+            recentActivity.innerHTML = '<div class="text-sm text-gray-500">No activity yet...</div>';
         }
 
         // Update progress from log message
@@ -256,15 +298,27 @@
             const totalNum = parseInt(total);
             const percentage = totalNum > 0 ? (currentNum / totalNum) * 100 : 0;
             
+            // Update main progress bar (top control panel)
             progressBar.style.width = `${percentage}%`;
             progressText.textContent = `${current}/${total}`;
             
+            // Update detailed progress bars
+            overallProgressBar.classList.remove('animate-pulse'); // Stop pulsing when real progress starts
+            overallProgressBar.style.width = `${percentage}%`;
+            overallProgressText.textContent = `${current}/${total} LLMs`;
+            
             if (llmName === 'Initializing tests') {
                 currentLLM.textContent = 'Initializing tests...';
+                currentLLMStatus.textContent = 'Initializing tests...';
+                testProgressSection.classList.add('hidden');
             } else if (llmName === 'Tests completed') {
                 currentLLM.textContent = 'Tests completed!';
+                currentLLMStatus.textContent = 'All tests completed!';
+                testProgressSection.classList.add('hidden');
             } else {
                 currentLLM.textContent = `Testing ${llmName}`;
+                currentLLMStatus.textContent = `Starting tests for ${llmName}...`;
+                // Test progress section will be shown when first test starts
             }
         }
 
@@ -294,36 +348,128 @@
                     loadResults(); // Reload results when test completes
                 }
                 
-                // Update logs
-                updateLogs(data.logs);
-                logCount.textContent = data.total_logs;
+                // Update progress indicators
+                updateProgressIndicators(data.logs);
                 
             } catch (error) {
                 console.error('Error updating status:', error);
             }
         }
 
-        // Update logs display
-        function updateLogs(logs) {
+        // Update progress indicators from logs
+        function updateProgressIndicators(logs) {
             if (logs.length === 0) return;
             
-            const logHtml = logs.map(log => {
+            let recentActivities = [];
+            
+            logs.forEach(log => {
                 const timestamp = new Date(log.timestamp).toLocaleTimeString();
-                const levelClass = `log-${log.level.toLowerCase()}`;
                 
-                // Check for progress messages
-                const progressMatch = log.message.match(/^PROGRESS: (\d+)\/(\d+) - Testing (.+)$/);
-                if (progressMatch) {
-                    updateProgress(progressMatch);
-                    // Don't show progress messages in the log display
-                    return '';
+                // Check for LLM progress messages
+                const llmProgressMatch = log.message.match(/^PROGRESS: (\d+)\/(\d+) - Testing (.+)$/);
+                if (llmProgressMatch) {
+                    updateProgress(llmProgressMatch);
+                    return;
                 }
                 
-                return `<div class="${levelClass}">[${timestamp}] ${log.level}: ${log.message}</div>`;
-            }).filter(html => html !== '').join('');
+                // Check for test progress messages
+                const testProgressMatch = log.message.match(/^TEST_PROGRESS: (\d+)\/(\d+) - (\d+)\/(\d+) - (.+) - (.+)$/);
+                if (testProgressMatch) {
+                    updateTestProgress(testProgressMatch);
+                    return;
+                }
+                
+                // Check for initialization progress messages
+                const initProgressMatch = log.message.match(/^INIT_PROGRESS: (.+)$/);
+                if (initProgressMatch) {
+                    updateInitProgress(initProgressMatch[1]);
+                    return;
+                }
+                
+                // Add other important logs to recent activity
+                if (log.level === 'SUCCESS' || log.level === 'ERROR' || log.message.includes('Testing LLM')) {
+                    recentActivities.push({
+                        timestamp: timestamp,
+                        level: log.level,
+                        message: log.message
+                    });
+                }
+            });
             
-            logsContainer.innerHTML = logHtml;
-            logsContainer.scrollTop = logsContainer.scrollHeight;
+            // Update recent activity section
+            if (recentActivities.length > 0) {
+                const activityHtml = recentActivities.slice(-5).map(activity => {
+                    let levelClass = 'text-gray-600';
+                    let icon = '•';
+                    
+                    if (activity.level === 'SUCCESS') {
+                        levelClass = 'text-green-600';
+                        icon = '✓';
+                    } else if (activity.level === 'ERROR') {
+                        levelClass = 'text-red-600';
+                        icon = '✗';
+                    } else if (activity.message.includes('Testing LLM')) {
+                        levelClass = 'text-blue-600';
+                        icon = '▶';
+                    }
+                    
+                    return `<div class="text-xs ${levelClass} flex items-center gap-2">
+                        <span>${icon}</span>
+                        <span class="text-gray-400">[${activity.timestamp}]</span>
+                        <span class="flex-1 truncate">${activity.message}</span>
+                    </div>`;
+                }).join('');
+                
+                recentActivity.innerHTML = activityHtml;
+            }
+        }
+
+        // Update test progress from log message
+        function updateTestProgress(testMatch) {
+            if (!testMatch) return;
+            
+            const [, currentLLM, totalLLMs, currentTest, totalTests, llmName, testDescription] = testMatch;
+            
+            // Show test progress section
+            testProgressSection.classList.remove('hidden');
+            
+            // Update test progress bar
+            const testPercentage = totalTests > 0 ? (parseInt(currentTest) / parseInt(totalTests)) * 100 : 0;
+            testProgressBar.style.width = `${testPercentage}%`;
+            testProgressText.textContent = `${currentTest}/${totalTests} tests`;
+            currentTestDescription.textContent = testDescription;
+            
+            // Update overall progress status
+            currentLLMStatus.textContent = `Testing ${llmName} (${currentTest}/${totalTests} tests)`;
+        }
+
+        // Update initialization progress
+        function updateInitProgress(message) {
+            // Show initialization status in multiple places
+            currentLLMStatus.textContent = message;
+            currentLLM.textContent = 'Initializing...';
+            
+            // Show a pulsing animation on the overall progress bar during init
+            if (!overallProgressBar.classList.contains('animate-pulse')) {
+                overallProgressBar.classList.add('animate-pulse');
+                overallProgressBar.style.width = '10%'; // Small progress to show activity
+            }
+            
+            // Add to recent activity with special styling
+            const timestamp = new Date().toLocaleTimeString();
+            const activityHtml = `<div class="text-xs text-blue-600 flex items-center gap-2">
+                <span>⚙️</span>
+                <span class="text-gray-400">[${timestamp}]</span>
+                <span class="flex-1 truncate">${message}</span>
+            </div>`;
+            
+            // Add to beginning of recent activity
+            const currentActivity = recentActivity.innerHTML;
+            if (currentActivity.includes('No activity yet')) {
+                recentActivity.innerHTML = activityHtml;
+            } else {
+                recentActivity.innerHTML = activityHtml + currentActivity;
+            }
         }
 
         // Load test results
