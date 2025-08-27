@@ -43,86 +43,7 @@ llms:
       output: 0.80
 
 test_cases:
-  # Calendar-related prompts
-  - prompt: "What's on my schedule for tomorrow?"
-    expected_modules: ["calendar"]
-    description: "Basic calendar query"
 
-  - prompt: "Add a meeting with John at 3pm next Tuesday"
-    expected_modules: ["calendar"]
-    description: "Calendar event creation"
-
-  - prompt: "Cancel my 2pm appointment and reschedule it for Friday"
-    expected_modules: ["calendar"]
-    description: "Calendar modification"
-
-  # Grocery-related prompts (now handled by todo module)
-  - prompt: "Add milk and bread to my shopping list"
-    expected_modules: ["todo"]
-    description: "Basic grocery list addition"
-
-  - prompt: "What's on my grocery list?"
-    expected_modules: ["todo"]
-    description: "Grocery list query"
-
-  - prompt: "Remove tomatoes from my shopping list"
-    expected_modules: ["todo"]
-    description: "Grocery list removal"
-
-  # IDFM (transport) related prompts
-  - prompt: "How do I get from Châtelet to République by metro?"
-    expected_modules: ["idfm"]
-    description: "Transport route planning"
-
-  - prompt: "What's the next train from Gare du Nord?"
-    expected_modules: ["idfm"]
-    description: "Transport schedule query"
-
-  - prompt: "Are there any disruptions on line 1?"
-    expected_modules: ["idfm"]
-    description: "Transport status check"
-
-  # Todo-related prompts
-  - prompt: "Add 'buy groceries' to my todo list"
-    expected_modules: ["todo"]
-    description: "Basic todo addition"
-
-  - prompt: "Mark 'call dentist' as completed"
-    expected_modules: ["todo"]
-    description: "Todo completion"
-
-  - prompt: "What tasks do I have for today?"
-    expected_modules: ["todo"]
-    description: "Todo list query"
-
-  # Multiple modules needed
-  - prompt: "Add 'buy groceries' to my todo list and also add milk to my shopping list"
-    expected_modules: ["todo"]
-    description: "Combined todo and grocery action"
-
-  - prompt: "What's my schedule for tomorrow and what's on my shopping list?"
-    expected_modules: ["calendar", "todo"]
-    description: "Multiple information queries"
-
-  - prompt: "Schedule a meeting for 2pm and start the vacuum cleaner"
-    expected_modules: ["calendar", "deebot"]
-    description: "Calendar and device control"
-
-  - prompt: "How do I get to my 3pm meeting at République and add the travel time to my calendar?"
-    expected_modules: ["idfm", "calendar"]
-    description: "Transport planning with calendar integration"
-
-  # Complex multi-module scenarios
-  - prompt: "Plan my day: check my schedule, review my todo list, and see what groceries I need"
-    expected_modules: ["calendar", "todo"]
-    description: "Daily planning with multiple modules"
-
-  # No modules needed (general conversation)
-  - prompt: "Hello, how are you?"
-    expected_modules: []
-    description: "Basic greeting - no modules needed"
-
-  # French language prompts (to test language handling)
   - prompt: "Qu'est-ce que j'ai dans mon agenda demain ?"
     expected_modules: ["calendar"]
     description: "French calendar query"
@@ -137,18 +58,125 @@ test_cases:
 
   - prompt: "Enregistre l'adresse de Joe au 5 rue de de la paix"
     expected_modules: ["contacts"]
-    description: "Contact add query"
+    description: "Add contact address"
 
   - prompt: "Quelle est l'adresse de grand pere?"
     expected_modules: ["contacts"]
-    description: "Contact search query"
+    description: "Search contact address"
 
+  - prompt: ajoute une nouvelle tâche qui dit d'aller manger
+    expected_modules: ["todo"]
+    description: "Add new task to todo list"
 
-  # Weather-like prompts (should not match any available modules)
-  - prompt: "What's the weather like today?"
+  - prompt: Combien ai je carte anki a revoir?
+    expected_modules: ["anki"]
+    description: "Check pending Anki cards count"
+
+  - prompt: Combien Anais a fait d'exercice kwyk aujourd'hui?
+    expected_modules: ["kwyk"]
+    description: "Check Kwyk exercises completed by Anais today"
+
+  - prompt: combien d'exercices quick est-ce fait aujourd'hui
+    expected_modules: ["kwyk"]
+    description: "Check Quick exercises completed today"
+
+  - prompt: envois moi un message de test2
+    expected_modules: ["notification"]
+    description: "Send test notification message"
+
+  - prompt: Envois un message a anais pour lui dire bonjour
+    expected_modules: ["notification"]
+    description: "Send greeting message to Anais"
+
+  - prompt: est-ce qu'il va pleuvoir
     expected_modules: ["weather"]
-    description: "Weather query - no weather module available"
+    description: "Check if it will rain"
 
-  - prompt: "Will it rain tomorrow?"
+  - prompt: et maintenant combien de Quick ai-je fait aujourd'hui
+    expected_modules: ["kwyk"]
+    description: "Check Quick exercises completed today (follow-up)"
+
+  - prompt: Liste moi mes souscription de podcast
+    expected_modules: ["gpodder"]
+    description: "List podcast subscriptions"
+
+  - prompt: maintenant combien d'exercices kwyk qu'est-ce qu'il fait aujourd'hui
+    expected_modules: ["kwyk"]
+    description: "Check Kwyk exercises completed today (follow-up)"
+
+  - prompt: Marque cette news comme lu
+    expected_modules: ["news"]
+    description: "Mark news article as read"
+
+  - prompt: Qu'ai je de prevu aujourd'hui ?
+    expected_modules: ["calendar"]
+    description: "Check today's calendar schedule"
+
+  - prompt: quel est le prochain train pour Paris depuis Villepreux
+    expected_modules: ["idfm"]
+    description: "Check next train from Villepreux to Paris"
+
+  - prompt: Quel est le solde de la cafetariat du lycee?
+    expected_modules: ["cafetaria"]
+    description: "Check school cafeteria balance"
+
+  - prompt: Quelles sont les news?
+    expected_modules: ["news"]
+    description: "Get latest news"
+
+  - prompt: Quelles sont les nouveaux podcast?
+    expected_modules: ["gpodder"]
+    description: "Get new podcast episodes"
+
+  - prompt: Quelles sont les nouvelles videos
+    expected_modules: ["youtube"]
+    description: "Get new YouTube videos"
+
+  - prompt: Quelles sont mes rendez-vous pour demain?
+    expected_modules: ["calendar"]
+    description: "Check tomorrow's appointments"
+
+  - prompt: Quels sont mes listes de todo?
+    expected_modules: ["todo"]
+    description: "Get todo lists"
+
+  - prompt: Quel temps va til faire demain?
     expected_modules: ["weather"]
-    description: "Weather forecast - no weather module available"
+    description: "Check tomorrow's weather forecast"
+
+  - prompt: quel temps va t'il faire demain a villepreux?
+    expected_modules: ["weather"]
+    description: "Check tomorrow's weather in Villepreux"
+
+  - prompt: qu'y a t'il dans ma liste musique?
+    expected_modules: ["todo"]
+    description: "Check music todo list"
+
+  - prompt: Qu'y a t'il dans ma todo list?
+    expected_modules: ["todo"]
+    description: "Check todo list contents"
+
+  - prompt: Qu'y a t'il dans mon calendrier pour aujourd'hui?
+    expected_modules: ["calendar"]
+    description: "Check today's calendar events"
+
+  - prompt: qu'y t'il dans ma liste de course?
+    expected_modules: ["todo"]
+    description: "Check shopping list contents"
+
+  - prompt: regarde dans mon calendrier quel jour est l'anniversaire d'Alain au mois de juillet
+    expected_modules: ["calendar"]
+    description: "Find Alain's birthday in July calendar"
+
+  - prompt: salut Tom
+    expected_modules: []
+    description: "Greeting - no modules needed"
+
+  - prompt: Suis je abonné a la chaîne YouTube "superbe"?
+    expected_modules: ["youtube"]
+    description: "Check YouTube subscription status"
+
+  - prompt: Trouve moi la chaine youtube deus ex silicium
+    expected_modules: ["youtube"]
+    description: "Search for YouTube channel"
+

@@ -18,7 +18,8 @@ RUN pip install --no-cache-dir \
     requests \
     pyyaml \
     json-rpc \
-    litellm
+    litellm \
+    flask
 
 # Copy required files and directories
 COPY mcp/ /app/mcp/
@@ -29,8 +30,11 @@ COPY tom.py /app/tom.py
 # Set ownership
 RUN chown -R test_user:test_user /app
 
+# Expose port 80 for web interface
+EXPOSE 80
+
 # Switch to non-root user
 USER test_user
 
-# Keep container running for interactive use
-CMD ["tail", "-f", "/dev/null"]
+# Default command starts the web dashboard
+CMD ["python", "/app/tests/web_dashboard.py"]

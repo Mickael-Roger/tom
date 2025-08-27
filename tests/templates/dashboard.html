@@ -64,6 +64,20 @@
             </div>
         </div>
 
+        <!-- LLM Performance Chart -->
+        <div class="mt-8 bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-2xl font-semibold mb-4">LLM Performance Comparison</h2>
+            <div class="mb-4">
+                <select id="chartResultSelect" class="border rounded px-3 py-1 mr-4">
+                    <option value="">Select Test Result</option>
+                </select>
+                <span class="text-sm text-gray-600">Showing min/max/median response times for successful requests only</span>
+            </div>
+            <div class="relative" style="height: 400px;">
+                <canvas id="performanceChart"></canvas>
+            </div>
+        </div>
+
         <!-- Results Section -->
         <div class="mt-8">
             <div class="flex justify-between items-center mb-6">
@@ -106,6 +120,7 @@
         let testRunning = false;
         let currentResults = [];
         let updateInterval = null;
+        let performanceChart = null;
 
         // DOM elements
         const startBtn = document.getElementById('startBtn');
@@ -122,6 +137,7 @@
         const detailModal = document.getElementById('detailModal');
         const closeModal = document.getElementById('closeModal');
         const detailContent = document.getElementById('detailContent');
+        const chartResultSelect = document.getElementById('chartResultSelect');
 
         // Event listeners
         startBtn.addEventListener('click', () => startTest(false));
@@ -130,6 +146,7 @@
         refreshResults.addEventListener('click', loadResults);
         closeModal.addEventListener('click', () => detailModal.classList.add('hidden'));
         llmFilter.addEventListener('change', filterResults);
+        chartResultSelect.addEventListener('change', updatePerformanceChart);
 
         // Start test function
         async function startTest(debug = false) {
@@ -241,6 +258,7 @@
                 displayResults(currentResults);
                 updateQuickStats(currentResults);
                 updateLLMFilter(currentResults);
+                updateChartResultSelect(currentResults);
                 
             } catch (error) {
                 console.error('Error loading results:', error);
@@ -361,6 +379,148 @@
             });
             
             displayResults(filtered);
+        }
+
+        // Update chart result selector
+        function updateChartResultSelect(results) {
+            const currentValue = chartResultSelect.value;
+            chartResultSelect.innerHTML = '<option value="">Select Test Result</option>';
+            
+            results.forEach(result => {
+                const option = document.createElement('option');
+                option.value = result.timestamp;
+                option.textContent = `Test ${result.timestamp}`;
+                chartResultSelect.appendChild(option);
+            });
+            
+            chartResultSelect.value = currentValue;
+            
+            // If no selection and we have results, select the latest
+            if (!currentValue && results.length > 0) {
+                chartResultSelect.value = results[0].timestamp;
+                updatePerformanceChart();
+            }
+        }
+
+        // Update performance chart
+        function updatePerformanceChart() {
+            const selectedTimestamp = chartResultSelect.value;
+            if (!selectedTimestamp) {
+                if (performanceChart) {
+                    performanceChart.destroy();
+                    performanceChart = null;
+                }
+                return;
+            }
+            
+            const selectedResult = currentResults.find(r => r.timestamp === selectedTimestamp);
+            if (!selectedResult) return;
+            
+            const llmResults = selectedResult.data.triage_performance?.llm_results || {};
+            
+            // Filter only LLMs with successful tests
+            const llmData = Object.entries(llmResults)
+                .filter(([llm, data]) => {
+                    const summary = data.summary || {};
+                    return summary.successful_tests > 0; // Only successful tests
+                })
+                .map(([llm, data]) => {
+                    const summary = data.summary || {};
+                    return {
+                        llm: llm,
+                        min: summary.min_time_ms || 0,
+                        max: summary.max_time_ms || 0,
+                        median: summary.median_time_ms || 0,
+                        successRate: summary.success_rate || 0
+                    };
+                })
+                .sort((a, b) => a.median - b.median); // Sort by median time
+            
+            if (llmData.length === 0) {
+                if (performanceChart) {
+                    performanceChart.destroy();
+                    performanceChart = null;
+                }
+                return;
+            }
+            
+            const ctx = document.getElementById('performanceChart').getContext('2d');
+            
+            if (performanceChart) {
+                performanceChart.destroy();
+            }
+            
+            performanceChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: llmData.map(d => d.llm),
+                    datasets: [
+                        {
+                            label: 'Min Time (ms)',
+                            data: llmData.map(d => d.min),
+                            backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Median Time (ms)',
+                            data: llmData.map(d => d.median),
+                            backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                            borderColor: 'rgba(16, 185, 129, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Max Time (ms)',
+                            data: llmData.map(d => d.max),
+                            backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                            borderColor: 'rgba(239, 68, 68, 1)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'LLM Response Time Comparison (Successful Requests Only)'
+                        },
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: function(context) {
+                                    const llmIndex = context.dataIndex;
+                                    const successRate = llmData[llmIndex].successRate;
+                                    return `Success Rate: ${(successRate * 100).toFixed(1)}%`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'LLM Models'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Response Time (milliseconds)'
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    }
+                }
+            });
         }
 
         // Show detailed results
