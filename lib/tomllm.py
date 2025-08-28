@@ -634,6 +634,16 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
 
                 for item in results:
                     if isinstance(item, dict):
+                        # Only include items with score <= 1.50
+                        if "score" in item:
+                            try:
+                                score = float(item["score"])
+                                if score > 1.50:
+                                    continue  # Skip this item if score is too high
+                            except (ValueError, TypeError):
+                                # If score can't be converted to float, skip the item
+                                continue
+                        
                         filtered_item = {}
                         if "memory" in item:
                             filtered_item["memory"] = item["memory"]
