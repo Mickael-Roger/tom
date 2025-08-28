@@ -574,11 +574,8 @@ class TomLLM:
             },
         ]
         
-        # Build available tools description for prompt
-        tooling = json.dumps(available_modules)
-        
-        # Create triage prompt
-        prompt = f'''As an AI assistant, you have access to a wide range of functions, far more than your API allows. These functions are grouped into modules. A module is a logical grouping of functions for a specific theme.
+        # Create textual triage instructions (first system prompt)
+        triage_instructions = '''As an AI assistant, you have access to a wide range of functions, far more than your API allows. These functions are grouped into modules. A module is a logical grouping of functions for a specific theme.
 
 For each new user request, you have access to the conversation history.
 
@@ -588,12 +585,13 @@ If you need a function that is not in your list of tools to respond to the user'
 
 It is very important that you do not invent module names—only the modules provided in the list exist.
 
-Once you call the 'modules_needed_to_answer_user_prompt' function, the user's request will be sent back to you with the functions from the requested modules added to your tools. At that point, you can choose the appropriate function(s) to respond to the user's request.
-
-```json
-{tooling}
-```
-'''
+Once you call the 'modules_needed_to_answer_user_prompt' function, the user's request will be sent back to you with the functions from the requested modules added to your tools. At that point, you can choose the appropriate function(s) to respond to the user's request.'''
+        
+        # Create JSON modules prompt (second system prompt) - wrap in object structure
+        modules_data = {
+            "available_modules": available_modules
+        }
+        modules_json = json.dumps(modules_data, ensure_ascii=False, separators=(',', ':'))
         
         # Build conversation for triage with history
         from datetime import datetime
@@ -645,7 +643,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             
             tomlogger.info(f"🧠 Added {len(memory_data['results'])} memories to triage context", self.username, module_name="tomllm")
         
-        # For triage, use JSON format with separate triage system message
+        # For triage, use JSON format with separate triage system messages
         triage_conversation = self.get_conversation_with_history(
             client_type=client_type, 
             current_conversation=current_triage_conversation,
@@ -656,7 +654,8 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             gps=gps,
             personal_context=personal_context,
             use_json_format=True,
-            triage_instructions=prompt,
+            triage_instructions=triage_instructions,
+            triage_modules_json=modules_json,
             triage_mode=True
         )
         
@@ -1309,6 +1308,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                                       personal_context: Optional[str] = None,
                                       use_json_format: bool = True,
                                       triage_instructions: Optional[str] = None,
+                                      triage_modules_json: Optional[str] = None,
                                       triage_mode: bool = False) -> List[Dict[str, Any]]:
         """
         Build conversation with history prepended in correct order
@@ -1328,7 +1328,8 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             gps: GPS position string (empty if not available)
             personal_context: User's personal context from config
             use_json_format: Whether to use new JSON format (default True) or legacy format
-            triage_instructions: Triage prompt content (used only in triage_mode)
+            triage_instructions: Textual triage instructions (used only in triage_mode)
+            triage_modules_json: JSON string containing available modules (used only in triage_mode)
             triage_mode: Whether to build conversation for triage (separates system prompts)
             
         Returns:
@@ -1375,12 +1376,21 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                     full_conversation.extend(client_history)
                 
                 if triage_mode and triage_instructions:
-                    # TRIAGE MODE: Add separate triage system message
-                    triage_system_message = {
+                    # TRIAGE MODE: Add two separate triage system messages
+                    # First: textual instructions
+                    triage_instructions_message = {
                         "role": "system",
                         "content": triage_instructions
                     }
-                    full_conversation.append(triage_system_message)
+                    full_conversation.append(triage_instructions_message)
+                    
+                    # Second: JSON modules (if provided)
+                    if triage_modules_json:
+                        triage_modules_message = {
+                            "role": "system",
+                            "content": triage_modules_json
+                        }
+                        full_conversation.append(triage_modules_message)
                     
                     # 3. Add helper messages from current_conversation (memory, etc.)
                     # In triage mode, helper messages come after triage instructions
@@ -1394,7 +1404,8 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                     if user_messages:
                         full_conversation.extend(user_messages)
                         
-                    tomlogger.debug(f"Built triage conversation for {client_type}: 1 global + {len(client_history)} history + 1 triage + {len(helper_messages)} helpers + {len(user_messages)} user = {len(full_conversation)} total", 
+                    triage_systems_count = 2 if triage_modules_json else 1
+                    tomlogger.debug(f"Built triage conversation for {client_type}: 1 global + {len(client_history)} history + {triage_systems_count} triage + {len(helper_messages)} helpers + {len(user_messages)} user = {len(full_conversation)} total", 
                                    self.username, module_name="tomllm")
                 else:
                     # NORMAL MODE: Add helper messages then user messages
