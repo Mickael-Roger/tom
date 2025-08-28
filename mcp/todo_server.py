@@ -452,6 +452,24 @@ def description() -> str:
     return SERVER_DESCRIPTION
 
 
+@server.resource("description://prompt_consign")
+def prompt_consign() -> str:
+    """Returns upstream instructions with available todo lists in JSON format to optimize LLM performance."""
+    
+    # Get available lists
+    lists_result = todo_service.listAvailableLists()
+    available_lists = lists_result.get('lists', []) if lists_result.get('status') == 'success' else []
+    
+    # Build prompt consign in JSON format
+    consign_data = {
+        "description": "Available lists",
+        "list_name": available_lists,
+        "is_list_name_case_sensitive": True
+    }
+    
+    return json.dumps(consign_data, ensure_ascii=False, separators=(',', ':'))
+
+
 def main():
     """Main function to run the MCP server"""
     if tomlogger:

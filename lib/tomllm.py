@@ -21,17 +21,19 @@ class TomLLM:
     Tom LLM handler class for managing LLM interactions
     """
     
-    def __init__(self, config: Dict[str, Any], username: str):
+    def __init__(self, config: Dict[str, Any], username: str, mcp_services: Optional[Dict[str, Dict[str, Any]]] = None):
         """
         Initialize TomLLM instance
         
         Args:
             config: Configuration dictionary from config.yml
             username: Username for logging context
+            mcp_services: Optional dictionary of MCP service configurations with their LLM and complexity settings
         """
         self.config = config
         self.username = username
         self.global_config = config.get('global', {})
+        self.mcp_services = mcp_services or {}
         
         # Initialize LLM configuration
         self.llms_dict = {}  # Dict: llm_name -> {api, env_var, models}
@@ -50,11 +52,20 @@ class TomLLM:
             'tui': []       # Terminal UI client
         }
         
+        # Debug logging configuration
+        self.debug_llm = os.environ.get('TOM_DEBUG_LLM', '').lower() in ['true', '1']
+        if self.debug_llm:
+            self._setup_debug_logging()
+        
         # Setup LLMs from configuration
         self._setup_llms()
         
         tomlogger.info(f"TomLLM initialized with {len(self.llms_dict)} LLM providers", 
                       username, module_name="tomllm")
+        
+        if self.debug_llm:
+            tomlogger.info(f"LLM debug logging enabled for user {username}", 
+                          username, module_name="tomllm")
     
     def _setup_llms(self):
         """Setup LLM configurations from config"""
@@ -133,6 +144,99 @@ class TomLLM:
         tomlogger.info(f"✅ TTS LLM: {self.tts_llm}", self.username, module_name="tomllm")
         tomlogger.info(f"✅ Triage LLM: {self.triage_llm}", self.username, module_name="tomllm")
 
+    def get_service_llm_config(self, service_name: str) -> tuple[str, int]:
+        """
+        Get LLM provider and complexity for a specific MCP service
+        
+        Args:
+            service_name: Name of the MCP service
+            
+        Returns:
+            Tuple of (llm_provider, complexity) - falls back to defaults if service config not found
+        """
+        if service_name in self.mcp_services:
+            service_config = self.mcp_services[service_name]
+            service_llm = service_config.get('llm', self.default_llm)
+            service_complexity = service_config.get('complexity', 1)  # Default complexity 1
+            
+            # Validate that the specified LLM exists
+            if service_llm not in self.llms_dict:
+                tomlogger.warning(f"Service '{service_name}' specifies unknown LLM '{service_llm}', using default '{self.default_llm}'", 
+                                self.username, module_name="tomllm")
+                service_llm = self.default_llm
+            
+            # Validate complexity range
+            if not isinstance(service_complexity, int) or service_complexity not in [0, 1, 2]:
+                tomlogger.warning(f"Service '{service_name}' has invalid complexity '{service_complexity}', using default 1", 
+                                self.username, module_name="tomllm")
+                service_complexity = 1
+            
+            return service_llm, service_complexity
+        
+        # Default fallback
+        return self.default_llm, 1
+
+    def _setup_debug_logging(self):
+        """Setup LLM debug logging infrastructure"""
+        try:
+            # Ensure user-specific logs directory exists
+            self.debug_logs_dir = f"/data/logs/{self.username}"
+            os.makedirs(self.debug_logs_dir, exist_ok=True)
+            
+            tomlogger.info(f"LLM debug logging directory: {self.debug_logs_dir}", 
+                          self.username, module_name="tomllm")
+                          
+        except Exception as e:
+            tomlogger.error(f"Failed to setup LLM debug logging: {e}", 
+                          self.username, module_name="tomllm")
+            self.debug_llm = False
+
+    def _log_llm_debug(self, request_data: Dict[str, Any], response_data: Any, 
+                      llm_provider: str, model: str, complexity: int):
+        """
+        Log LLM request and response to debug file
+        
+        Creates JSON log files in format: /data/logs/USERNAME/llm_debug_YYYY-MM-DD_HH-MM-SS.json
+        Each file contains a single request/response pair with metadata
+        
+        Args:
+            request_data: The request data sent to LLM
+            response_data: The response received from LLM  
+            llm_provider: Name of the LLM provider used
+            model: Model name used
+            complexity: Complexity level used
+        """
+        if not self.debug_llm:
+            return
+            
+        try:
+            # Generate unique filename with timestamp
+            timestamp = datetime.now()
+            log_filename = f"llm_debug_{timestamp.strftime('%Y-%m-%d_%H-%M-%S')}.json"
+            debug_log_path = os.path.join(self.debug_logs_dir, log_filename)
+            
+            # Prepare debug log entry
+            debug_entry = {
+                "timestamp": timestamp.isoformat(),
+                "username": self.username,
+                "llm_provider": llm_provider,
+                "model": model,
+                "complexity": complexity,
+                "request": request_data,
+                "response": response_data
+            }
+            
+            # Write to unique file with pretty printing
+            with open(debug_log_path, 'w', encoding='utf-8') as f:
+                json.dump(debug_entry, f, indent=2, ensure_ascii=False, separators=(',', ': '))
+            
+            tomlogger.debug(f"Logged LLM debug entry to {debug_log_path}", 
+                          self.username, module_name="tomllm")
+                          
+        except Exception as e:
+            tomlogger.error(f"Failed to log LLM debug entry: {e}", 
+                          self.username, module_name="tomllm")
+
     def callLLM(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict]] = None, 
                 complexity: int = 0, llm: Optional[str] = None) -> Any:
         """
@@ -176,8 +280,9 @@ class TomLLM:
                 time.sleep(sleep_time)
             self.mistral_last_request = time.time()
         
-        # Debug logging - log full JSON content when in DEBUG mode
-        if tomlogger.logger and tomlogger.logger.logger.level <= 10:  # DEBUG level = 10
+        # Prepare request data for debug logging
+        request_data = None
+        if self.debug_llm:
             try:
                 request_data = {
                     "model": model,
@@ -185,6 +290,20 @@ class TomLLM:
                     "tools": tools,
                     "complexity": complexity
                 }
+            except Exception as json_error:
+                tomlogger.debug(f"Failed to prepare request data for debug logging: {json_error}", 
+                               self.username, module_name="tomllm")
+
+        # Debug logging - log full JSON content when in DEBUG mode
+        if tomlogger.logger and tomlogger.logger.logger.level <= 10:  # DEBUG level = 10
+            try:
+                if not request_data:
+                    request_data = {
+                        "model": model,
+                        "messages": messages,
+                        "tools": tools,
+                        "complexity": complexity
+                    }
                 tomlogger.debug(f"📤 Full LLM request JSON: {json.dumps(request_data, indent=2, ensure_ascii=False)}", 
                                self.username, module_name="tomllm")
             except Exception as json_error:
@@ -247,12 +366,22 @@ class TomLLM:
                             messages=messages,
                         )
                 
+                # Prepare response data for debug logging
+                response_data = None
+                if self.debug_llm:
+                    try:
+                        response_data = response.model_dump() if hasattr(response, 'model_dump') else str(response)
+                    except Exception as json_error:
+                        tomlogger.debug(f"Failed to prepare response data for debug logging: {json_error}", 
+                                       self.username, module_name="tomllm")
+                        response_data = {"error": "Failed to serialize response", "raw_response": str(response)}
+
                 # Debug logging - log full JSON content when in DEBUG mode
                 if tomlogger.logger and tomlogger.logger.logger.level <= 10:  # DEBUG level = 10
                     try:
-                        # Convert response to dict for JSON serialization
-                        response_dict = response.model_dump() if hasattr(response, 'model_dump') else str(response)
-                        tomlogger.debug(f"📥 Full LLM response JSON: {json.dumps(response_dict, indent=2, ensure_ascii=False)}", 
+                        if not response_data:
+                            response_data = response.model_dump() if hasattr(response, 'model_dump') else str(response)
+                        tomlogger.debug(f"📥 Full LLM response JSON: {json.dumps(response_data, indent=2, ensure_ascii=False)}", 
                                        self.username, module_name="tomllm")
                     except Exception as json_error:
                         tomlogger.debug(f"📥 LLM Response from {llm}: {str(response)} (JSON serialization failed: {json_error})", 
@@ -260,6 +389,10 @@ class TomLLM:
                 else:
                     tomlogger.debug(f"📥 LLM Response from {llm}: {str(response)}", 
                                    self.username, module_name="tomllm")
+                
+                # Log to debug file if enabled
+                if self.debug_llm and request_data and response_data:
+                    self._log_llm_debug(request_data, response_data, llm, model, complexity)
                 
                 # Validate response
                 if not response:
@@ -677,6 +810,32 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                 last_user_message = user_messages[-1]
                 self.add_user_request(client_type, last_user_message.get('content', ''))
         
+        # Determine complexity based on selected modules and their configurations
+        if selected_modules:
+            max_service_complexity = complexity  # Use provided complexity as minimum
+            service_llm_override = None
+            
+            # Check if all selected services use the same LLM and get max complexity
+            service_llms = set()
+            for module_name in selected_modules:
+                service_llm, service_complexity = self.get_service_llm_config(module_name)
+                service_llms.add(service_llm)
+                max_service_complexity = max(max_service_complexity, service_complexity)
+            
+            # If all services use the same LLM (and it's different from default), use that LLM
+            if len(service_llms) == 1 and service_llms != {self.default_llm}:
+                service_llm_override = list(service_llms)[0]
+                tomlogger.info(f"🎯 All selected modules use LLM '{service_llm_override}', using for execution", 
+                              self.username, module_name="tomllm")
+            elif len(service_llms) > 1:
+                tomlogger.info(f"📊 Selected modules use different LLMs: {service_llms}, using default '{self.default_llm}'", 
+                              self.username, module_name="tomllm")
+            
+            # Use the calculated complexity
+            complexity = max_service_complexity
+            tomlogger.info(f"📈 Using complexity level {complexity} based on selected modules configuration", 
+                          self.username, module_name="tomllm")
+        
         tomlogger.info(f"🚀 Starting tool execution with {len(tools)} tools, max {max_iterations} iterations", 
                       self.username, module_name="tomllm")
         
@@ -687,7 +846,10 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             
             # For each iteration, use the conversation as-is (tools will drive the conversation)
             current_messages = working_conversation.copy()
-            response = self.callLLM(messages=current_messages, tools=tools, complexity=complexity)
+            
+            # Use service-specific LLM if available
+            llm_to_use = service_llm_override if 'service_llm_override' in locals() and service_llm_override else None
+            response = self.callLLM(messages=current_messages, tools=tools, complexity=complexity, llm=llm_to_use)
             
             if not response:
                 tomlogger.error(f"LLM call failed during tool execution iteration {iteration}", 

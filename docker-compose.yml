@@ -26,6 +26,7 @@ services:
     restart: always
     environment:
       - TOM_USERNAME=mickael
+      - TOM_DEBUG_LLM=true
     networks:
       - tom
     volumes:

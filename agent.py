@@ -662,12 +662,13 @@ class TomAgent:
         self.username = username
         self.config = config
         
-        # Initialize TomLLM handler
-        self.tomllm = TomLLM(config, username)
-        tomlogger.info(f"Agent initialized for {username} with LLMs: {list(self.tomllm.llms_dict.keys())}", username, "sys", "agent")
-        
-        # Initialize MCP client
+        # Initialize MCP client first to get service configurations
         self.mcp_client = MCPClient(username, config)
+        
+        # Initialize TomLLM handler with MCP service configurations
+        mcp_service_configs = self.mcp_client.get_services()
+        self.tomllm = TomLLM(config, username, mcp_service_configs)
+        tomlogger.info(f"Agent initialized for {username} with LLMs: {list(self.tomllm.llms_dict.keys())}", username, "sys", "agent")
         
         # Initialize MCP connections in background
         self.mcp_client.init_connections_background()
@@ -1051,12 +1052,8 @@ class TomAgent:
                 tomlogger.info(f"🎯 Executing LLM request with {len(tools)} tools from {len(required_modules)} modules", 
                               self.username, "api", "agent")
                 
-                # Determine complexity based on selected modules
-                max_complexity = 1  # Default complexity
-                for module_name in required_modules:
-                    if module_name in mcp_connections:
-                        module_complexity = mcp_connections[module_name].get('complexity', 1)
-                        max_complexity = max(max_complexity, module_complexity)
+                # Default complexity - TomLLM will automatically use service-specific complexity
+                base_complexity = 1
                 
                 # Execute with tools using the full conversation loop
                 # Need to run async function in event loop
@@ -1070,7 +1067,7 @@ class TomAgent:
                     self.tomllm.execute_request_with_tools(
                         conversation=conversation,
                         tools=tools,
-                        complexity=max_complexity,
+                        complexity=base_complexity,
                         max_iterations=10,
                         mcp_client=self.mcp_client,
                         client_type=client_type,
