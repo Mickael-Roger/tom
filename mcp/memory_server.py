@@ -59,7 +59,7 @@ if tomlogger:
     tomlogger.info(f"✅ Memory service initialized for user: {TOM_USER}", module_name="memory")
 
 # Server configuration and description
-SERVER_DESCRIPTION = """This module manages personal memories and context using mem0. 
+SERVER_DESCRIPTION = """This module manages personal memories and context using mem0. Only load this module when the user explicitly requests memory-related operations such as storing information, searching memories, or managing stored data.
 
 It provides functions to store, search, delete, and manage user memories. The memory system automatically processes conversations to extract and store relevant information about users."""
 
