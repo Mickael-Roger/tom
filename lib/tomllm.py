@@ -645,7 +645,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             
             tomlogger.info(f"🧠 Added {len(memory_data['results'])} memories to triage context", self.username, module_name="tomllm")
         
-        # For triage, use JSON format with the triage instructions in a dedicated section
+        # For triage, use JSON format with separate triage system message
         triage_conversation = self.get_conversation_with_history(
             client_type=client_type, 
             current_conversation=current_triage_conversation,
@@ -656,7 +656,8 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             gps=gps,
             personal_context=personal_context,
             use_json_format=True,
-            triage_instructions=prompt
+            triage_instructions=prompt,
+            triage_mode=True
         )
         
         tomlogger.info(f"🔍 Starting module triage for request: {user_request[:100]}...", 
@@ -1177,7 +1178,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
     
     def _create_json_system_message(self, tom_persona: str, today: str, weeknumber: int, gps: str, 
                                    personal_context: str, client_type: str, 
-                                   available_tools: bool = False, triage_instructions: str = None) -> Dict[str, Any]:
+                                   available_tools: bool = False) -> Dict[str, Any]:
         """
         Create a single JSON-formatted system message that replaces temporal, tom prompt, personal context messages
         
@@ -1189,7 +1190,6 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             personal_context: User's personal context from config
             client_type: 'web', 'android', or 'tui'
             available_tools: Whether tools are available for this conversation
-            triage_instructions: Special instructions for triage mode (if provided)
             
         Returns:
             JSON-formatted system message dict
@@ -1243,10 +1243,6 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         # Add user profile if available - convert from text/YAML to JSON
         if personal_context and personal_context.strip():
             json_content["user_profile"] = self._parse_user_profile_to_json(personal_context.strip())
-        
-        # Add triage instructions if provided (special mode for module triage)
-        if triage_instructions:
-            json_content["triage_instructions"] = triage_instructions
         
         # Add specific formatting rules based on client type
         if client_type == 'tui':
@@ -1312,7 +1308,8 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                                       gps: Optional[str] = None,
                                       personal_context: Optional[str] = None,
                                       use_json_format: bool = True,
-                                      triage_instructions: Optional[str] = None) -> List[Dict[str, Any]]:
+                                      triage_instructions: Optional[str] = None,
+                                      triage_mode: bool = False) -> List[Dict[str, Any]]:
         """
         Build conversation with history prepended in correct order
         
@@ -1331,10 +1328,13 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             gps: GPS position string (empty if not available)
             personal_context: User's personal context from config
             use_json_format: Whether to use new JSON format (default True) or legacy format
+            triage_instructions: Triage prompt content (used only in triage_mode)
+            triage_mode: Whether to build conversation for triage (separates system prompts)
             
         Returns:
-            Full conversation: json_system_message → history → current messages (if use_json_format=True)
-            OR legacy: temporal → tom_prompt → personal_context → formatting → history → current messages (if use_json_format=False)
+            Triage mode: global_system → history → triage_system → helper_systems → user_message
+            Normal mode: global_system → history → helper_systems → user_messages
+            Legacy mode: temporal → tom_prompt → personal_context → formatting → history → current messages
         """
         if client_type not in self.history:
             tomlogger.warning(f"Invalid client type '{client_type}', using empty history", 
@@ -1355,23 +1355,66 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         full_conversation = []
         
         if use_json_format:
-            # NEW JSON FORMAT: Build conversation with single JSON system message
+            # NEW JSON FORMAT: Build conversation with separate system messages
             
             # Use new JSON system message if all required parameters are provided
             if tom_persona is not None and today is not None and weeknumber is not None:
-                json_system_message = self._create_json_system_message(
+                # 1. Global system message (without triage instructions)
+                global_system_message = self._create_json_system_message(
                     tom_persona=tom_persona,
                     today=today,
                     weeknumber=weeknumber,
                     gps=gps or "",
                     personal_context=personal_context or "",
-                    client_type=client_type,
-                    triage_instructions=triage_instructions
+                    client_type=client_type
                 )
-                full_conversation.append(json_system_message)
+                full_conversation.append(global_system_message)
                 
-                tomlogger.debug(f"Built conversation for {client_type} with JSON format: 1 json_system + {len(client_history)} history + {len(current_conversation)} current = {len(full_conversation) + len(client_history) + len(current_conversation)} total", 
-                               self.username, module_name="tomllm")
+                # 2. Add history if exists
+                if client_history:
+                    full_conversation.extend(client_history)
+                
+                if triage_mode and triage_instructions:
+                    # TRIAGE MODE: Add separate triage system message
+                    triage_system_message = {
+                        "role": "system",
+                        "content": triage_instructions
+                    }
+                    full_conversation.append(triage_system_message)
+                    
+                    # 3. Add helper messages from current_conversation (memory, etc.)
+                    # In triage mode, helper messages come after triage instructions
+                    helper_messages = [msg for msg in current_conversation if msg.get('role') == 'system']
+                    user_messages = [msg for msg in current_conversation if msg.get('role') != 'system']
+                    
+                    if helper_messages:
+                        full_conversation.extend(helper_messages)
+                    
+                    # 4. Add user messages last
+                    if user_messages:
+                        full_conversation.extend(user_messages)
+                        
+                    tomlogger.debug(f"Built triage conversation for {client_type}: 1 global + {len(client_history)} history + 1 triage + {len(helper_messages)} helpers + {len(user_messages)} user = {len(full_conversation)} total", 
+                                   self.username, module_name="tomllm")
+                else:
+                    # NORMAL MODE: Add helper messages then user messages
+                    # 3. Add helper messages from current_conversation (behavior, memory, etc.)
+                    helper_messages = [msg for msg in current_conversation if msg.get('role') == 'system']
+                    user_messages = [msg for msg in current_conversation if msg.get('role') != 'system']
+                    
+                    if helper_messages:
+                        full_conversation.extend(helper_messages)
+                    
+                    # 4. Add user messages last
+                    if user_messages:
+                        full_conversation.extend(user_messages)
+                        
+                    tomlogger.debug(f"Built normal conversation for {client_type}: 1 global + {len(client_history)} history + {len(helper_messages)} helpers + {len(user_messages)} user = {len(full_conversation)} total", 
+                                   self.username, module_name="tomllm")
+                
+                # Early return - conversation is already complete
+                return full_conversation
+                
             else:
                 tomlogger.warning(f"Missing required parameters for JSON format (tom_persona: {tom_persona is not None}, today: {today is not None}, weeknumber: {weeknumber is not None}), falling back to legacy format", 
                                self.username, module_name="tomllm")
