@@ -140,6 +140,18 @@ class MemoryService:
                 if tomlogger:
                     tomlogger.debug("No OpenAI API key found in config or environment", module_name="memory")
             
+            openrouter_key = memory_config.get('openrouter_api_key')
+            if openai_key:
+                os.environ['OPENROUTER_API_KEY'] = openrouter_key
+                if tomlogger:
+                    tomlogger.debug("Openrouter API key set from config", module_name="memory")
+            elif 'OPENROUTER_API_KEY' in os.environ:
+                if tomlogger:
+                    tomlogger.debug("Using existing OPENROUTER_API_KEY from environment", module_name="memory")
+            else:
+                if tomlogger:
+                    tomlogger.debug("No Openrouer API key found in config or environment", module_name="memory")
+            
             # Create Chroma database path in /data
             chroma_path = "/data/chroma_storage"
             os.makedirs(chroma_path, exist_ok=True)

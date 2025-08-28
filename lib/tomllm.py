@@ -470,7 +470,7 @@ class TomLLM:
                         "search_memories",
                         {
                             "query": user_request,
-                            "limit": 5  # Limit to 5 most relevant memories
+                            "limit": 10  # Limit to 5 most relevant memories
                         }
                     )
                     

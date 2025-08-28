@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
 
 # Install dependencies
 RUN pip install --upgrade pip && \
-    pip install requests mcp fastmcp mem0ai PyYAML chromadb schedule cherrypy
+    pip install requests mcp fastmcp mem0ai PyYAML chromadb schedule cherrypy litellm
 
 # Create user with UID 1000
 RUN groupadd -g 1000 memory && \
