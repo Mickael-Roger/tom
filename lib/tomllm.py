@@ -828,7 +828,73 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                 tomlogger.debug(f"Failed to apply behavior prompts: {e}", self.username, module_name="tomllm")
                 enhanced_conversation = conversation
         
-        working_conversation = copy.deepcopy(enhanced_conversation)
+        # Add memory information if memory service is available
+        memory_enhanced_conversation = enhanced_conversation
+        if mcp_client:
+            # Extract user request for memory retrieval
+            user_messages = [msg for msg in enhanced_conversation if msg.get('role') == 'user']
+            if user_messages:
+                last_user_message = user_messages[-1]
+                user_request = last_user_message.get('content', '')
+                
+                if user_request.strip():
+                    try:
+                        # Retrieve relevant memories
+                        memory_data = await self._retrieve_memory_async(user_request, mcp_client)
+                        
+                        # Add memory information as system message if available
+                        if memory_data and memory_data.get("results"):
+                            try:
+                                results = memory_data["results"]['results']
+                                retrieved_memories = []
+
+                                for item in results:
+                                    if isinstance(item, dict):
+                                        # Only include items with score <= 1.50
+                                        if "score" in item:
+                                            try:
+                                                score = float(item["score"])
+                                                if score > 1.50:
+                                                    continue  # Skip this item if score is too high
+                                            except (ValueError, TypeError):
+                                                # If score can't be converted to float, skip the item
+                                                continue
+                                        
+                                        filtered_item = {}
+                                        if "memory" in item:
+                                            filtered_item["memory"] = item["memory"]
+                                        if "created_at" in item:
+                                            filtered_item["created_at"] = item["created_at"]
+                                        if "updated_at" in item:
+                                            filtered_item["updated_at"] = item["updated_at"]
+                                        retrieved_memories.append(filtered_item)
+                                
+                                if retrieved_memories:
+                                    memory_info = {
+                                        "description": "Relevant information retrieved from memory that may help answer the user's request",
+                                        "retrieved_memories": retrieved_memories,
+                                    }
+                                    
+                                    memory_message = {
+                                        "role": "system", 
+                                        "content": json.dumps(memory_info, ensure_ascii=False, separators=(',', ':'))
+                                    }
+                                    
+                                    # Insert memory message at the beginning of the conversation (after system messages)
+                                    system_messages = [msg for msg in enhanced_conversation if msg.get('role') == 'system']
+                                    non_system_messages = [msg for msg in enhanced_conversation if msg.get('role') != 'system']
+                                    
+                                    memory_enhanced_conversation = system_messages + [memory_message] + non_system_messages
+                                    
+                                    tomlogger.info(f"🧠 Added {len(retrieved_memories)} memories to execution context", self.username, module_name="tomllm")
+                                    
+                            except (TypeError, KeyError) as e:
+                                tomlogger.warning(f"Failed to process memory results for execution: {e}", self.username, module_name="tomllm")
+                                
+                    except Exception as e:
+                        tomlogger.debug(f"Error retrieving memories for execution: {e}", self.username, module_name="tomllm")
+        
+        working_conversation = copy.deepcopy(memory_enhanced_conversation)
         iteration = 0
         
         # Extract user request from conversation for history tracking
