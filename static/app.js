@@ -147,11 +147,15 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     
         // Envoyer la requête à /process sans attendre sa réponse
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutes timeout
+        
         const processRequest = fetch("/process", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
+            body: JSON.stringify(payload),
+            signal: controller.signal
+        }).finally(() => clearTimeout(timeoutId));
     
         // Fetch immédiat de /tasks pour gérer les nouveaux messages de tâches
         fetch("/tasks", { method: "GET" })
