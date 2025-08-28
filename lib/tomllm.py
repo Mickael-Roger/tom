@@ -615,6 +615,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                     asyncio.set_event_loop(loop)
                 
                 memory_data = loop.run_until_complete(self._retrieve_memory_async(user_request, mcp_client))
+
             except Exception as e:
                 tomlogger.debug(f"Error during memory retrieval: {e}", self.username, module_name="tomllm")
                 memory_data = None
@@ -626,22 +627,40 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         
         # Add memory information as system message if available
         if memory_data and memory_data.get("results"):
-            memory_info = {
-                "description": "Relevant information retrieved from memory that may help answer the user's request",
-                "source": "memory_system",
-                "retrieved_memories": memory_data["results"],
-                "total_memories_found": memory_data.get("count", len(memory_data["results"]))
-            }
+            # Extract only memory, created_at, and updated_at fields from results list
+            try:
+                results = memory_data["results"]['results']
+                retrieved_memories = []
+
+                for item in results:
+                    if isinstance(item, dict):
+                        filtered_item = {}
+                        if "memory" in item:
+                            filtered_item["memory"] = item["memory"]
+                        if "created_at" in item:
+                            filtered_item["created_at"] = item["created_at"]
+                        if "updated_at" in item:
+                            filtered_item["updated_at"] = item["updated_at"]
+                        retrieved_memories.append(filtered_item)
+                
+                memory_info = {
+                    "description": "Relevant information retrieved from memory that may help answer the user's request",
+                    "retrieved_memories": retrieved_memories,
+                }
+            except (TypeError, KeyError) as e:
+                tomlogger.warning(f"Failed to process memory results: {e}", self.username, module_name="tomllm")
+                memory_info = None
             
-            memory_message = {
-                "role": "system", 
-                "content": json.dumps(memory_info, ensure_ascii=False, separators=(',', ':'))
-            }
+            if memory_info is not None:
+                memory_message = {
+                    "role": "system", 
+                    "content": json.dumps(memory_info, ensure_ascii=False, separators=(',', ':'))
+                }
+                
+                # Insert memory message after user request
+                current_triage_conversation.append(memory_message)
             
-            # Insert memory message after user request
-            current_triage_conversation.append(memory_message)
-            
-            tomlogger.info(f"🧠 Added {len(memory_data['results'])} memories to triage context", self.username, module_name="tomllm")
+                tomlogger.info(f"🧠 Added {len(memory_data['results'])} memories to triage context", self.username, module_name="tomllm")
         
         # For triage, use JSON format with separate triage system messages
         triage_conversation = self.get_conversation_with_history(
