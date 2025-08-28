@@ -9,6 +9,8 @@ import time
 import copy
 import threading
 import asyncio
+import yaml
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 from litellm import completion
 import tomlogger
@@ -569,7 +571,64 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             tomlogger.info(f"💭 Triage completed - no specific modules needed, will use general knowledge", 
                           self.username, module_name="tomllm")
         
+        # Log triage request to YAML file
+        self._log_triage_request(user_request, load_modules)
+        
+        # Log triage request to YAML file
+        self._log_triage_request(user_request, load_modules)
+        
         return load_modules
+    
+    def _log_triage_request(self, user_request: str, loaded_modules: List[str]):
+        """
+        Log triage request to YAML file in /data/logs/USERNAME/
+        
+        Args:
+            user_request: The user's request text
+            loaded_modules: List of module names that were loaded
+        """
+        try:
+            # Get username from environment variable
+            username = os.environ.get('TOM_USERNAME', 'unknown')
+            
+            # Ensure user-specific logs directory exists
+            logs_dir = f"/data/logs/{username}"
+            os.makedirs(logs_dir, exist_ok=True)
+            
+            # Generate log file path with current date
+            log_filename = f"triage_{datetime.now().strftime('%Y-%m-%d')}.yml"
+            log_filepath = os.path.join(logs_dir, log_filename)
+            
+            # Prepare log entry
+            log_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "username": self.username,
+                "prompt": user_request,
+                "loaded_modules": loaded_modules
+            }
+            
+            # Load existing entries or create empty list
+            existing_entries = []
+            if os.path.exists(log_filepath):
+                try:
+                    with open(log_filepath, 'r', encoding='utf-8') as f:
+                        existing_entries = yaml.safe_load(f) or []
+                except Exception as e:
+                    tomlogger.debug(f"Could not load existing triage log file: {e}", self.username, module_name="tomllm")
+                    existing_entries = []
+            
+            # Append new entry
+            existing_entries.append(log_entry)
+            
+            # Write back to file
+            with open(log_filepath, 'w', encoding='utf-8') as f:
+                yaml.dump(existing_entries, f, default_flow_style=False, allow_unicode=True, 
+                         default_style=None, sort_keys=False)
+            
+            tomlogger.debug(f"Logged triage request to {log_filepath}", self.username, module_name="tomllm")
+            
+        except Exception as e:
+            tomlogger.warning(f"Failed to log triage request: {e}", self.username, module_name="tomllm")
     
     def triage_modules_sync(self, user_request: str, position: Optional[Dict[str, float]], 
                            available_modules: List[Dict[str, str]], client_type: str, personal_context: str = "", 
