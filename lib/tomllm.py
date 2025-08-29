@@ -107,11 +107,15 @@ class TomLLM:
             # Configure the LLM environment variable
             os.environ[env_var] = api_key
             
+            # Get optional extra_body options
+            options = llm_config.get("options")
+            
             # Store LLM configuration
             self.llms_dict[llm_name] = {
                 "api": api_key,
                 "env_var": env_var,
-                "models": models
+                "models": models,
+                "options": options if options else None
             }
             
             tomlogger.info(f"✅ Configured LLM '{llm_name}' with models: {models}", 
@@ -268,6 +272,9 @@ class TomLLM:
         # Get model for complexity level
         model = self.llms_dict[llm]["models"][complexity]
         
+        # Get extra_body options if configured
+        extra_body_options = self.llms_dict[llm].get("options")
+        
         # Log LLM usage
         tomlogger.info(f"🤖 Using LLM: {llm} | Model: {model} | Complexity: {complexity}", 
                       self.username, module_name="tomllm")
@@ -335,39 +342,51 @@ class TomLLM:
                 if tools:
                     if is_gpt5:
                         # GPT-5 models use verbosity and reasoning_effort instead of temperature
-                        response = completion(
-                            model=model,
-                            verbosity="low",
-                            reasoning_effort="minimal",
-                            messages=messages,
-                            tools=tools,
-                            tool_choice="auto",
-                            allowed_openai_params=["reasoning_effort", "verbosity"],
-                        )
+                        completion_params = {
+                            "model": model,
+                            "verbosity": "low",
+                            "reasoning_effort": "minimal",
+                            "messages": messages,
+                            "tools": tools,
+                            "tool_choice": "auto",
+                            "allowed_openai_params": ["reasoning_effort", "verbosity"],
+                        }
+                        if extra_body_options:
+                            completion_params["extra_body"] = extra_body_options
+                        response = completion(**completion_params)
                     else:
-                        response = completion(
-                            model=model,
-                            temperature=0,
-                            messages=messages,
-                            tools=tools,
-                            tool_choice="auto",
-                        )
+                        completion_params = {
+                            "model": model,
+                            "temperature": 0,
+                            "messages": messages,
+                            "tools": tools,
+                            "tool_choice": "auto",
+                        }
+                        if extra_body_options:
+                            completion_params["extra_body"] = extra_body_options
+                        response = completion(**completion_params)
                 else:
                     if is_gpt5:
                         # GPT-5 models use verbosity and reasoning_effort instead of temperature
-                        response = completion(
-                            model=model,
-                            verbosity="low",
-                            reasoning_effort="minimal",
-                            messages=messages,
-                            allowed_openai_params=["reasoning_effort", "verbosity"],
-                        )
+                        completion_params = {
+                            "model": model,
+                            "verbosity": "low",
+                            "reasoning_effort": "minimal",
+                            "messages": messages,
+                            "allowed_openai_params": ["reasoning_effort", "verbosity"],
+                        }
+                        if extra_body_options:
+                            completion_params["extra_body"] = extra_body_options
+                        response = completion(**completion_params)
                     else:
-                        response = completion(
-                            model=model,
-                            temperature=0,
-                            messages=messages,
-                        )
+                        completion_params = {
+                            "model": model,
+                            "temperature": 0,
+                            "messages": messages,
+                        }
+                        if extra_body_options:
+                            completion_params["extra_body"] = extra_body_options
+                        response = completion(**completion_params)
                 
                 # Prepare response data for debug logging
                 response_data = None

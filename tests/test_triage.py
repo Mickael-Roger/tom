@@ -457,7 +457,8 @@ def run_triage_tests() -> Dict[str, Any]:
             continue
         
         main_llm_config = llm_configs[llm_name]
-        if not setup_llm_environment(main_llm_config):
+        setup_success, extra_body_options = setup_llm_environment(main_llm_config)
+        if not setup_success:
             update_live_report(log={'level': 'ERROR', 'message': f"Failed to setup environment for {llm_name}"})
             continue
         
@@ -492,7 +493,7 @@ def run_triage_tests() -> Dict[str, Any]:
             
             test_result = test_single_prompt(
                 llm_name, model, prompt, expected_modules, 
-                system_message, tools
+                system_message, tools, extra_body_options
             )
             
             test_result['prompt'] = prompt
@@ -586,26 +587,32 @@ def load_test_cases(test_cases_path: str = '/app/tests/triage_test_cases.yaml') 
         return {}
 
 
-def setup_llm_environment(llm_config: Dict[str, Any]) -> bool:
-    """Setup environment variables for LLM provider"""
+def setup_llm_environment(llm_config: Dict[str, Any]) -> tuple[bool, Optional[Dict[str, Any]]]:
+    """Setup environment variables for LLM provider and return extra_body options"""
     debug_print(f"Setting up LLM environment with config keys: {list(llm_config.keys())}")
     try:
         env_var = llm_config.get("env_var")
         api_key = llm_config.get("api")
+        options = llm_config.get("options")
         
         debug_print(f"Environment variable: {env_var}")
         debug_print(f"API key present: {bool(api_key)}")
+        debug_print(f"Extra body options present: {bool(options)}")
         
         if not env_var or not api_key:
             debug_print("Missing env_var or api_key")
-            return False
+            return False, None
         
         os.environ[env_var] = api_key
         debug_print(f"Set environment variable {env_var}")
-        return True
+        
+        if options:
+            debug_print(f"Returning extra_body options: {options}")
+        
+        return True, options
     except Exception as e:
         debug_print(f"Exception in setup_llm_environment: {e}")
-        return False
+        return False, None
 
 
 def create_triage_prompt() -> str:
@@ -721,7 +728,7 @@ def create_json_system_message(triage_instructions: str, available_modules: List
     }
 
 
-def call_llm_with_retry(model: str, messages: List[Dict], tools: List[Dict], max_retries: int = 2):
+def call_llm_with_retry(model: str, messages: List[Dict], tools: List[Dict], max_retries: int = 2, extra_body: Optional[Dict[str, Any]] = None):
     """Call LLM with retry logic"""
     from litellm import completion
     import time
@@ -746,24 +753,32 @@ def call_llm_with_retry(model: str, messages: List[Dict], tools: List[Dict], max
             
             if is_gpt5:
                 debug_print("Using GPT-5 specific parameters")
-                response = completion(
-                    model=model,
-                    verbosity="low",
-                    reasoning_effort="minimal",
-                    messages=messages,
-                    tools=tools,
-                    tool_choice="auto",
-                    allowed_openai_params=["reasoning_effort", "verbosity"],
-                )
+                completion_params = {
+                    "model": model,
+                    "verbosity": "low",
+                    "reasoning_effort": "minimal",
+                    "messages": messages,
+                    "tools": tools,
+                    "tool_choice": "auto",
+                    "allowed_openai_params": ["reasoning_effort", "verbosity"],
+                }
+                if extra_body:
+                    completion_params["extra_body"] = extra_body
+                    debug_print(f"Using extra_body options: {extra_body}")
+                response = completion(**completion_params)
             else:
                 debug_print("Using standard parameters")
-                response = completion(
-                    model=model,
-                    temperature=0,
-                    messages=messages,
-                    tools=tools,
-                    tool_choice="auto",
-                )
+                completion_params = {
+                    "model": model,
+                    "temperature": 0,
+                    "messages": messages,
+                    "tools": tools,
+                    "tool_choice": "auto",
+                }
+                if extra_body:
+                    completion_params["extra_body"] = extra_body
+                    debug_print(f"Using extra_body options: {extra_body}")
+                response = completion(**completion_params)
             
             debug_print(f"LLM call successful. Response finish_reason: {response.choices[0].finish_reason if response and response.choices else 'unknown'}")
             if DEBUG and response and response.choices:
@@ -857,7 +872,7 @@ def extract_called_modules(response) -> List[str]:
 
 
 def test_single_prompt(llm_name: str, model: str, prompt: str, expected_modules: List[str], 
-                      system_message: Dict, tools: List[Dict]) -> Dict[str, Any]:
+                      system_message: Dict, tools: List[Dict], extra_body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Test a single prompt with a specific model"""
     import time
     
@@ -876,7 +891,7 @@ def test_single_prompt(llm_name: str, model: str, prompt: str, expected_modules:
         debug_print(f"Created conversation with {len(messages)} messages")
         
         # Call LLM
-        response = call_llm_with_retry(model, messages, tools)
+        response = call_llm_with_retry(model, messages, tools, extra_body=extra_body)
         end_time = time.perf_counter()
         execution_time = round((end_time - start_time) * 1000, 3)  # Convert to milliseconds with 3 decimal places
         
