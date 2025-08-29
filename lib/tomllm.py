@@ -1071,6 +1071,9 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                 if track_history:
                     self.add_assistant_tool_calls(client_type, response.choices[0].message.tool_calls)
                 
+                # Track which services are used in this iteration for response_consign collection
+                used_services = set()
+                
                 # Execute each tool call
                 for tool_call in response.choices[0].message.tool_calls:
                     function_name = tool_call.function.name
@@ -1099,6 +1102,9 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                         tool_result = await self._execute_mcp_tool(
                             mcp_client, function_name, function_params
                         )
+                        # Track the service that was used (extract from tool_result if available)
+                        if isinstance(tool_result, dict) and 'service' in tool_result:
+                            used_services.add(tool_result['service'])
                     else:
                         # Fallback if no MCP client provided
                         tomlogger.warning(f"No MCP client provided for tool {function_name}, simulating", 
@@ -1123,6 +1129,19 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                     
                     tomlogger.debug(f"📥 Tool {function_name} result: {json.dumps(tool_result)}", 
                                    self.username, module_name="tomllm")
+                
+                # After all tool calls are executed, collect response_consign resources
+                if used_services and mcp_client:
+                    response_consigns = await self._collect_response_consigns(mcp_client, used_services)
+                    if response_consigns:
+                        # Add response_consign as a system message (not tracked in history)
+                        response_consign_message = {
+                            "role": "system",
+                            "content": json.dumps(response_consigns, ensure_ascii=False, separators=(',', ':'))
+                        }
+                        working_conversation.append(response_consign_message)
+                        tomlogger.debug(f"📋 Added response_consign system message from {len(response_consigns.get('services_consigns', []))} services", 
+                                       self.username, module_name="tomllm")
             else:
                 tomlogger.warning(f"Unexpected finish_reason: {response.choices[0].finish_reason}", 
                                  self.username, module_name="tomllm")
@@ -1140,6 +1159,89 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             "iterations": max_iterations
         }
     
+    async def _collect_response_consigns(self, mcp_client, used_services: set) -> Optional[Dict[str, Any]]:
+        """
+        Collect response_consign resources from MCP services that were used for tool calls
+        
+        Args:
+            mcp_client: MCPClient instance
+            used_services: Set of service names that were used in this tool execution cycle
+            
+        Returns:
+            Optional dict with combined response consigns or None if no consigns found
+        """
+        if not mcp_client or not used_services:
+            return None
+        
+        response_consigns = []
+        mcp_connections = mcp_client.get_mcp_connections()
+        
+        for service_name in used_services:
+            if service_name not in mcp_connections:
+                continue
+                
+            connection_info = mcp_connections[service_name]
+            url = connection_info.get('url')
+            
+            if not url:
+                continue
+                
+            try:
+                from mcp.client.streamable_http import streamablehttp_client
+                from mcp import ClientSession
+                
+                tomlogger.debug(f"Collecting response_consign from service '{service_name}'", 
+                               self.username, module_name="tomllm")
+                
+                async with streamablehttp_client(url) as (read_stream, write_stream, _):
+                    async with ClientSession(read_stream, write_stream) as session:
+                        await session.initialize()
+                        
+                        # Try to get response_consign resource
+                        try:
+                            resource_result = await session.read_resource("description://response_consign")
+                            
+                            if resource_result and resource_result.contents:
+                                content = resource_result.contents[0]
+                                if hasattr(content, 'text') and content.text.strip():
+                                    response_consigns.append({
+                                        "service": service_name,
+                                        "consign": content.text.strip()
+                                    })
+                                    tomlogger.debug(f"Collected response_consign from '{service_name}': {content.text.strip()[:100]}...", 
+                                                   self.username, module_name="tomllm")
+                                elif hasattr(content, 'data') and str(content.data).strip():
+                                    response_consigns.append({
+                                        "service": service_name,
+                                        "consign": str(content.data).strip()
+                                    })
+                                    tomlogger.debug(f"Collected response_consign from '{service_name}': {str(content.data).strip()[:100]}...", 
+                                                   self.username, module_name="tomllm")
+                        except Exception as resource_error:
+                            # Resource not found or other error - this is expected and normal
+                            tomlogger.debug(f"No response_consign resource available from '{service_name}': {resource_error}", 
+                                           self.username, module_name="tomllm")
+                            continue
+                            
+            except Exception as e:
+                tomlogger.debug(f"Error collecting response_consign from '{service_name}': {e}", 
+                               self.username, module_name="tomllm")
+                continue
+        
+        if not response_consigns:
+            return None
+            
+        # Combine all response consigns into a structured format
+        combined_consigns = {
+            "description": "Response formatting instructions from MCP services used in this conversation",
+            "services_consigns": response_consigns
+        }
+        
+        tomlogger.info(f"📋 Collected {len(response_consigns)} response_consign resources from services: {[c['service'] for c in response_consigns]}", 
+                      self.username, module_name="tomllm")
+        
+        return combined_consigns
+
     async def _execute_mcp_tool(self, mcp_client, function_name: str, function_params: dict) -> dict:
         """
         Execute a specific MCP tool

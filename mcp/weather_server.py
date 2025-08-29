@@ -321,5 +321,40 @@ def prompt_consign() -> str:
     return json.dumps(consign_data, ensure_ascii=False, separators=(',', ':'))
 
 
+@server.resource("description://response_consign")
+def response_consign() -> str:
+    """Returns response formatting instructions for weather-related responses."""
+    
+    # Build response consign in JSON format
+    response_data = {
+        "description": "Weather response formatting instructions",
+        "formatting_guidelines": {
+            "response_style": "Keep responses concise and factual",
+            "temperature_display": "Always show temperature in Celsius with degree symbol (e.g., 22°C)",
+            "weather_conditions": "Use descriptive weather conditions from WMO codes rather than just numbers",
+            "time_format": "Display dates and times in user-friendly format (e.g., 'Today at 3 PM' rather than '2024-01-15T15:00')",
+            "location_display": "Always mention the specific city and country when providing weather information"
+        },
+        "response_structure": {
+            "current_weather": "Start with current conditions if requested",
+            "forecast": "Present forecast in chronological order (today, tomorrow, etc.)",
+            "alerts": "Highlight any severe weather warnings prominently",
+            "no_recommendations": "Do NOT include practical recommendations or advice like 'Take an umbrella', 'Don't forget your jacket', 'Dress warmly', etc."
+        },
+        "user_experience": {
+            "emoji_usage": "Use weather-appropriate emojis to enhance readability (☀️ 🌧️ ❄️ ⛅)",
+            "conversational_tone": "Maintain a friendly but concise tone in weather discussions",
+            "focus": "Focus only on weather data and conditions, avoid lifestyle or clothing suggestions"
+        },
+        "strict_instructions": {
+            "avoid_advice": "NEVER provide clothing suggestions, activity recommendations, or practical advice",
+            "stick_to_facts": "Only provide weather conditions, temperatures, and forecast data",
+            "be_concise": "Keep responses short and to the point"
+        }
+    }
+    
+    return json.dumps(response_data, ensure_ascii=False, separators=(',', ':'))
+
+
 if __name__ == "__main__":
     main()

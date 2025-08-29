@@ -368,6 +368,99 @@ Each service exposes endpoints that can be used for health monitoring:
 
 ## MCP Services
 
+### Response Consign Resource
+
+MCP services can implement an optional `response_consign` resource to provide LLM instructions for formatting final responses after tool execution. This resource is automatically collected from services that were used during tool calls and combined into system messages to guide the LLM's response formatting.
+
+#### Resource URI
+`description://response_consign`
+
+#### Implementation
+
+Add the following resource to your MCP server:
+
+```python
+@server.resource("description://response_consign")
+def response_consign() -> str:
+    """
+    Returns response formatting instructions for this MCP service.
+    These instructions are provided to the LLM after tool execution 
+    to guide response formatting and style.
+    """
+    response_data = {
+        "description": "Response formatting instructions for [service_name]",
+        "formatting_guidelines": {
+            "response_style": "Define how responses should be formatted",
+            "data_presentation": "Specify how to present data from this service",
+            "tone": "Define the desired conversational tone"
+        },
+        "response_structure": {
+            "required_elements": "Elements that must be included in responses",
+            "optional_elements": "Elements that can be included if relevant"
+        },
+        "restrictions": {
+            "avoid": "Things the LLM should avoid in responses",
+            "focus": "What the LLM should focus on"
+        }
+    }
+    
+    return json.dumps(response_data, ensure_ascii=False, separators=(',', ':'))
+```
+
+#### Example Implementation (Weather Service)
+
+```python
+@server.resource("description://response_consign")
+def response_consign() -> str:
+    """Returns response formatting instructions for weather responses."""
+    
+    response_data = {
+        "description": "Weather response formatting instructions",
+        "formatting_guidelines": {
+            "response_style": "Keep responses concise and factual",
+            "temperature_display": "Always show temperature in Celsius with degree symbol (e.g., 22°C)",
+            "weather_conditions": "Use descriptive weather conditions from WMO codes",
+            "time_format": "Display dates and times in user-friendly format"
+        },
+        "response_structure": {
+            "current_weather": "Start with current conditions if requested",
+            "forecast": "Present forecast in chronological order",
+            "no_recommendations": "Do NOT include practical advice like 'Take an umbrella'"
+        },
+        "strict_instructions": {
+            "avoid_advice": "NEVER provide clothing suggestions or activity recommendations",
+            "stick_to_facts": "Only provide weather conditions, temperatures, and forecast data",
+            "be_concise": "Keep responses short and to the point"
+        }
+    }
+    
+    return json.dumps(response_data, ensure_ascii=False, separators=(',', ':'))
+```
+
+#### How It Works
+
+1. **Automatic Collection**: When tools are executed, Tom tracks which MCP services were used
+2. **Resource Retrieval**: After all tool results are processed, Tom collects `response_consign` resources from used services
+3. **System Message**: Combined instructions are added as a system message before the final LLM call
+4. **No History Storage**: Response consign messages are never stored in conversation history
+5. **Multiple Services**: If multiple services are used, their response consigns are combined automatically
+
+#### Usage Notes
+
+- **Optional**: Services work perfectly without implementing this resource
+- **Error Handling**: Missing resources are handled gracefully (no errors if not implemented)
+- **JSON Format**: Always return JSON for better LLM performance
+- **Service-Specific**: Only collected from services that were actually used in the current tool execution
+- **Automatic**: No configuration needed - the system detects and uses available resources
+
+#### Common Use Cases
+
+- **Formatting Requirements**: Specify how data should be presented (units, date formats, etc.)
+- **Response Style**: Control verbosity, tone, and conversational style
+- **Content Restrictions**: Prevent unwanted advice, recommendations, or off-topic content
+- **Data Focus**: Direct attention to specific types of information
+- **Brand Guidelines**: Enforce consistent communication style across services
+
 ### Memory MCP Server
 
 A Model Context Protocol (MCP) server that provides memory management functionality using [mem0](https://github.com/mem0ai/mem0). This server allows AI agents to store, search, and manage memories for personalized interactions.
