@@ -23,6 +23,64 @@ from datetime import datetime
 sys.path.insert(0, '/app/lib')
 sys.path.insert(0, '/app/mcp')
 
+# --- Live Report Generation ---
+STATUS_FILE = '/app/tests/triage_status.json'
+_status_data = {}
+
+def _write_status():
+    """Writes the current status data to the JSON file."""
+    try:
+        with open(STATUS_FILE, 'w') as f:
+            json.dump(_status_data, f, indent=2)
+    except Exception as e:
+        print(f"CRITICAL: Could not write to status file {STATUS_FILE}: {e}", file=sys.stderr)
+
+def init_live_report():
+    """Initializes the live report file."""
+    global _status_data
+    _status_data = {
+        'status': 'initializing',
+        'start_time': datetime.now().isoformat(),
+        'end_time': None,
+        'progress': {
+            'overall': {'current': 0, 'total': 0, 'text': 'Initializing...'},
+            'test_case': {'current': 0, 'total': 0, 'text': ''}
+        },
+        'results': {},
+        'logs': [],
+        'error': None
+    }
+    _write_status()
+
+def update_live_report(status=None, overall_progress=None, test_case_progress=None, results=None, log=None, end_time=False, error=None):
+    """Updates the live report file with new data."""
+    global _status_data
+    if status:
+        _status_data['status'] = status
+    if overall_progress:
+        _status_data['progress']['overall'].update(overall_progress)
+    if test_case_progress is not None:
+        _status_data['progress']['test_case'] = test_case_progress
+    if results:
+        _status_data['results'] = results
+    if log:
+        log_entry = {
+            'timestamp': datetime.now().isoformat(),
+            'level': log.get('level', 'INFO'),
+            'message': log.get('message', '').strip()
+        }
+        _status_data['logs'].append(log_entry)
+        _status_data['logs'] = _status_data['logs'][-100:]
+        print(f"[{log_entry['level']}] {log_entry['message']}")
+        sys.stdout.flush()
+    if end_time:
+        _status_data['end_time'] = datetime.now().isoformat()
+    if error:
+        _status_data['error'] = error
+    
+    _write_status()
+# --- End of Live Report Generation ---
+
 # Global debug flag
 DEBUG = False
 
@@ -329,18 +387,16 @@ def extract_all_mcp_descriptions() -> Dict[str, Any]:
 
 def run_triage_tests() -> Dict[str, Any]:
     """Run all triage tests"""
-    print("\nRunning Triage Performance Tests...")
-    print("INIT_PROGRESS: Starting test suite initialization...")
-    print("=" * 50)
+    update_live_report(log={'message': "Running Triage Performance Tests..."})
     
     # Load configuration
-    print("INIT_PROGRESS: Loading configuration from /data/config.yml...")
+    update_live_report(log={'message': "Loading configuration from /data/config.yml..."})
     config = load_config()
     if not config:
         return {"error": "Failed to load configuration"}
     
     # Load test cases
-    print("INIT_PROGRESS: Loading test cases and LLM configurations...")
+    update_live_report(log={'message': "Loading test cases and LLM configurations..."})
     test_data = load_test_cases()
     if not test_data:
         return {"error": "Failed to load test cases"}
@@ -357,13 +413,12 @@ def run_triage_tests() -> Dict[str, Any]:
     if not test_llms or not test_cases:
         return {"error": "No test LLMs or test cases found"}
     
-    print(f"Found {len(test_llms)} test LLMs and {len(test_cases)} test cases")
-    print(f"INIT_PROGRESS: Found {len(test_llms)} LLMs and {len(test_cases)} test cases")
+    update_live_report(log={'message': f"Found {len(test_llms)} test LLMs and {len(test_cases)} test cases"})
     
     # Create available modules and tools
-    print("INIT_PROGRESS: Extracting MCP server descriptions...")
+    update_live_report(log={'message': "Extracting MCP server descriptions..."})
     available_modules = create_available_modules()
-    print("INIT_PROGRESS: Building triage prompt and tools...")
+    update_live_report(log={'message': "Building triage prompt and tools..."})
     triage_instructions = create_triage_prompt()
     system_message = create_json_system_message(triage_instructions, available_modules)
     tools = create_triage_tools(available_modules)
@@ -378,29 +433,32 @@ def run_triage_tests() -> Dict[str, Any]:
         },
         "llm_results": {}
     }
+    update_live_report(results=results)
     
     # Test each LLM
     total_llms = len(test_llms)
-    print("INIT_PROGRESS: All initialization completed, starting LLM tests...")
-    print(f"PROGRESS: 0/{total_llms} - Initializing tests")
+    update_live_report(
+        overall_progress={'current': 0, 'total': total_llms, 'text': 'Initialization complete. Starting tests...'},
+        log={'message': 'All initialization completed, starting LLM tests...'}
+    )
     
     for llm_index, llm_config in enumerate(test_llms):
         llm_name = llm_config['llm']
         model = llm_config['model']
         
-        print(f"\nTesting LLM: {llm_name} ({model})")
-        # Progress indicator for web interface
-        print(f"PROGRESS: {llm_index + 1}/{total_llms} - Testing {llm_name}")
+        update_live_report(
+            overall_progress={'current': llm_index + 1, 'text': f'Testing {llm_name}'},
+            test_case_progress={'current': 0, 'total': len(test_cases), 'text': 'Starting...'},
+            log={'level': 'INFO', 'message': f"Testing LLM: {llm_name} ({model})"}
+        )
         
-        # Check if LLM is configured in main config
         if llm_name not in llm_configs:
-            print(f"  Warning: {llm_name} not found in main configuration, skipping...")
+            update_live_report(log={'level': 'WARNING', 'message': f"{llm_name} not found in main configuration, skipping..."})
             continue
         
-        # Setup environment for this LLM
         main_llm_config = llm_configs[llm_name]
         if not setup_llm_environment(main_llm_config):
-            print(f"  Error: Failed to setup environment for {llm_name}")
+            update_live_report(log={'level': 'ERROR', 'message': f"Failed to setup environment for {llm_name}"})
             continue
         
         llm_results = {
@@ -413,49 +471,44 @@ def run_triage_tests() -> Dict[str, Any]:
                 "failed_tests": 0,
                 "success_rate": 0.0,
                 "execution_times": [],
-                "min_time": 0.0,
-                "max_time": 0.0,
-                "median_time": 0.0,
+                "min_time_ms": 0.0,
+                "max_time_ms": 0.0,
+                "median_time_ms": 0.0,
+                "mean_time_ms": 0.0,
                 "total_time": 0.0
             },
             "failures": []
         }
         
-        # Test each prompt
         total_test_cases = len(test_cases)
         for i, test_case in enumerate(test_cases):
             prompt = test_case['prompt']
             expected_modules = test_case['expected_modules']
             description = test_case['description']
             
-            print(f"  Test {i+1}/{total_test_cases}: {description}")
-            # Progress indicator for web interface
-            print(f"TEST_PROGRESS: {llm_index + 1}/{total_llms} - {i + 1}/{total_test_cases} - {llm_name} - {description}")
+            update_live_report(
+                test_case_progress={'current': i + 1, 'total': total_test_cases, 'text': description}
+            )
             
-            # Run the test
             test_result = test_single_prompt(
                 llm_name, model, prompt, expected_modules, 
                 system_message, tools
             )
             
-            # Store detailed result
             test_result['prompt'] = prompt
             test_result['description'] = description
             llm_results['tests'].append(test_result)
             
-            # Update summary
             llm_results['summary']['total_tests'] += 1
             llm_results['summary']['execution_times'].append(test_result['execution_time_ms'])
             llm_results['summary']['total_time'] += test_result['execution_time_ms']
             
             if test_result['success']:
                 llm_results['summary']['successful_tests'] += 1
-                print(f"    ✅ PASS ({test_result['execution_time_ms']:.1f}ms)")
+                update_live_report(log={'level': 'SUCCESS', 'message': f"PASS ({test_result['execution_time_ms']:.1f}ms): {description}"})
             else:
                 llm_results['summary']['failed_tests'] += 1
-                print(f"    ❌ FAIL ({test_result['execution_time_ms']:.1f}ms)")
-                
-                # Store failure details
+                update_live_report(log={'level': 'ERROR', 'message': f"FAIL ({test_result['execution_time_ms']:.1f}ms): {description}"})
                 failure = {
                     "prompt": prompt,
                     "description": description,
@@ -465,7 +518,6 @@ def run_triage_tests() -> Dict[str, Any]:
                 }
                 llm_results['failures'].append(failure)
         
-        # Calculate final statistics
         execution_times = llm_results['summary']['execution_times']
         if execution_times:
             llm_results['summary']['min_time_ms'] = round(min(execution_times), 3)
@@ -478,17 +530,14 @@ def run_triage_tests() -> Dict[str, Any]:
         if total_tests > 0:
             llm_results['summary']['success_rate'] = successful_tests / total_tests
         
-        # Store results
         results['llm_results'][llm_name] = llm_results
+        update_live_report(results=results)
         
-        print(f"  Results: {successful_tests}/{total_tests} passed ({llm_results['summary']['success_rate']:.2%})")
-        print(f"  Times: min={llm_results['summary']['min_time_ms']:.1f}ms, max={llm_results['summary']['max_time_ms']:.1f}ms, median={llm_results['summary']['median_time_ms']:.1f}ms")
-    
-    # Add end time
+        summary_text = f"Results for {llm_name}: {successful_tests}/{total_tests} passed ({llm_results['summary']['success_rate']:.2%})"
+        update_live_report(log={'level': 'INFO', 'message': summary_text})
+
     results['test_summary']['end_time'] = datetime.now().isoformat()
-    
-    # Final progress message
-    print(f"PROGRESS: {total_llms}/{total_llms} - Tests completed")
+    update_live_report(results=results, overall_progress={'current': total_llms, 'text': 'Tests completed'})
     
     return results
 
@@ -907,26 +956,27 @@ def main():
     # Set global debug flag
     DEBUG = args.debug
     
+    init_live_report()
+    
     if DEBUG:
         debug_print("Debug mode enabled")
     
-    print("🔍 MCP Server Description Extraction & Triage Testing")
-    print("=" * 60)
+    update_live_report(status='running', log={'message': "🔍 MCP Server Description Extraction & Triage Testing"})
     
     # Step 1: Extract MCP descriptions
-    print("Step 1: Extracting MCP Server Descriptions...")
+    update_live_report(log={'message': "Step 1: Extracting MCP Server Descriptions..."})
     mcp_results = extract_all_mcp_descriptions()
     
-    print(f"✅ Extracted descriptions from {mcp_results['summary']['total_servers']} servers")
-    print(f"   - Successful: {mcp_results['summary']['successful_extractions']}")
-    print(f"   - Failed: {mcp_results['summary']['failed_extractions']}")
+    update_live_report(log={'level': 'INFO', 'message': f"Extracted descriptions from {mcp_results['summary']['total_servers']} servers"})
+    update_live_report(log={'level': 'INFO', 'message': f"  - Successful: {mcp_results['summary']['successful_extractions']}"})
+    update_live_report(log={'level': 'INFO', 'message': f"  - Failed: {mcp_results['summary']['failed_extractions']}"})
     
     # Step 2: Run triage tests
-    print("\nStep 2: Running Triage Performance Tests...")
+    update_live_report(log={'message': "Step 2: Running Triage Performance Tests..."})
     triage_results = run_triage_tests()
     
     if "error" in triage_results:
-        print(f"❌ Triage test error: {triage_results['error']}")
+        update_live_report(status='error', error=triage_results['error'], end_time=True)
         # Still save MCP results
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         mcp_report_filename = f"/app/tests/mcp_descriptions_{timestamp}.json"
@@ -934,14 +984,14 @@ def main():
         try:
             with open(mcp_report_filename, 'w', encoding='utf-8') as f:
                 json.dump(mcp_results, f, indent=2, ensure_ascii=False)
-            print(f"📄 MCP descriptions saved to: {mcp_report_filename}")
+            update_live_report(log={'message': f"📄 MCP descriptions saved to: {mcp_report_filename}"})
         except Exception as e:
-            print(f"❌ Error saving MCP descriptions: {e}")
+            update_live_report(log={'level': 'ERROR', 'message': f"❌ Error saving MCP descriptions: {e}"})
         
         return 1
     
     # Step 3: Combine results and generate reports
-    print("\nStep 3: Generating Combined Report...")
+    update_live_report(log={'message': "Step 3: Generating Combined Report..."})
     
     # Create combined results
     combined_results = {
@@ -968,26 +1018,30 @@ def main():
         with open(mcp_json_filename, 'w', encoding='utf-8') as f:
             json.dump(mcp_results, f, indent=2, ensure_ascii=False)
         
-        print(f"📊 Combined report saved to: {combined_report_filename}")
-        print(f"📄 MCP descriptions saved to: {mcp_json_filename}")
+        update_live_report(log={'message': f"📊 Combined report saved to: {combined_report_filename}"})
+        update_live_report(log={'message': f"📄 MCP descriptions saved to: {mcp_json_filename}"})
         
         # Print summary
-        print("\n📈 Final Summary:")
-        print(f"  MCP Servers: {mcp_results['summary']['successful_extractions']}/{mcp_results['summary']['total_servers']} extracted")
+        summary_lines = []
+        summary_lines.append("\n📈 Final Summary:")
+        summary_lines.append(f"  MCP Servers: {mcp_results['summary']['successful_extractions']}/{mcp_results['summary']['total_servers']} extracted")
         
         if 'llm_results' in triage_results:
             total_llms = len(triage_results['llm_results'])
-            print(f"  LLM Testing: {total_llms} models tested")
+            summary_lines.append(f"  LLM Testing: {total_llms} models tested")
             
             for llm_name, llm_result in triage_results['llm_results'].items():
                 summary = llm_result['summary']
-                print(f"    {llm_name}: {summary['success_rate']:.2%} success rate, {summary['median_time']:.2f}s median time")
+                summary_lines.append(f"    {llm_name}: {summary['success_rate']:.2%} success rate, {summary['median_time_ms']:.2f}ms median time")
         
+        update_live_report(log={'message': '\n'.join(summary_lines)})
+        update_live_report(status='completed', end_time=True)
         return 0
         
     except Exception as e:
-        print(f"❌ Error saving reports: {e}")
+        update_live_report(status='error', error=f"Error saving reports: {e}", end_time=True)
         return 1
+
 
 
 if __name__ == "__main__":

@@ -26,120 +26,90 @@ current_test_process = None
 test_results = {}
 test_logs = []
 
+STATUS_FILE = '/app/tests/triage_status.json'
+
 def load_existing_results():
     """Load any existing test results from files"""
     global test_results
     test_dir = Path("/app/tests")
+    test_results = {}
     
     # Look for combined test reports
-    for report_file in test_dir.glob("combined_test_report_*.yaml"):
+    for report_file in sorted(test_dir.glob("combined_test_report_*.yaml"), reverse=True):
         try:
             import yaml
             with open(report_file, 'r') as f:
                 data = yaml.safe_load(f)
-                timestamp = report_file.stem.split('_')[-1]
-                test_results[timestamp] = {
+                timestamp_str = report_file.stem.replace('combined_test_report_', '')
+                # Reformat timestamp for display if needed
+                try:
+                    dt_obj = datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S')
+                    display_ts = dt_obj.strftime('%Y-%m-%d %H:%M:%S')
+                except ValueError:
+                    display_ts = timestamp_str
+
+                test_results[display_ts] = {
                     'file': report_file.name,
                     'data': data,
-                    'timestamp': timestamp
+                    'timestamp': display_ts
                 }
         except Exception as e:
             print(f"Error loading {report_file}: {e}")
 
 def run_test_async(debug=False):
     """Run the triage test in a separate thread"""
-    global current_test_process, test_logs
+    global current_test_process
     
-    test_logs.clear()
-    test_logs.append({"timestamp": datetime.now().isoformat(), "level": "INFO", "message": "Starting triage tests..."})
-    
-    # Also log to stdout
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting triage tests...")
     
     try:
-        # Run the test script with unbuffered output
         env = os.environ.copy()
         env['PYTHONUNBUFFERED'] = '1'
-        cmd = [sys.executable, "-u", "/app/tests/test_triage.py"]  # -u for unbuffered output
+        cmd = [sys.executable, "-u", "/app/tests/test_triage.py"]
         if debug:
             cmd.append("--debug")
         
         current_test_process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,  # Redirect stderr to stdout
+            stderr=subprocess.STDOUT,
             text=True,
-            bufsize=0,  # Unbuffered
+            bufsize=1,
             universal_newlines=True,
-            env=env  # Pass environment with PYTHONUNBUFFERED
+            env=env
         )
         
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔧 Subprocess started with PID {current_test_process.pid}")
-        sys.stdout.flush()
         
-        # Read output in real-time
-        line_count = 0
-        while True:
-            output = current_test_process.stdout.readline()
-            if output == '' and current_test_process.poll() is not None:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] 🏁 Subprocess finished, read {line_count} lines total")
-                sys.stdout.flush()
-                break
-            if output:
-                line_count += 1
-                # Add to web logs
-                test_logs.append({
-                    "timestamp": datetime.now().isoformat(),
-                    "level": "INFO",
-                    "message": output.strip()
-                })
-                # Also print to stdout with timestamp
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] {output.strip()}")
-                # Force flush to ensure immediate output
-                sys.stdout.flush()
-        
-        # Read any remaining stdout (since stderr is redirected there)
-        remaining_output = current_test_process.stdout.read()
-        if remaining_output:
-            for line in remaining_output.split('\n'):
-                if line.strip():
-                    test_logs.append({
-                        "timestamp": datetime.now().isoformat(),
-                        "level": "INFO",
-                        "message": line.strip()
-                    })
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] {line.strip()}")
+        # Log stdout/stderr to console for debugging, but don't parse it
+        for line in iter(current_test_process.stdout.readline, ''):
+            print(f"[test_triage.py] {line.strip()}")
             sys.stdout.flush()
-        
-        # Check if test completed successfully
+
+        current_test_process.wait()
         return_code = current_test_process.poll()
+        
         if return_code == 0:
-            test_logs.append({
-                "timestamp": datetime.now().isoformat(),
-                "level": "SUCCESS",
-                "message": "Tests completed successfully!"
-            })
             print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Tests completed successfully!")
-            sys.stdout.flush()
-            # Reload results
-            load_existing_results()
         else:
-            test_logs.append({
-                "timestamp": datetime.now().isoformat(),
-                "level": "ERROR",
-                "message": f"Tests failed with return code: {return_code}"
-            })
             print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Tests failed with return code: {return_code}")
-            sys.stdout.flush()
+        
+        # Reload results from files
+        load_existing_results()
             
     except Exception as e:
-        test_logs.append({
-            "timestamp": datetime.now().isoformat(),
-            "level": "ERROR",
-            "message": f"Error running tests: {str(e)}"
-        })
         print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Error running tests: {str(e)}")
-        sys.stdout.flush()
+        # Update status file to reflect error
+        try:
+            with open(STATUS_FILE, 'r+') as f:
+                data = json.load(f)
+                data['status'] = 'error'
+                data['error'] = str(e)
+                f.seek(0)
+                json.dump(data, f, indent=2)
+        except Exception as file_e:
+            print(f"Could not update status file with error: {file_e}")
+
     finally:
         current_test_process = None
 
@@ -154,15 +124,17 @@ def start_test():
     global current_test_process
     
     if current_test_process and current_test_process.poll() is None:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️  Test already running, ignoring new request")
         return jsonify({"status": "error", "message": "Test already running"}), 400
     
+    # Clean up old status file
+    if os.path.exists(STATUS_FILE):
+        os.remove(STATUS_FILE)
+
     data = request.get_json() or {}
     debug = data.get('debug', False)
     
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 🚀 Starting new test run (debug={'on' if debug else 'off'})")
     
-    # Start test in background thread
     thread = threading.Thread(target=run_test_async, args=(debug,))
     thread.daemon = True
     thread.start()
@@ -171,31 +143,50 @@ def start_test():
 
 @app.route('/api/test_status')
 def test_status():
-    """Get current test status"""
-    global current_test_process
-    
+    """Get current test status from JSON file"""
     is_running = current_test_process is not None and current_test_process.poll() is None
-    
-    return jsonify({
-        "running": is_running,
-        "logs": test_logs[-50:],  # Last 50 log entries
-        "total_logs": len(test_logs)
-    })
+
+    if not os.path.exists(STATUS_FILE):
+        if is_running:
+            return jsonify({"status": "initializing", "logs": []})
+        else:
+            return jsonify({"status": "idle"})
+
+    try:
+        with open(STATUS_FILE, 'r') as f:
+            data = json.load(f)
+        
+        # If process died, update status
+        if not is_running and data.get('status') in ['initializing', 'running']:
+            data['status'] = 'error'
+            data['error'] = 'Test process terminated unexpectedly.'
+            with open(STATUS_FILE, 'w') as f:
+                json.dump(data, f, indent=2)
+
+        return jsonify(data)
+    except (IOError, json.JSONDecodeError) as e:
+        return jsonify({"status": "error", "error": f"Could not read status file: {e}"}), 500
 
 @app.route('/api/results')
 def get_results():
     """Get all test results"""
+    load_existing_results() # Reload from files
     return jsonify({
-        "results": list(test_results.values()),
+        "results": sorted(list(test_results.values()), key=lambda x: x['timestamp'], reverse=True),
         "count": len(test_results)
     })
 
 @app.route('/api/results/<result_id>')
 def get_result_detail(result_id):
     """Get detailed results for a specific test run"""
+    # The result_id is the timestamp string
     if result_id in test_results:
         return jsonify(test_results[result_id])
     else:
+        # Try loading again in case it's a new result
+        load_existing_results()
+        if result_id in test_results:
+            return jsonify(test_results[result_id])
         return jsonify({"error": "Result not found"}), 404
 
 @app.route('/api/stop_test', methods=['POST'])
@@ -206,14 +197,31 @@ def stop_test():
     if current_test_process and current_test_process.poll() is None:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 🛑 User requested test stop")
         current_test_process.terminate()
-        test_logs.append({
-            "timestamp": datetime.now().isoformat(),
-            "level": "WARNING",
-            "message": "Test stopped by user"
-        })
+        
+        # Update status file
+        try:
+            if os.path.exists(STATUS_FILE):
+                with open(STATUS_FILE, 'r+') as f:
+                    data = json.load(f)
+                    data['status'] = 'stopped'
+                    data['error'] = 'Test stopped by user.'
+                    data['end_time'] = datetime.now().isoformat()
+                    f.seek(0)
+                    f.truncate()
+                    json.dump(data, f, indent=2)
+            else:
+                # Create status file if it doesn't exist
+                with open(STATUS_FILE, 'w') as f:
+                    json.dump({
+                        'status': 'stopped',
+                        'error': 'Test stopped by user.',
+                        'end_time': datetime.now().isoformat()
+                    }, f, indent=2)
+        except Exception as e:
+            print(f"Error updating status file on stop: {e}")
+
         return jsonify({"status": "stopped", "message": "Test stopped successfully"})
     else:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️  Stop requested but no test running")
         return jsonify({"status": "error", "message": "No test running"}), 400
 
 @app.route('/download/<filename>')
