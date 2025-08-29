@@ -919,6 +919,7 @@ def test_single_prompt(llm_name: str, model: str, prompt: str, expected_modules:
             "execution_time_ms": execution_time,
             "expected": expected_modules,
             "received": received_modules,
+            "generation_id": response.id if response else None,
             "response_details": {
                 "finish_reason": response.choices[0].finish_reason,
                 "tool_calls": len(response.choices[0].message.tool_calls) if response.choices[0].message.tool_calls else 0
@@ -941,6 +942,67 @@ def test_single_prompt(llm_name: str, model: str, prompt: str, expected_modules:
             "received": []
         }
 
+
+import requests
+
+def fetch_and_add_cost_data(triage_results, config):
+    """Fetches cost data from OpenRouter for each test and updates the results."""
+    update_live_report(log={'message': "Fetching cost data from OpenRouter..."})
+    
+    # Wait for OpenRouter to process generations
+    wait_time = 5
+    update_live_report(log={'message': f"Waiting {wait_time} seconds for OpenRouter to process costs..."})
+    time.sleep(wait_time)
+
+    llm_configs = config.get('global', {}).get('llms', {})
+    if not llm_configs:
+        update_live_report(log={'level': 'ERROR', 'message': "No LLM configurations found in config, cannot fetch costs."})
+        return triage_results
+
+    for llm_name, llm_data in triage_results.get('llm_results', {}).items():
+        if llm_name not in llm_configs:
+            continue
+
+        api_key = llm_configs[llm_name].get('api')
+        if not api_key:
+            update_live_report(log={'level': 'WARNING', 'message': f"No API key found for {llm_name}, cannot fetch costs."})
+            continue
+
+        total_cost = 0
+        update_live_report(log={'message': f"Fetching costs for {llm_name}..."})
+
+        for test in llm_data.get('tests', []):
+            gen_id = test.get('generation_id')
+            if not gen_id:
+                test['cost'] = 0
+                continue
+
+            try:
+                headers = {"Authorization": f"Bearer {api_key}"}
+                url = f"https://openrouter.ai/api/v1/generation?id={gen_id}"
+                response = requests.get(url, headers=headers, timeout=10)
+                response.raise_for_status()
+                
+                generation_data = response.json().get('data')
+
+                cost = generation_data.get('total_cost')
+
+                if cost is not None:
+                    test['cost'] = cost
+                    total_cost += cost
+                else:
+                    test['cost'] = 0
+                    update_live_report(log={'level': 'WARNING', 'message': f"Cost not found for generation {gen_id}"})
+
+            except requests.exceptions.RequestException as e:
+                update_live_report(log={'level': 'ERROR', 'message': f"Could not fetch cost for {gen_id}: {e}"})
+                test['cost'] = 0
+        
+        llm_data['summary']['total_cost'] = total_cost
+        update_live_report(log={'message': f"Total cost for {llm_name}: ${total_cost:.6f}"})
+
+    update_live_report(results=triage_results)
+    return triage_results
 
 def main():
     """Main function to extract MCP descriptions and run triage tests"""
@@ -989,6 +1051,13 @@ def main():
             update_live_report(log={'level': 'ERROR', 'message': f"❌ Error saving MCP descriptions: {e}"})
         
         return 1
+
+    # Step 2.5: Fetch cost data
+    config = load_config()
+    if not config:
+        update_live_report(status='error', error="Failed to load configuration for cost fetching.", end_time=True)
+        return 1
+    triage_results = fetch_and_add_cost_data(triage_results, config)
     
     # Step 3: Combine results and generate reports
     update_live_report(log={'message': "Step 3: Generating Combined Report..."})
@@ -1032,7 +1101,8 @@ def main():
             
             for llm_name, llm_result in triage_results['llm_results'].items():
                 summary = llm_result['summary']
-                summary_lines.append(f"    {llm_name}: {summary['success_rate']:.2%} success rate, {summary['median_time_ms']:.2f}ms median time")
+                total_cost = summary.get('total_cost', 0)
+                summary_lines.append(f"    {llm_name}: {summary['success_rate']:.2%} success rate, {summary['median_time_ms']:.2f}ms median time, Total Cost: ${total_cost:.6f}")
         
         update_live_report(log={'message': '\n'.join(summary_lines)})
         update_live_report(status='completed', end_time=True)

@@ -115,6 +115,9 @@
                     <button id="showSuccessChart" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm">
                         Success Rates
                     </button>
+                    <button id="showCostChart" class="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm">
+                        Costs
+                    </button>
                 </div>
             </div>
             
@@ -128,6 +131,12 @@
             <div id="successChartContainer" class="relative hidden" style="height: 400px;">
                 <canvas id="successChart"></canvas>
                 <div class="text-sm text-gray-600 mt-2">Success rate percentage for each LLM</div>
+            </div>
+
+            <!-- Cost Chart -->
+            <div id="costChartContainer" class="relative hidden" style="height: 400px;">
+                <canvas id="costChart"></canvas>
+                <div class="text-sm text-gray-600 mt-2">Total cost in USD for each LLM</div>
             </div>
         </div>
 
@@ -175,6 +184,7 @@
         let statusUpdateTimeout = null;
         let performanceChart = null;
         let successChart = null;
+        let costChart = null;
 
         // DOM elements
         const startBtn = document.getElementById('startBtn');
@@ -201,8 +211,10 @@
         const progressContainer = document.getElementById('progressContainer');
         const showTimeChart = document.getElementById('showTimeChart');
         const showSuccessChart = document.getElementById('showSuccessChart');
+        const showCostChart = document.getElementById('showCostChart');
         const timeChartContainer = document.getElementById('timeChartContainer');
         const successChartContainer = document.getElementById('successChartContainer');
+        const costChartContainer = document.getElementById('costChartContainer');
 
         // Event listeners
         startBtn.addEventListener('click', () => startTest(false));
@@ -214,6 +226,7 @@
         chartResultSelect.addEventListener('change', () => switchChart('time'));
         showTimeChart.addEventListener('click', () => switchChart('time'));
         showSuccessChart.addEventListener('click', () => switchChart('success'));
+        showCostChart.addEventListener('click', () => switchChart('cost'));
 
         // --- Core Functions ---
         async function startTest(debug = false) {
@@ -272,17 +285,21 @@
         }
 
         async function updateStatus() {
+            const wasRunning = testRunning; // Check status before the fetch
             try {
                 const response = await fetch('/api/test_status');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 const data = await response.json();
 
-                const wasRunning = testRunning;
+                // Update testRunning state based on successful response
                 testRunning = data.status === 'initializing' || data.status === 'running';
 
                 if (wasRunning && !testRunning) {
-                    // Test just finished
+                    // Test finished gracefully
                     stopStatusUpdates();
-                    loadResults(); // Reload results when test completes
+                    loadResults();
                 }
                 
                 updateUI();
@@ -291,9 +308,8 @@
                 
             } catch (error) {
                 console.error('Error updating status:', error);
-                testRunning = false;
-                updateUI();
-                stopStatusUpdates();
+                // Do not stop polling if the test was considered to be running.
+                // The next successful poll will correct the UI.
             }
         }
 
@@ -539,28 +555,37 @@
         }
 
         function switchChart(chartType) {
-            const isTimeChart = chartType === 'time';
-            timeChartContainer.classList.toggle('hidden', !isTimeChart);
-            successChartContainer.classList.toggle('hidden', isTimeChart);
+            timeChartContainer.classList.toggle('hidden', chartType !== 'time');
+            successChartContainer.classList.toggle('hidden', chartType !== 'success');
+            costChartContainer.classList.toggle('hidden', chartType !== 'cost');
             
-            showTimeChart.classList.toggle('bg-blue-600', isTimeChart);
-            showTimeChart.classList.toggle('bg-blue-500', !isTimeChart);
-            showTimeChart.classList.toggle('hover:bg-blue-600', !isTimeChart);
+            showTimeChart.classList.toggle('bg-blue-600', chartType === 'time');
+            showTimeChart.classList.toggle('bg-blue-500', chartType !== 'time');
+            showTimeChart.classList.toggle('hover:bg-blue-600', chartType !== 'time');
 
-            showSuccessChart.classList.toggle('bg-green-600', !isTimeChart);
-            showSuccessChart.classList.toggle('bg-green-500', isTimeChart);
-            showSuccessChart.classList.toggle('hover:bg-green-600', isTimeChart);
+            showSuccessChart.classList.toggle('bg-green-600', chartType === 'success');
+            showSuccessChart.classList.toggle('bg-green-500', chartType !== 'success');
+            showSuccessChart.classList.toggle('hover:bg-green-600', chartType !== 'success');
 
-            if (isTimeChart) {
+            showCostChart.classList.toggle('bg-yellow-600', chartType === 'cost');
+            showCostChart.classList.toggle('bg-yellow-500', chartType !== 'cost');
+            showCostChart.classList.toggle('hover:bg-yellow-600', chartType !== 'cost');
+
+            if (chartType === 'time') {
                 updatePerformanceChart();
-            } else {
+            } else if (chartType === 'success') {
                 updateSuccessChart();
+            } else if (chartType === 'cost') {
+                updateCostChart();
             }
         }
 
         function updatePerformanceChart() {
-            const selectedTimestamp = chartResultSelect.value;
             if (performanceChart) performanceChart.destroy();
+            if (successChart) successChart.destroy();
+            if (costChart) costChart.destroy();
+
+            const selectedTimestamp = chartResultSelect.value;
             if (!selectedTimestamp) return;
 
             const selectedResult = currentResults.find(r => r.timestamp === selectedTimestamp);
@@ -595,8 +620,11 @@
         }
 
         function updateSuccessChart() {
-            const selectedTimestamp = chartResultSelect.value;
+            if (performanceChart) performanceChart.destroy();
             if (successChart) successChart.destroy();
+            if (costChart) costChart.destroy();
+
+            const selectedTimestamp = chartResultSelect.value;
             if (!selectedTimestamp) return;
 
             const selectedResult = currentResults.find(r => r.timestamp === selectedTimestamp);
@@ -629,6 +657,61 @@
             });
         }
 
+        function updateCostChart() {
+            if (performanceChart) performanceChart.destroy();
+            if (successChart) successChart.destroy();
+            if (costChart) costChart.destroy();
+
+            const selectedTimestamp = chartResultSelect.value;
+            if (!selectedTimestamp) return;
+
+            const selectedResult = currentResults.find(r => r.timestamp === selectedTimestamp);
+            if (!selectedResult) return;
+
+            const llmResults = selectedResult.data.triage_performance?.llm_results || {};
+            const llmData = Object.entries(llmResults)
+                .map(([llm, data]) => ({
+                    llm: llm,
+                    totalCost: data.summary?.total_cost || 0
+                }))
+                .sort((a, b) => b.totalCost - a.totalCost);
+
+            if (llmData.length === 0) return;
+
+            costChart = new Chart(document.getElementById('costChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: llmData.map(d => d.llm),
+                    datasets: [{
+                        label: 'Total Cost (USD)',
+                        data: llmData.map(d => d.totalCost),
+                        backgroundColor: 'rgba(251, 191, 36, 0.8)', // Amber-400
+                        borderColor: 'rgba(251, 191, 36, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: { display: true, text: 'LLM Total Cost Comparison' },
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `Cost: $${context.parsed.y.toFixed(6)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { callback: value => '$' + value.toFixed(6) }
+                        }
+                    }
+                }
+            });
+        }
+
         async function showDetails(resultId) {
             const result = currentResults.find(r => r.timestamp === resultId);
             if (!result) { alert('Could not find result details.'); return; }
@@ -645,9 +728,10 @@
                     <div>
                         <h4 class="font-semibold mb-2">${llm} Results</h4>
                         <div class="bg-gray-50 p-4 rounded">
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm mb-4">
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm mb-4">
                                 <div><b>Success:</b> ${((data.summary?.success_rate || 0) * 100).toFixed(1)}%</div>
                                 <div><b>Median Time:</b> ${data.summary?.median_time_ms || 0}ms</div>
+                                <div><b>Total Cost:</b> $${(data.summary?.total_cost || 0).toFixed(6)}</div>
                                 <div><b>Min Time:</b> ${data.summary?.min_time_ms || 0}ms</div>
                                 <div><b>Max Time:</b> ${data.summary?.max_time_ms || 0}ms</div>
                             </div>
