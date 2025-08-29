@@ -177,6 +177,19 @@ services:
       - tom
     volumes:
       - /data/mcp/notifications/:/data/
+
+
+  brave:
+    build:
+      context: https://github.com/brave/brave-search-mcp-server.git#v1.3.7
+    container_name: brave
+    restart: always
+    networks:
+      - tom
+    command: sh -c 'source /data/env && node dist/index.js --transport http --port 80'
+    volumes:
+      - /data/mcp/brave/:/data/
+
  
 
   # Personal
