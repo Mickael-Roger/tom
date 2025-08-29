@@ -10,6 +10,9 @@ import copy
 import threading
 import asyncio
 import yaml
+import uuid
+import random
+import string
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from litellm import completion
@@ -410,6 +413,11 @@ class TomLLM:
                                     self.username, module_name="tomllm")
                     return False
                 
+                # Normalize response for compatibility across LLM providers
+                self._normalize_message_content(response)
+                if response.choices[0].finish_reason == "tool_calls":
+                    self._standardize_tool_call_ids(response)
+                
                 return response
                 
             except Exception as e:
@@ -438,6 +446,55 @@ class TomLLM:
                     raise e
         
         return False
+    
+    def _standardize_tool_call_ids(self, response):
+        """
+        Replace tool call IDs with standardized format for consistency across LLM providers
+        Uses format: [a-zA-Z0-9] with length 9
+        Modifies the response object in place
+        
+        Args:
+            response: LLM response object with tool_calls
+        """
+        if (not response or 
+            not response.choices or 
+            not response.choices[0].message or 
+            not hasattr(response.choices[0].message, 'tool_calls') or 
+            not response.choices[0].message.tool_calls):
+            return
+        
+        # Replace each tool call ID with a standardized format
+        for tool_call in response.choices[0].message.tool_calls:
+            if hasattr(tool_call, 'id'):
+                tool_call.id = self._generate_tool_call_id()
+    
+    def _generate_tool_call_id(self) -> str:
+        """
+        Generate a standardized tool call ID
+        Format: [a-zA-Z0-9] with length 9
+        
+        Returns:
+            Standardized tool call ID string
+        """
+        characters = string.ascii_letters + string.digits  # a-z, A-Z, 0-9
+        return ''.join(random.choice(characters) for _ in range(9))
+    
+    def _normalize_message_content(self, response):
+        """
+        Replace null message content with empty string for LLM compatibility
+        Modifies the response object in place
+        
+        Args:
+            response: LLM response object
+        """
+        if (not response or 
+            not response.choices or 
+            not response.choices[0].message):
+            return
+        
+        # Replace null content with empty string
+        if response.choices[0].message.content is None:
+            response.choices[0].message.content = ""
     
     def set_response_context(self, client_type: str) -> str:
         """Set response context based on client type"""
@@ -1229,7 +1286,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         """
         assistant_message = {
             "role": "assistant", 
-            "content": None,
+            "content": "",
             "tool_calls": [tool_call.to_dict() if hasattr(tool_call, 'to_dict') else tool_call for tool_call in tool_calls]
         }
         self.add_to_history(client_type, assistant_message)
