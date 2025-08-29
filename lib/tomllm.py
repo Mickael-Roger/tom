@@ -1346,23 +1346,64 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         tomlogger.debug(f"Added assistant response to {client_type} history: {response_content[:50]}...", 
                        self.username, module_name="tomllm")
     
-    def _create_json_system_message(self, tom_persona: str, today: str, weeknumber: int, gps: str, 
-                                   personal_context: str, client_type: str, 
-                                   available_tools: bool = False) -> Dict[str, Any]:
+    def _create_static_system_message(self, tom_persona: str, personal_context: str, client_type: str) -> Dict[str, Any]:
         """
-        Create a single JSON-formatted system message that replaces temporal, tom prompt, personal context messages
+        Create a static JSON-formatted system message that can be cached by LLMs
+        Contains only non-dynamic values: persona, user profile, and formatting rules
         
         Args:
             tom_persona: Tom's persona description for the specific context
+            personal_context: User's personal context from config
+            client_type: 'web', 'android', or 'tui'
+            
+        Returns:
+            JSON-formatted static system message dict (cacheable)
+        """
+        import json
+        
+        # Build JSON content without dynamic values
+        json_content = {
+            "description": "Define the assistant's role, style, rules, and available tools.",
+            "persona": {
+                "name": "Tom",
+                "role": tom_persona,
+                "language_policy": "Always respond in the same language as the user (FR/EN); use informal 'tu' if the user writes in French.",
+                "style": "clear, structured, markdown-friendly"
+            },
+            "formatting": {
+                "markdown": True,
+                "language": "auto-detect to match user input",
+                "no_urls_direct": True if client_type in ['web', 'android'] else False
+            }
+        }
+        
+        # Add user profile if available - convert from text/YAML to JSON
+        if personal_context and personal_context.strip():
+            json_content["user_profile"] = self._parse_user_profile_to_json(personal_context.strip())
+        
+        # Add specific formatting rules based on client type
+        if client_type == 'tui':
+            json_content["formatting"]["context"] = "Response will be displayed in a TUI terminal application. Use markdown for better readability: titles, lists, bold text, etc."
+        else:
+            json_content["formatting"]["context"] = "Response will be displayed in a web browser or mobile app. Use markdown for better readability. Use [open:URL] tag instead of direct URLs unless explicitly asked."
+        
+        return {
+            "role": "system",
+            "content": json.dumps(json_content, ensure_ascii=False, separators=(',', ':'))
+        }
+
+    def _create_temporal_system_message(self, today: str, weeknumber: int, gps: str) -> Dict[str, Any]:
+        """
+        Create a temporal system message with dynamic values that should not be cached
+        Contains only dynamic values: current date/time and GPS position
+        
+        Args:
             today: Current date/time string
             weeknumber: Current week number
             gps: GPS position string (empty if not available)
-            personal_context: User's personal context from config
-            client_type: 'web', 'android', or 'tui'
-            available_tools: Whether tools are available for this conversation
             
         Returns:
-            JSON-formatted system message dict
+            JSON-formatted temporal system message dict (not cacheable)
         """
         import json
         
@@ -1386,43 +1427,64 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                 # If parsing fails, leave gps_position as None
                 pass
         
-        # Build JSON content
+        # Build JSON content with only dynamic values
         json_content = {
-            "description": "Define the assistant's role, style, rules, and available tools.",
-            "persona": {
-                "name": "Tom",
-                "role": tom_persona,
-                "language_policy": "Always respond in the same language as the user (FR/EN); use informal 'tu' if the user writes in French.",
-                "style": "clear, structured, markdown-friendly"
-            },
-            "system_context": {
+            "temporal_context": {
                 "current_date_time": today,
                 "week_number": weeknumber
-            },
-            "formatting": {
-                "markdown": True,
-                "language": "auto-detect to match user input",
-                "no_urls_direct": True if client_type in ['web', 'android'] else False
             }
         }
         
         # Add GPS position if available
         if gps_position:
-            json_content["system_context"]["gps_position"] = gps_position
-        
-        # Add user profile if available - convert from text/YAML to JSON
-        if personal_context and personal_context.strip():
-            json_content["user_profile"] = self._parse_user_profile_to_json(personal_context.strip())
-        
-        # Add specific formatting rules based on client type
-        if client_type == 'tui':
-            json_content["formatting"]["context"] = "Response will be displayed in a TUI terminal application. Use markdown for better readability: titles, lists, bold text, etc."
-        else:
-            json_content["formatting"]["context"] = "Response will be displayed in a web browser or mobile app. Use markdown for better readability. Use [open:URL] tag instead of direct URLs unless explicitly asked."
+            json_content["temporal_context"]["gps_position"] = gps_position
         
         return {
             "role": "system",
             "content": json.dumps(json_content, ensure_ascii=False, separators=(',', ':'))
+        }
+
+    def _create_json_system_message(self, tom_persona: str, today: str, weeknumber: int, gps: str, 
+                                   personal_context: str, client_type: str, 
+                                   available_tools: bool = False) -> Dict[str, Any]:
+        """
+        DEPRECATED: Create a single JSON-formatted system message that includes all contexts
+        This method is kept for backward compatibility but should be avoided as it prevents LLM caching
+        Use _create_static_system_message + _create_temporal_system_message for better caching
+        
+        Args:
+            tom_persona: Tom's persona description for the specific context
+            today: Current date/time string
+            weeknumber: Current week number
+            gps: GPS position string (empty if not available)
+            personal_context: User's personal context from config
+            client_type: 'web', 'android', or 'tui'
+            available_tools: Whether tools are available for this conversation
+            
+        Returns:
+            JSON-formatted system message dict (not cacheable due to dynamic content)
+        """
+        import json
+        
+        # Get static content
+        static_message = self._create_static_system_message(tom_persona, personal_context, client_type)
+        static_content = json.loads(static_message["content"])
+        
+        # Get temporal content
+        temporal_message = self._create_temporal_system_message(today, weeknumber, gps)
+        temporal_content = json.loads(temporal_message["content"])
+        
+        # Merge both contents into a single message (for backward compatibility)
+        merged_content = static_content.copy()
+        merged_content.update(temporal_content)
+        
+        # Move temporal_context to system_context for backward compatibility
+        if "temporal_context" in merged_content:
+            merged_content["system_context"] = merged_content.pop("temporal_context")
+        
+        return {
+            "role": "system",
+            "content": json.dumps(merged_content, ensure_ascii=False, separators=(',', ':'))
         }
 
     def _parse_user_profile_to_json(self, personal_context: str):
@@ -1527,24 +1589,32 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         full_conversation = []
         
         if use_json_format:
-            # NEW JSON FORMAT: Build conversation with separate system messages
+            # NEW JSON FORMAT: Build conversation with separate cacheable static and non-cacheable temporal messages
             
-            # Use new JSON system message if all required parameters are provided
+            # Use new JSON system messages if all required parameters are provided
             if tom_persona is not None and today is not None and weeknumber is not None:
-                # 1. Global system message (without triage instructions)
-                global_system_message = self._create_json_system_message(
+                # 1. Static system message (cacheable - no dynamic content)
+                static_system_message = self._create_static_system_message(
                     tom_persona=tom_persona,
-                    today=today,
-                    weeknumber=weeknumber,
-                    gps=gps or "",
                     personal_context=personal_context or "",
                     client_type=client_type
                 )
-                full_conversation.append(global_system_message)
+                full_conversation.append(static_system_message)
                 
                 # 2. Add history if exists
                 if client_history:
                     full_conversation.extend(client_history)
+                
+                # 3. Split current conversation into helper and user messages
+                helper_messages = [msg for msg in current_conversation if msg.get('role') == 'system']
+                user_messages = [msg for msg in current_conversation if msg.get('role') != 'system']
+                
+                # 4. Separate the last user message from the rest
+                last_user_message = None
+                other_user_messages = []
+                if user_messages:
+                    last_user_message = user_messages[-1]  # Get the last user message
+                    other_user_messages = user_messages[:-1]  # Get all user messages except the last
                 
                 if triage_mode and triage_instructions:
                     # TRIAGE MODE: Add two separate triage system messages
@@ -1563,35 +1633,44 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
                         }
                         full_conversation.append(triage_modules_message)
                     
-                    # 3. Add helper messages from current_conversation (memory, etc.)
-                    # In triage mode, helper messages come after triage instructions
-                    helper_messages = [msg for msg in current_conversation if msg.get('role') == 'system']
-                    user_messages = [msg for msg in current_conversation if msg.get('role') != 'system']
-                    
+                    # 5. Add helper messages from current_conversation (memory, etc.)
                     if helper_messages:
                         full_conversation.extend(helper_messages)
                     
-                    # 4. Add user messages last
-                    if user_messages:
-                        full_conversation.extend(user_messages)
+                    # 6. Add all user messages except the last one
+                    if other_user_messages:
+                        full_conversation.extend(other_user_messages)
+                    
+                    # 7. Add temporal message just before the last user message (non-cacheable)
+                    temporal_system_message = self._create_temporal_system_message(today, weeknumber, gps or "")
+                    full_conversation.append(temporal_system_message)
+                    
+                    # 8. Add the last user message
+                    if last_user_message:
+                        full_conversation.append(last_user_message)
                         
                     triage_systems_count = 2 if triage_modules_json else 1
-                    tomlogger.debug(f"Built triage conversation for {client_type}: 1 global + {len(client_history)} history + {triage_systems_count} triage + {len(helper_messages)} helpers + {len(user_messages)} user = {len(full_conversation)} total", 
+                    tomlogger.debug(f"Built triage conversation for {client_type}: 1 static + {len(client_history)} history + {triage_systems_count} triage + {len(helper_messages)} helpers + {len(other_user_messages)} other_user + 1 temporal + 1 last_user = {len(full_conversation)} total", 
                                    self.username, module_name="tomllm")
                 else:
-                    # NORMAL MODE: Add helper messages then user messages
-                    # 3. Add helper messages from current_conversation (behavior, memory, etc.)
-                    helper_messages = [msg for msg in current_conversation if msg.get('role') == 'system']
-                    user_messages = [msg for msg in current_conversation if msg.get('role') != 'system']
-                    
+                    # NORMAL MODE: Add helper messages, then other user messages, then temporal, then last user
+                    # 5. Add helper messages from current_conversation (behavior, memory, etc.)
                     if helper_messages:
                         full_conversation.extend(helper_messages)
                     
-                    # 4. Add user messages last
-                    if user_messages:
-                        full_conversation.extend(user_messages)
+                    # 6. Add all user messages except the last one
+                    if other_user_messages:
+                        full_conversation.extend(other_user_messages)
+                    
+                    # 7. Add temporal message just before the last user message (non-cacheable)
+                    temporal_system_message = self._create_temporal_system_message(today, weeknumber, gps or "")
+                    full_conversation.append(temporal_system_message)
+                    
+                    # 8. Add the last user message
+                    if last_user_message:
+                        full_conversation.append(last_user_message)
                         
-                    tomlogger.debug(f"Built normal conversation for {client_type}: 1 global + {len(client_history)} history + {len(helper_messages)} helpers + {len(user_messages)} user = {len(full_conversation)} total", 
+                    tomlogger.debug(f"Built normal conversation for {client_type}: 1 static + {len(client_history)} history + {len(helper_messages)} helpers + {len(other_user_messages)} other_user + 1 temporal + 1 last_user = {len(full_conversation)} total", 
                                    self.username, module_name="tomllm")
                 
                 # Early return - conversation is already complete
