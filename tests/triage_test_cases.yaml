@@ -1,52 +1,22 @@
 llms:
   - llm: openrouter-mistral
     model: openrouter/mistralai/mistral-small-3.2-24b-instruct
-    price:
-      cache_hit: 0.10
-      cache_miss: 0.10
-      output: 0.30
   #- llm: deepseek
   #  model: deepseek/deepseek-chat
-  #  price:
-  #    cache_hit: 0.07
-  #    cache_miss: 0.56
-  #    output: 1.68
-  - llm: openai
-    model: openai/gpt-4.1-mini
-    price:
-      cache_hit: 0.20 
-      cache_miss: 0.80
-      output: 3.20
+  - llm: openrouter-openai
+    model: openrouter/openai/gpt-4.1-mini
+  - llm: openrouter-openai-free
+    model: openrouter/openai/gpt-oss-20b
   - llm: openrouter-gemini
     model: openrouter/google/gemini-2.5-flash
-    price:
-      cache_hit: 0.075
-      cache_miss: 0.30
-      output: 2.50
   - llm: openrouter-kimi-k2
     model: openrouter/moonshotai/kimi-k2
-    price:
-      cache_hit: 0.50
-      cache_miss: 0.50
-      output: 2.40
   - llm: openrouter-llama3
     model: openrouter/meta-llama/llama-3.3-70b-instruct
-    price:
-      cache_hit: 0.038
-      cache_miss: 0.12
-      output: 0.12
   - llm: openrouter-llama4
     model: openrouter/meta-llama/llama-4-maverick
-    price:
-      cache_hit: 0.15
-      cache_miss: 0.15
-      output: 0.8
   - llm: openrouter-qwen3
     model: openrouter/qwen/qwen3-235b-a22b-2507
-    price:
-      cache_hit: 0.15
-      cache_miss: 0.15
-      output: 0.80
 
 test_cases:
 
