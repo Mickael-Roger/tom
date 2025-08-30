@@ -199,8 +199,7 @@ services:
     environment:
       - TOM_LOG_LEVEL=DEBUG
     ports:
-      - 9090:9090
-      - 9091:9091
+      - "9090-9099:9090-9099"
     networks:
       - tom
     volumes:

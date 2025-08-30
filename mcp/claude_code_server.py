@@ -43,7 +43,7 @@ Instructions:
 
 - You will start by initializing a file named CLAUDE.md, which will contain all the information you need to complete this project.
 - After each step, you will update the CLAUDE.md file.
-- Throughout the project's progress (after each step), you will keep a JSON file @project_status.json up to date.
+- Throughout the project's progress (after each step), you will keep a JSON file project_status.json up to date.
 
 The format of the @project_status.json file will be as follows:
 ```json
@@ -64,6 +64,12 @@ The format of the @project_status.json file will be as follows:
  - "executing": When you are performing the project tasks
  - "error": When you are not able to finish the project and cannot go further
  - "finished": When the user's request is fully completed
+
+If the request involves a website or any other web-based site, you will expose it using Python (ideally via the command `python -m http.server PORT`).
+The user can access sites on any port between 9090 and 9099. You can use the ss command if you want to check whether any of these ports are already in use. BE CAREFUL to always run `python -m http.server PORT` from inside the directory of the project (where the webpages resides)
+
+In all cases where you expose a website, you must specify the port you used in the description of the corresponding task in the project_status.json file.
+
 """
 
 # Initialize FastMCP server
@@ -172,8 +178,17 @@ class ClaudeCodeService:
     async def _execute_claude_code_project(self, project_path: str) -> Dict[str, Any]:
         """Execute Claude Code SDK in the project directory"""
         try:
+            project_name = os.path.basename(project_path)
             if tomlogger:
                 tomlogger.debug(f"_execute_claude_code_project called for: {project_path}", module_name="claude_code")
+            
+            # Setup debug logging file if in DEBUG mode
+            debug_log_file = None
+            log_level = os.environ.get('TOM_LOG_LEVEL', 'INFO').upper()
+            if log_level == 'DEBUG':
+                debug_log_file = f"/tmp/debug_{project_name}.log"
+                if tomlogger:
+                    tomlogger.debug(f"Debug mode enabled, Claude output will be logged to: {debug_log_file}", module_name="claude_code")
             
             # Update project status to executing
             await self._update_project_status(project_path, "executing", "Starting Claude Code execution")
@@ -207,6 +222,21 @@ class ClaudeCodeService:
                 if tomlogger:
                     tomlogger.debug(f"Starting to collect Claude SDK response", module_name="claude_code")
                 
+                # Initialize debug file if enabled
+                debug_file_handle = None
+                if debug_log_file:
+                    try:
+                        debug_file_handle = open(debug_log_file, 'w', encoding='utf-8')
+                        debug_file_handle.write(f"=== Claude Code Debug Log for {project_name} ===\n")
+                        debug_file_handle.write(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                        debug_file_handle.write(f"Project path: {project_path}\n")
+                        debug_file_handle.write("=" * 50 + "\n\n")
+                        debug_file_handle.flush()
+                    except Exception as e:
+                        if tomlogger:
+                            tomlogger.error(f"Failed to create debug log file: {e}", module_name="claude_code")
+                        debug_file_handle = None
+                
                 # Collect response
                 response_parts = []
                 message_count = 0
@@ -218,7 +248,28 @@ class ClaudeCodeService:
                     if hasattr(message, 'content'):
                         for block in message.content:
                             if hasattr(block, 'text'):
-                                response_parts.append(block.text)
+                                text_content = block.text
+                                response_parts.append(text_content)
+                                
+                                # Write to debug file if enabled
+                                if debug_file_handle:
+                                    try:
+                                        debug_file_handle.write(text_content)
+                                        debug_file_handle.flush()
+                                    except Exception as e:
+                                        if tomlogger:
+                                            tomlogger.error(f"Failed to write to debug log: {e}", module_name="claude_code")
+                
+                # Close debug file
+                if debug_file_handle:
+                    try:
+                        debug_file_handle.write(f"\n\n=== Execution completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+                        debug_file_handle.close()
+                        if tomlogger:
+                            tomlogger.debug(f"Claude output saved to debug file: {debug_log_file}", module_name="claude_code")
+                    except Exception as e:
+                        if tomlogger:
+                            tomlogger.error(f"Failed to close debug log file: {e}", module_name="claude_code")
                 
                 full_response = "".join(response_parts)
                 
@@ -235,7 +286,8 @@ class ClaudeCodeService:
                     "success": True,
                     "response_length": len(full_response),
                     "status": "completed",
-                    "message_count": message_count
+                    "message_count": message_count,
+                    "debug_log_file": debug_log_file if debug_log_file else None
                 }
                 
         except Exception as e:
