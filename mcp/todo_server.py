@@ -220,7 +220,7 @@ class TodoService:
         
         return items
     
-    def addToList(self, item_name: str, list_name: str, priority: Optional[int] = None, due: Optional[str] = None) -> Dict[str, Any]:
+    def addToList(self, item_name: str, list_name: str, priority: Optional[int] = None, due: Optional[str] = None, description: Optional[str] = None) -> Dict[str, Any]:
         """Add an item to a todo list"""
         calendar = self.getCalendarByName(list_name)
         if calendar is None:
@@ -233,6 +233,8 @@ class TodoService:
                 task.add('priority', priority)
             if due is not None:
                 task.add('due', datetime.strptime(due, self.date_format))
+            if description is not None:
+                task.add('description', description)
 
             cal = iCalendar()
             cal.add_component(task)
@@ -385,7 +387,7 @@ def create_list(list_name: str) -> str:
 
 
 @server.tool()
-def add_to_list(item_name: str, list_name: str, priority: Optional[int] = None, due: Optional[str] = None) -> str:
+def add_to_list(item_name: str, list_name: str, priority: Optional[int] = None, due: Optional[str] = None, description: Optional[str] = None) -> str:
     """Add an item to a list. Use this for adding tasks, products, or any items to lists.
     
     Args:
@@ -393,11 +395,12 @@ def add_to_list(item_name: str, list_name: str, priority: Optional[int] = None, 
         list_name: Name of the list to add the item to. REQUIRED parameter.
         priority: Priority from 1-9 (1 is highest). Only for TODO tasks, not for grocery items.
         due: Due date in 'YYYY-MM-DD HH:MM:SS' format. Only for TODO tasks, not for grocery items.
+        description: Additional description or notes for the item. Optional parameter.
     """
     if tomlogger:
-        tomlogger.info(f"Tool call: add_to_list with item_name={item_name}, list_name={list_name}, priority={priority}, due={due}", module_name="todo")
+        tomlogger.info(f"Tool call: add_to_list with item_name={item_name}, list_name={list_name}, priority={priority}, due={due}, description={description}", module_name="todo")
     
-    result = todo_service.addToList(item_name, list_name, priority, due)
+    result = todo_service.addToList(item_name, list_name, priority, due, description)
     return json.dumps(result, ensure_ascii=False)
 
 
