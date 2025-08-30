@@ -60,7 +60,7 @@ COPY lib/ /app/lib/
 WORKDIR /app
 
 # Install Python dependencies
-RUN pip install --no-cache-dir fastmcp mcp requests claude-code-sdk
+RUN pip install --no-cache-dir fastmcp mcp requests claude-code-sdk cherrypy
 
 RUN echo "code ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/code && \
     chmod 0440 /etc/sudoers.d/code
@@ -68,8 +68,8 @@ RUN echo "code ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/code && \
 # Set up non-root user
 USER code
 
-# Expose port
-EXPOSE 80
+# Expose ports
+EXPOSE 80 8080
 
 # Set environment variables
 ENV PYTHONPATH=/app

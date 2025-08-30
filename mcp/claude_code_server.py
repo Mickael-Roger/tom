@@ -10,7 +10,10 @@ import sys
 import asyncio
 from datetime import datetime
 from typing import Any, Dict, List
+import threading
+import time
 
+import cherrypy
 from mcp.server.fastmcp import FastMCP
 from mcp.types import Tool, TextContent
 from claude_code_sdk import ClaudeSDKClient, ClaudeCodeOptions
@@ -423,6 +426,127 @@ class ClaudeCodeService:
 claude_code_service = ClaudeCodeService()
 
 
+class ClaudeCodeHTTPServer:
+    """HTTP server for project status endpoints"""
+    
+    def __init__(self, claude_service: ClaudeCodeService):
+        self.claude_service = claude_service
+    
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def status(self, project_name=None):
+        """Get project status by name"""
+        if not project_name:
+            cherrypy.response.status = 400
+            return {"error": "Project name is required"}
+        
+        if tomlogger:
+            tomlogger.debug(f"HTTP status request for project: {project_name}", module_name="claude_code")
+        
+        try:
+            # Sanitize project name (same logic as in create_project)
+            safe_project_name = "".join(c for c in project_name if c.isalnum() or c in ('-', '_', ' ')).strip()
+            if not safe_project_name:
+                cherrypy.response.status = 400
+                return {"error": "Invalid project name"}
+            
+            project_path = os.path.join(self.claude_service.projects_dir, safe_project_name)
+            status_file = os.path.join(project_path, 'project_status.json')
+            
+            if tomlogger:
+                tomlogger.debug(f"Looking for status file: {status_file}", module_name="claude_code")
+            
+            if not os.path.exists(status_file):
+                cherrypy.response.status = 404
+                return {"error": f"Project '{project_name}' not found"}
+            
+            # Read and validate JSON with retry for race condition protection
+            max_retries = 3
+            retry_delay = 0.1
+            
+            for attempt in range(max_retries):
+                try:
+                    with open(status_file, 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                        
+                    if not content:
+                        if tomlogger:
+                            tomlogger.debug(f"Empty status file on attempt {attempt + 1}", module_name="claude_code")
+                        if attempt < max_retries - 1:
+                            time.sleep(retry_delay)
+                            continue
+                        else:
+                            cherrypy.response.status = 500
+                            return {"error": "Status file is empty"}
+                    
+                    # Parse JSON to validate integrity
+                    project_status = json.loads(content)
+                    
+                    # Validate required fields
+                    required_fields = ["project_name", "current_status", "last_status_update", "project_steps"]
+                    for field in required_fields:
+                        if field not in project_status:
+                            if tomlogger:
+                                tomlogger.warning(f"Missing required field '{field}' in status file", module_name="claude_code")
+                            # Add default value for missing field
+                            if field == "project_name":
+                                project_status[field] = safe_project_name
+                            elif field == "current_status":
+                                project_status[field] = "unknown"
+                            elif field == "last_status_update":
+                                project_status[field] = ""
+                            elif field == "project_steps":
+                                project_status[field] = []
+                    
+                    # Validate project_steps structure
+                    if not isinstance(project_status["project_steps"], list):
+                        project_status["project_steps"] = []
+                    
+                    if tomlogger:
+                        tomlogger.debug(f"Successfully returned status for project '{project_name}'", module_name="claude_code")
+                    
+                    return project_status
+                    
+                except json.JSONDecodeError as e:
+                    if tomlogger:
+                        tomlogger.debug(f"JSON decode error on attempt {attempt + 1}: {str(e)}", module_name="claude_code")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        cherrypy.response.status = 500
+                        return {"error": f"Invalid JSON in status file: {str(e)}"}
+                        
+                except IOError as e:
+                    if tomlogger:
+                        tomlogger.debug(f"IO error on attempt {attempt + 1}: {str(e)}", module_name="claude_code")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        cherrypy.response.status = 500
+                        return {"error": f"Failed to read status file: {str(e)}"}
+            
+        except Exception as e:
+            error_msg = f"Unexpected error getting project status: {str(e)}"
+            if tomlogger:
+                tomlogger.error(error_msg, module_name="claude_code")
+            cherrypy.response.status = 500
+            return {"error": error_msg}
+    
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def index(self):
+        """Root endpoint - return available endpoints"""
+        return {
+            "service": "Claude Code Project Status API",
+            "endpoints": {
+                "/status/PROJECT_NAME": "Get status for specific project"
+            },
+            "version": "1.0"
+        }
+
+
 @server.tool()
 def create_project(
     project_name: str,
@@ -457,16 +581,60 @@ def get_projects_status() -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
+def start_http_server():
+    """Start CherryPy HTTP server in a separate thread"""
+    try:
+        if tomlogger:
+            tomlogger.info("🚀 Starting Claude Code HTTP Server on port 8080", module_name="claude_code")
+        
+        # Configure CherryPy
+        cherrypy.config.update({
+            'server.socket_host': '0.0.0.0',
+            'server.socket_port': 8080,
+            'log.screen': False,
+            'log.access_file': '',
+            'log.error_file': ''
+        })
+        
+        # Mount the HTTP server
+        http_server = ClaudeCodeHTTPServer(claude_code_service)
+        cherrypy.tree.mount(http_server, '/')
+        
+        # Start the server
+        cherrypy.engine.start()
+        
+        if tomlogger:
+            tomlogger.info("✅ Claude Code HTTP Server started successfully", module_name="claude_code")
+            
+    except Exception as e:
+        if tomlogger:
+            tomlogger.error(f"Failed to start HTTP server: {str(e)}", module_name="claude_code")
+        else:
+            print(f"Failed to start HTTP server: {str(e)}")
+
+
 def main():
-    """Main function to run the MCP server"""
+    """Main function to run both MCP and HTTP servers"""
     if tomlogger:
-        tomlogger.info("🚀 Starting Claude Code MCP Server on port 80", module_name="claude_code")
+        tomlogger.info("🚀 Starting Claude Code Services", module_name="claude_code")
         tomlogger.debug(f"TOM_LOG_LEVEL environment variable: {os.environ.get('TOM_LOG_LEVEL', 'NOT_SET')}", module_name="claude_code")
         tomlogger.debug(f"Claude Code service initialized: {claude_code_service is not None}", module_name="claude_code")
     else:
+        print("Starting Claude Code Services")
+    
+    # Start HTTP server in background thread
+    http_thread = threading.Thread(target=start_http_server, daemon=True)
+    http_thread.start()
+    
+    # Small delay to let HTTP server start
+    time.sleep(1)
+    
+    if tomlogger:
+        tomlogger.info("🚀 Starting Claude Code MCP Server on port 80", module_name="claude_code")
+    else:
         print("Starting Claude Code MCP Server on port 80")
     
-    # Run the FastMCP server with streamable HTTP transport
+    # Run the FastMCP server with streamable HTTP transport (blocking)
     server.run(transport="streamable-http")
 
 
