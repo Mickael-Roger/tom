@@ -189,8 +189,23 @@ services:
     command: sh -c 'source /data/env && node dist/index.js --transport http --port 80'
     volumes:
       - /data/mcp/brave/:/data/
-
  
+  code:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/code/Dockerfile
+    container_name: code
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    ports:
+      - 9090:9090
+      - 9091:9091
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/code/:/data/
+
 
   # Personal
  
