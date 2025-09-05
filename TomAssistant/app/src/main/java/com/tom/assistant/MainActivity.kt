@@ -19,6 +19,8 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.KeyEvent
 import android.util.Log
+import android.widget.Button
+import android.widget.TextView
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.Dispatchers
 import android.os.Build
@@ -28,6 +30,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.health.connect.client.PermissionController
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.tom.assistant.databinding.ActivityMainBinding
@@ -36,6 +40,7 @@ import com.tom.assistant.network.ApiClient
 import com.tom.assistant.ui.auth.LoginActivity
 import com.tom.assistant.ui.chat.ChatAdapter
 import com.tom.assistant.ui.tasks.TasksAdapter
+import com.tom.assistant.ui.modules.ModuleStatusAdapter
 import com.tom.assistant.utils.AudioManager
 import com.tom.assistant.utils.SessionManager
 import com.tom.assistant.utils.HeadsetButtonManager
@@ -48,6 +53,7 @@ import kotlinx.coroutines.Job
 import retrofit2.HttpException
 import java.io.IOException
 import java.util.regex.Pattern
+import android.app.AlertDialog
 
 class MainActivity : AppCompatActivity() {
 
@@ -55,15 +61,37 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sessionManager: SessionManager
     private lateinit var chatAdapter: ChatAdapter
     private lateinit var tasksAdapter: TasksAdapter
+    private lateinit var moduleStatusAdapter: ModuleStatusAdapter
     private lateinit var audioManager: AudioManager
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var headsetButtonManager: HeadsetButtonManager
     private lateinit var healthConnectManager: HealthConnectManager
+    
+    // Health Connect permission request launcher
+    private val requestHealthPermissions = registerForActivityResult(
+        PermissionController.createRequestPermissionResultContract()
+    ) { granted ->
+        if (granted.isNotEmpty()) {
+            Log.d("HealthConnect", "Health Connect permissions granted: ${granted.size}")
+            lifecycleScope.launch {
+                if (healthConnectManager.hasAllPermissions()) {
+                    Log.d("HealthConnect", "All permissions granted, starting monitoring")
+                    healthConnectManager.startHealthDataMonitoring()
+                } else {
+                    Log.w("HealthConnect", "Not all permissions were granted")
+                }
+            }
+        } else {
+            Log.w("HealthConnect", "No Health Connect permissions granted")
+            Toast.makeText(this, "Health Connect permissions are required for health monitoring", Toast.LENGTH_LONG).show()
+        }
+    }
 
     private var currentPosition: Position? = null
     private var lastDisplayedTaskId = 0
     private var isSettingsPanelVisible = false
     private var isTasksPanelVisible = false
+    private var isModuleStatusVisible = false
     private var tickerAnimator: ObjectAnimator? = null
     private var connectionRetryJob: Job? = null
 
@@ -145,6 +173,15 @@ class MainActivity : AppCompatActivity() {
         binding.rvTasks.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = tasksAdapter
+        }
+
+        // Module Status RecyclerView
+        moduleStatusAdapter = ModuleStatusAdapter { module ->
+            showModuleDetailsDialog(module)
+        }
+        binding.rvModuleStatus.apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = moduleStatusAdapter
         }
     }
 
@@ -228,6 +265,11 @@ class MainActivity : AppCompatActivity() {
         // Logout button
         binding.btnLogout.setOnClickListener {
             logout()
+        }
+
+        // Module status toggle
+        binding.layoutModuleStatusToggle.setOnClickListener {
+            toggleModuleStatus()
         }
 
         // Overlay background - fermer les panneaux en cliquant dessus
@@ -691,9 +733,19 @@ class MainActivity : AppCompatActivity() {
         binding.settingsPanel.visibility = if (isSettingsPanelVisible) View.VISIBLE else View.GONE
         binding.overlayBackground.visibility = if (isSettingsPanelVisible) View.VISIBLE else View.GONE
         
-        if (isSettingsPanelVisible && isTasksPanelVisible) {
-            isTasksPanelVisible = false
-            binding.tasksPanel.visibility = View.GONE
+        if (isSettingsPanelVisible) {
+            // Fetch module status when opening settings panel
+            fetchModuleStatus()
+            
+            if (isTasksPanelVisible) {
+                isTasksPanelVisible = false
+                binding.tasksPanel.visibility = View.GONE
+            }
+        } else {
+            // Hide module status when closing settings panel
+            isModuleStatusVisible = false
+            binding.rvModuleStatus.visibility = View.GONE
+            binding.tvModuleStatusArrow.text = "▼"
         }
     }
 
@@ -708,11 +760,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun toggleModuleStatus() {
+        isModuleStatusVisible = !isModuleStatusVisible
+        binding.rvModuleStatus.visibility = if (isModuleStatusVisible) View.VISIBLE else View.GONE
+        binding.tvModuleStatusArrow.text = if (isModuleStatusVisible) "▲" else "▼"
+    }
+
     private fun closeAllPanels() {
         isSettingsPanelVisible = false
         isTasksPanelVisible = false
+        isModuleStatusVisible = false
         binding.settingsPanel.visibility = View.GONE
         binding.tasksPanel.visibility = View.GONE
+        binding.rvModuleStatus.visibility = View.GONE
+        binding.tvModuleStatusArrow.text = "▼"
         binding.overlayBackground.visibility = View.GONE
     }
 
@@ -793,20 +854,15 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun requestHealthConnectPermissions() {
-        // This method would typically use a permission contract
-        // For now, we'll log that permissions are needed
-        Log.i("HealthConnect", "Health Connect permissions are required for health data monitoring")
-        Toast.makeText(this, "Health Connect permissions are required for health monitoring", Toast.LENGTH_LONG).show()
+        Log.i("HealthConnect", "Requesting Health Connect permissions")
         
-        // Note: In a production app, you would use:
-        // val requestPermissions = registerForActivityResult(
-        //     PermissionController.createRequestPermissionResultContract()
-        // ) { granted ->
-        //     if (granted.containsAll(healthConnectManager.getPermissions())) {
-        //         healthConnectManager.startHealthDataMonitoring()
-        //     }
-        // }
-        // requestPermissions.launch(healthConnectManager.getPermissions())
+        try {
+            // Launch the Health Connect permission request
+            requestHealthPermissions.launch(healthConnectManager.getPermissionStrings())
+        } catch (e: Exception) {
+            Log.e("HealthConnect", "Error requesting Health Connect permissions", e)
+            Toast.makeText(this, "Unable to request Health Connect permissions", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun setupFCM() {
@@ -836,6 +892,45 @@ class MainActivity : AppCompatActivity() {
                 Log.e("FCM", "Error sending FCM token from MainActivity", e)
             }
         }
+    }
+
+    private fun fetchModuleStatus() {
+        lifecycleScope.launch {
+            try {
+                val response = ApiClient.tomApiService.getModuleStatus()
+                if (response.isSuccessful) {
+                    response.body()?.let { moduleResponse ->
+                        moduleStatusAdapter.updateModules(moduleResponse.modules)
+                    }
+                } else {
+                    Log.e("ModuleStatus", "Failed to fetch module status: ${response.code()}")
+                }
+            } catch (e: Exception) {
+                Log.e("ModuleStatus", "Error fetching module status", e)
+            }
+        }
+    }
+
+    private fun showModuleDetailsDialog(module: ModuleStatus) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_module_details, null)
+        
+        // Set module details
+        dialogView.findViewById<TextView>(R.id.tvDialogModuleName).text = module.name
+        dialogView.findViewById<TextView>(R.id.tvDialogModuleStatus).text = module.status
+        dialogView.findViewById<TextView>(R.id.tvDialogModuleDescription).text = module.description
+        dialogView.findViewById<TextView>(R.id.tvDialogModuleLlm).text = module.llm
+        dialogView.findViewById<TextView>(R.id.tvDialogModuleTools).text = module.tools_count.toString()
+        dialogView.findViewById<TextView>(R.id.tvDialogModuleEnabled).text = if (module.enabled) "Yes" else "No"
+        
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+        
+        dialogView.findViewById<Button>(R.id.btnDialogClose).setOnClickListener {
+            dialog.dismiss()
+        }
+        
+        dialog.show()
     }
 
     private fun testTickerWithDummyData() {

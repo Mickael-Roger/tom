@@ -9,4 +9,6 @@
     <color name="background_color">#F5F5F5</color>
     <color name="text_primary">#212121</color>
     <color name="text_secondary">#757575</color>
+    <color name="status_connected">#28a745</color>
+    <color name="status_error">#dc3545</color>
 </resources>

@@ -37,8 +37,12 @@
     <!-- Health Connect required queries -->
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
+        <package android:name="com.android.healthconnect.controller" />
         <intent>
             <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+        </intent>
+        <intent>
+            <action android:name="androidx.health.connect.ACTION_HEALTH_CONNECT_SETTINGS" />
         </intent>
     </queries>
 

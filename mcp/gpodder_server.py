@@ -341,8 +341,6 @@ class GPodderService:
                                             five_months_ago = datetime.now(episode_date.tzinfo) - timedelta(days=150)
                                             if episode_date < five_months_ago:
                                                 should_add = False
-                                                if tomlogger:
-                                                    tomlogger.debug(f"Skipping old episode (>5 months): {episode_title}", module_name="gpodder")
                                     except:
                                         # If date parsing fails, add the episode anyway
                                         pass
@@ -632,6 +630,103 @@ class GPodderService:
                 'message': f'Failed to list unheard episodes: {str(e)}'
             }, ensure_ascii=False)
 
+    def mark_episode_played(self, episode_url: str) -> str:
+        """Mark an episode as played in both local database and GPodder.net."""
+        try:
+            if not episode_url:
+                return json.dumps({
+                    'status': 'error',
+                    'message': 'Episode URL is required'
+                }, ensure_ascii=False)
+            
+            dbconn = sqlite3.connect(self.db)
+            cursor = dbconn.cursor()
+            
+            # First check if episode exists and get its current status
+            cursor.execute("""
+                SELECT e.id, e.title, e.status, s.title as podcast_title
+                FROM episodes e
+                JOIN subscriptions s ON e.subscription_id = s.id
+                WHERE e.url = ?
+            """, (episode_url,))
+            
+            episode_data = cursor.fetchone()
+            if not episode_data:
+                dbconn.close()
+                return json.dumps({
+                    'status': 'error',
+                    'message': f'Episode not found with URL: {episode_url}'
+                }, ensure_ascii=False)
+            
+            episode_id, episode_title, current_status, podcast_title = episode_data
+            
+            # Update episode status in local database
+            cursor.execute("""
+                UPDATE episodes 
+                SET status = 'played' 
+                WHERE url = ?
+            """, (episode_url,))
+            
+            dbconn.commit()
+            dbconn.close()
+            
+            if tomlogger:
+                tomlogger.info(f"Marked episode as played in local DB: {episode_title} from {podcast_title}", module_name="gpodder")
+            
+            # Update episode status on GPodder.net if client is available
+            gpodder_success = False
+            if self.client:
+                try:
+                    # Create a play action for GPodder.net
+                    from mygpoclient.api import EpisodeAction
+                    
+                    # Create episode action with current timestamp
+                    current_time = int(time.time())
+                    play_action = EpisodeAction(
+                        podcast=None,  # Will be determined by GPodder from episode URL
+                        episode=episode_url,
+                        device=self.device_id,
+                        action='play',
+                        timestamp=current_time
+                    )
+                    
+                    # Upload the episode action
+                    self.client.upload_episode_actions([play_action])
+                    gpodder_success = True
+                    
+                    if tomlogger:
+                        tomlogger.info(f"Successfully marked episode as played on GPodder.net: {episode_url}", module_name="gpodder")
+                
+                except Exception as e:
+                    if tomlogger:
+                        tomlogger.error(f"Failed to mark episode as played on GPodder.net: {e}", module_name="gpodder")
+                    # Continue execution - local update was successful
+            
+            result = {
+                'status': 'success',
+                'message': f'Episode marked as played: {episode_title}',
+                'episode': {
+                    'id': episode_id,
+                    'title': episode_title,
+                    'url': episode_url,
+                    'podcast_title': podcast_title,
+                    'previous_status': current_status,
+                    'new_status': 'played'
+                },
+                'local_update': True,
+                'gpodder_update': gpodder_success
+            }
+            
+            return json.dumps(result, ensure_ascii=False)
+            
+        except Exception as e:
+            if tomlogger:
+                tomlogger.error(f"Error marking episode as played: {e}", module_name="gpodder")
+            return json.dumps({
+                'status': 'error',
+                'message': f'Failed to mark episode as played: {str(e)}'
+            }, ensure_ascii=False)
+
 
 # Load configuration and initialize gpodder service
 config = load_config()
@@ -658,6 +753,19 @@ def list_unheard_episodes(limit: int = 50) -> str:
         tomlogger.info(f"Tool call: list_unheard_episodes with limit={limit}", module_name="gpodder")
     
     return gpodder_service.list_unheard_episodes(limit)
+
+
+@server.tool()
+def mark_episode_played(episode_url: str) -> str:
+    """Mark a podcast episode as played/listened in both local database and GPodder.net.
+    
+    Args:
+        episode_url: The URL of the episode to mark as played
+    """
+    if tomlogger:
+        tomlogger.info(f"Tool call: mark_episode_played with episode_url={episode_url}", module_name="gpodder")
+    
+    return gpodder_service.mark_episode_played(episode_url)
 
 
 @server.resource("description://gpodder")

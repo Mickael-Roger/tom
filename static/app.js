@@ -148,7 +148,7 @@ document.addEventListener("DOMContentLoaded", () => {
     
         // Envoyer la requête à /process sans attendre sa réponse
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutes timeout
+        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes timeout
         
         const processRequest = fetch("/process", {
             method: "POST",

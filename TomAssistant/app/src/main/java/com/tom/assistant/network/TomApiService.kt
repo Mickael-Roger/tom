@@ -30,4 +30,7 @@ interface TomApiService {
     
     @POST("health")
     suspend fun sendHealthData(@Body request: HealthDataRequest): Response<Void>
+    
+    @GET("status")
+    suspend fun getModuleStatus(): Response<ModuleStatusResponse>
 }

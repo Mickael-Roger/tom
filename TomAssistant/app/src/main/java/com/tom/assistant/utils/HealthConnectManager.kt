@@ -29,8 +29,8 @@ class HealthConnectManager(private val context: Context) {
         private const val LAST_SYNC_KEY = "last_health_sync"
     }
     
-    // Health Connect permissions required
-    private val permissions = setOf(
+    // Health Connect permissions required (these are actually strings)
+    private val healthPermissions = setOf(
         HealthPermission.getReadPermission(StepsRecord::class),
         HealthPermission.getReadPermission(HeartRateRecord::class),
         HealthPermission.getReadPermission(SleepSessionRecord::class),
@@ -45,10 +45,17 @@ class HealthConnectManager(private val context: Context) {
     
     /**
      * Check if Health Connect is available on this device
-     * Simply returns true and lets the actual Health Connect calls handle availability
+     * Handles both Health Connect Beta and system-integrated versions
      */
     fun isHealthConnectAvailable(): Boolean {
-        return true
+        return try {
+            // Try to create the client - if it fails, Health Connect is not available
+            val testClient = HealthConnectClient.getOrCreate(context)
+            testClient != null
+        } catch (e: Exception) {
+            Log.w(TAG, "Health Connect not available: ${e.message}")
+            false
+        }
     }
     
     /**
@@ -57,7 +64,11 @@ class HealthConnectManager(private val context: Context) {
     suspend fun hasAllPermissions(): Boolean {
         return try {
             val grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
-            permissions.all { it in grantedPermissions }
+            healthPermissions.all { permission ->
+                grantedPermissions.any { grantedPermission -> 
+                    grantedPermission.toString() == permission.toString() 
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error checking permissions", e)
             false
@@ -518,6 +529,12 @@ class HealthConnectManager(private val context: Context) {
     
     /**
      * Get the required permissions for the permission request contract
+     * Since HealthPermission.getReadPermission actually returns strings, we return them directly
      */
-    fun getPermissions(): Set<String> = permissions
+    fun getPermissions(): Set<String> = healthPermissions
+    
+    /**
+     * Get the required permissions as strings for the permission request contract
+     */
+    fun getPermissionStrings(): Set<String> = healthPermissions
 }
