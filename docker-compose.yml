@@ -242,6 +242,19 @@ services:
     volumes:
       - /data/mcp/memory/config.yml:/config.yml:ro
       - /data/mcp/memory/mickael/:/data/
+  email-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/email/Dockerfile
+    container_name: email-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/email/mickael/:/data/
+
 
  
   anki-mickael:
