@@ -163,7 +163,7 @@ class MailService:
                 emails = []
                 for email_id in email_ids[-20:]:  # Get last 20 new emails
                     try:
-                        status, msg_data = imap.fetch(email_id, '(RFC822)')
+                        status, msg_data = imap.fetch(email_id, '(BODY.PEEK[])')
                         if status == 'OK':
                             email_message = email.message_from_bytes(msg_data[0][1])
                             
@@ -220,7 +220,7 @@ class MailService:
                 imap.login(self.imap_config['username'], self.imap_config['password'])
                 imap.select('INBOX')
                 
-                status, msg_data = imap.fetch(email_id.encode(), '(RFC822)')
+                status, msg_data = imap.fetch(email_id.encode(), '(BODY.PEEK[])')
                 if status != 'OK':
                     return json.dumps({"error": "Failed to fetch email"}, ensure_ascii=False)
                 
@@ -351,7 +351,7 @@ class MailService:
                 emails = []
                 for email_id in reversed(recent_email_ids):  # Most recent first
                     try:
-                        status, msg_data = imap.fetch(email_id, '(RFC822)')
+                        status, msg_data = imap.fetch(email_id, '(BODY.PEEK[])')
                         if status == 'OK':
                             email_message = email.message_from_bytes(msg_data[0][1])
                             
@@ -437,7 +437,7 @@ class MailService:
                 emails = []
                 for email_id in reversed(email_ids):  # Most recent first
                     try:
-                        status, msg_data = imap.fetch(email_id, '(RFC822)')
+                        status, msg_data = imap.fetch(email_id, '(BODY.PEEK[])')
                         if status == 'OK':
                             email_message = email.message_from_bytes(msg_data[0][1])
                             
