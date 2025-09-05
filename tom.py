@@ -413,6 +413,25 @@ class TomWebService:
         
         return self._proxy_memory_request(endpoint)
 
+    @cherrypy.expose
+    @cherrypy.tools.allow(methods=['POST'])
+    @cherrypy.tools.json_in()
+    @cherrypy.tools.json_out()
+    def health(self):
+        """Receive Android Health Connect data"""
+        if not self._check_auth():
+            raise cherrypy.HTTPError(401, "Authentication required")
+            
+        username = cherrypy.session['username']
+        input_json = cherrypy.request.json
+        
+        if not input_json:
+            raise cherrypy.HTTPError(400, "JSON data is required")
+        
+        tomlogger.info(f"📱 Health data received from {username}: {json.dumps(input_json)}", username, "web", "health")
+        
+        return {"status": "success", "message": "Health data received"}
+
 
 def main():
     """Main application entry point"""
