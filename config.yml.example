@@ -1,180 +1,143 @@
 global:
-  llm: openai
-  llm_tts: openai  # LLM utilisé pour synthétiser les réponses TTS
   log_level: INFO
+  sessions: /tmp/tom_sessions  # Path for the session storage directory
   
-  # Nouvelle structure recommandée : Configuration des LLMs sous global.llms
+  # Configuration Firebase pour les notifications push
+  firebase:
+    apiKey: "your-firebase-api-key"
+    authDomain: "your-project.firebaseapp.com"
+    projectId: "your-project-id"
+    storageBucket: "your-project.appspot.com"
+    messagingSenderId: "123456789"
+    appId: "1:123456789:web:abcdefghijklmnop"
+    vapidkey: "your-vapid-key"
+  
+  # LLM Configuration
+  llm: openai                    # Default LLM
+  llm_tts: openrouter-gemini     # TTS LLM
   llms:
-    openai:
-      api: sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-      env_var: OPENAI_API_KEY
-      models:
-        - "openai/gpt-4o-mini"      # Modèle pour complexity 0 (rapide/économique)
-        - "openai/gpt-4o"           # Modèle pour complexity 1 (standard)
-        - "openai/gpt-4o"           # Modèle pour complexity 2 (avancé)
-    
-    mistral:
-      api: XXXXXXXXXXXXXXXXXXXXXXXX
-      env_var: MISTRAL_API_KEY
-      models:
-        - "mistral/mistral-large-latest"
-        - "mistral/mistral-large-latest" 
-        - "mistral/mistral-large-latest"
-    
     deepseek:
-      api: sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      api: sk-your-deepseek-api-key
       env_var: DEEPSEEK_API_KEY
       models:
-        - "deepseek/deepseek-chat"
-        - "deepseek/deepseek-chat"
-        - "deepseek/deepseek-reasoner"  # Modèle de raisonnement pour complexity 2
-    
-    xai:
-      api: xai-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-      env_var: XAI_API_KEY
-      models:
-        - "xai/grok-beta"
-        - "xai/grok-beta"
-        - "xai/grok-beta"
-    
+      - deepseek/deepseek-chat
+      - deepseek/deepseek-chat
+      - deepseek/deepseek-reasoner
     gemini:
-      api: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      api: AIzaSy-your-gemini-api-key
       env_var: GEMINI_API_KEY
       models:
-        - "gemini/gemini-1.5-flash"
-        - "gemini/gemini-1.5-flash"
-        - "gemini/gemini-1.5-flash"
-    
-    openrouter:
-      api: sk-or-v1-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      - gemini/gemini-1.5-flash
+      - gemini/gemini-1.5-flash
+      - gemini/gemini-1.5-pro
+    mistral:
+      api: your-mistral-api-key
+      env_var: MISTRAL_API_KEY
+      models:
+      - mistral/mistral-large-latest
+      - mistral/mistral-large-latest
+      - mistral/mistral-large-latest
+    openai:
+      api: sk-proj-your-openai-api-key
+      env_var: OPENAI_API_KEY
+      models:
+      - openai/gpt-4o-mini
+      - openai/gpt-4o
+      - openai/gpt-4o
+    openrouter-gemini:
+      api: sk-or-v1-your-openrouter-api-key
       env_var: OPENROUTER_API_KEY
       models:
-        - "openrouter/moonshotai/kimi-k2"
-        - "openrouter/moonshotai/kimi-k2"
-        - "openrouter/moonshotai/kimi-k2"
-    
-    # Exemple d'ajout d'un nouveau LLM - Il suffit de l'ajouter ici sans modifier le code !
-    anthropic:
-      api: sk-ant-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-      env_var: ANTHROPIC_API_KEY
+      - openrouter/google/gemini-2.0-flash-exp
+      - openrouter/google/gemini-2.0-flash-exp
+      - openrouter/google/gemini-2.0-flash-exp
+    xai:
+      api: xai-your-xai-api-key
+      env_var: XAI_API_KEY
       models:
-        - "anthropic/claude-3-haiku-20240307"
-        - "anthropic/claude-3-sonnet-20240229"
-        - "anthropic/claude-3-opus-20240229"
-
-  sessions: /xxxx/ # Path for the session storage directory
-
-  user_datadir: /data/users/
-  all_datadir: /data/all/  # Path for global modules cache files
-
-# Global modules configuration (shared configuration, activation per user)
-services:
-  idfm:
-    token: XXXXXXXXXXXXXXXXXXXXXXXX
-  
-  weather:
-    # No configuration needed - uses free APIs
-  
-  deebot:
-    username: your_deebot_email@example.com
-    password: your_deebot_password
-    country: FR
-  
-  cafetaria:
-    username: your_cafetaria_username
-    password: your_cafetaria_password
-  
-  news:
-    url: https://your-news-server.com/api
-    user: news_username
-    password: news_password
-  
-  kwyk:
-    username: your_kwyk_username
-    password: your_kwyk_password
-    id: "your_kwyk_id"
-
+      - xai/grok-beta
+      - xai/grok-beta
+      - xai/grok-beta
 
 users:
-  - username: user1
-    password: password1
-    admin: true  # Optional: Set to true to make this user an administrator (default: false)
-    memory: true
+  - username: alice
+    password: alice123
+    personal_context: "Alice is a software developer who prefers technical responses and detailed explanations"
     services:
-      # Global modules activation (configuration is in root services section)
-      idfm:
-        enable: true
       weather:
-        enable: true
-      contacts:
-        enable: true
-      deebot:
-        enable: false  # User can disable global modules
-      cafetaria:
-        enable: true
-      news:
-        enable: true
-      kwyk:
+        url: http://weather-service/mcp
+        headers:
+          Authorization: "Bearer weather-api-token"
+          Content-Type: "application/json"
+        config:
+          description: "Weather forecast and current conditions service"
+          llm: openai
+          complexity: 1
         enable: true
       
-      # Personal modules (user-specific configuration AND activation)
-      calendar:
+      calculator:
+        url: http://calculator-service/mcp
+        config:
+          description: "Mathematical calculations and data analysis"
+          llm: deepseek
+          complexity: 2
         enable: true
-        user: user1_calendar_username
-        password: user1_calendar_password  
-        url: 'https://your-caldav-server.com/remote.php/dav/'
-        calendar_name: 'Personal'
-     
-      todo:
-        enable: true
-        user: user1_todo_username
-        password: user1_todo_password
-        url: 'https://your-caldav-server.com/remote.php/dav/'
-        list: 'Todo'
       
-      youtube:
+      file_manager:
+        url: http://filemanager/mcp
+        headers:
+          X-API-Key: "file-access-key"
+        config:
+          description: "File operations and document management"
+          # llm not specified, will use global.llm
+          # complexity not specified, will default to 0
+        enable: false  # Disabled for this user
+    
+  - username: bob
+    password: bob456
+    personal_context: "Bob works in marketing and prefers concise, business-focused responses"
+    services:
+      analytics:
+        url: http://analytics-service/mcp
+        headers:
+          Authorization: "Bearer analytics-token"
+        config:
+          description: "Marketing analytics and reporting service"
+          llm: gemini
+          complexity: 1
         enable: true
-        cache_db: ./data/users/user1/youtube.db
       
-      coachsport:
-        enable: false  # User disabled this personal module
-        cache_db: ./data/users/user1/coachsport.db
-      
-      # Need Anki-connect HTTP add on
-      anki:
+      crm:
+        url: http://crm-service/mcp
+        config:
+          description: "Customer relationship management tools"
+          llm: openai
+          complexity: 1
         enable: true
-        url: http://localhost:8765
-        profile: user1_profile
-      
-      techcapabilities:
+    
+  - username: charlie
+    password: charlie789
+    personal_context: "Charlie is a student who needs help with research and learning"
+    services:
+      research:
+        url: http://research-tools/mcp
+        config:
+          description: "Academic research and citation tools"
+          llm: mistral
+          complexity: 2
         enable: true
-        tasks_dir: ./data/users/user1/techcapabilities/
-        host: your-vm-server.com
-        username: vm_username
-        ssh_key_path: /path/to/your/ssh/private/key
       
-      groceries:
+      translator:
+        url: http://translation-service/mcp
+        headers:
+          Accept-Language: "en,fr,es"
+        config:
+          description: "Multi-language translation service"
+          llm: openrouter-gemini
+          complexity: 0
         enable: true
-        url: 'https://your-caldav-server.com/remote.php/dav/'
-        user: user1_groceries_username
-        password: user1_groceries_password
-        list: 'Groceries'
-      
-      # Pronote login documentation: https://github.com/bain3/pronotepy/blob/master/docs/source/quickstart.rst
-      # Procedure:
-      # Generate a QR Code on the Pronote Website
-      # Screenshot it  
-      # zbarimg Pictures/Screenshots/Screenshot.png
-      # Run: python3 -m pronotepy.create_login
-      # Get a json
-      # Copy the content of the json in the file
-      # Run the application within 10 minutes
-      pronote:
-        enable: true
-        children:
-        - name: child1
-          token: data/user1/child1.json
-          cache: data/user1/child1.sqlite
 
-    personalContext: |
-      User-specific context and preferences here...
+  - username: diana
+    password: diana321
+    personal_context: "Diana is a content creator who needs creative and writing assistance"
+    # No services configured - user will only have access to base LLM functionality

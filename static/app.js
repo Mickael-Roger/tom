@@ -12,6 +12,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const tasksList = document.getElementById("tasks-list");
     const tasksIconHeader = document.getElementById("tasks-icon-header");
     const tasksCounterHeader = document.getElementById("tasks-counter-header");
+    const moduleStatusToggle = document.getElementById("module-status-toggle");
+    const moduleStatusList = document.getElementById("module-status-list");
+    const moduleInfoModal = document.getElementById("module-info-modal");
+    const modalCloseButton = document.getElementById("modal-close-button");
+    const moduleStatusArrow = document.getElementById("module-status-arrow");
 
     let tasks = [];
 
@@ -63,9 +68,17 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // Toggle configuration box visibility
+    // Toggle configuration box visibility and fetch module status
     gearIconHeader.addEventListener("click", () => {
         configBox.classList.toggle("hidden");
+
+        // If the box is now visible, fetch the status
+        if (!configBox.classList.contains("hidden")) {
+            fetchModuleStatus();
+        } else {
+            moduleStatusList.classList.add("hidden");
+            moduleStatusArrow.textContent = "▼";
+        }
     });
 
     // Handle auto-submit configuration
@@ -81,6 +94,15 @@ document.addEventListener("DOMContentLoaded", () => {
         soundConfig.classList.toggle("active", soundEnabled);
         soundConfig.textContent = soundEnabled ? "🔊 Sound" : "🔇 Mute";
         saveSettings();
+    });
+
+    moduleStatusToggle.addEventListener("click", () => {
+        moduleStatusList.classList.toggle("hidden");
+        if (moduleStatusList.classList.contains("hidden")) {
+            moduleStatusArrow.textContent = "▼";
+        } else {
+            moduleStatusArrow.textContent = "▲";
+        }
     });
 
 
@@ -125,11 +147,15 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     
         // Envoyer la requête à /process sans attendre sa réponse
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutes timeout
+        
         const processRequest = fetch("/process", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
+            body: JSON.stringify(payload),
+            signal: controller.signal
+        }).finally(() => clearTimeout(timeoutId));
     
         // Fetch immédiat de /tasks pour gérer les nouveaux messages de tâches
         fetch("/tasks", { method: "GET" })
@@ -514,5 +540,65 @@ document.addEventListener("DOMContentLoaded", () => {
             tickerContent.innerHTML = `<span class="ticker-text">${notificationText}</span>`;
         }
     }
+
+    // Fetch and display module statuses
+    function fetchModuleStatus() {
+        moduleStatusList.innerHTML = "<p>Fetching statuses...</p>"; // Debugging text
+
+        fetch("/status")
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                moduleStatusList.innerHTML = ""; // Clear previous statuses
+                if (data.modules && data.modules.length > 0) {
+                    data.modules.forEach(module => {
+                        const button = document.createElement("button");
+                        button.textContent = module.name;
+                        button.className = "module-status-button";
+                        if (module.status === "connected") {
+                            button.classList.add("status-ok");
+                        } else {
+                            button.classList.add("status-error");
+                        }
+                        button.addEventListener("click", () => showModuleInfo(module));
+                        moduleStatusList.appendChild(button);
+                    });
+                } else {
+                    moduleStatusList.textContent = "No modules found."; // Debugging text
+                }
+            })
+            .catch(error => {
+                console.error("Error fetching module status:", error);
+                moduleStatusList.textContent = "Error fetching data."; // Debugging text
+            });
+    }
+
+    // Show modal with module details
+    function showModuleInfo(module) {
+        document.getElementById("modal-module-name").textContent = module.name;
+        document.getElementById("modal-module-status").textContent = module.status;
+        document.getElementById("modal-module-description").textContent = module.description;
+        document.getElementById("modal-module-llm").textContent = module.llm;
+        document.getElementById("modal-module-tools").textContent = module.tools_count;
+        document.getElementById("modal-module-enabled").textContent = module.enabled ? 'Yes' : 'No';
+        
+        moduleInfoModal.classList.add("visible");
+    }
+
+    // Close modal
+    function closeModal() {
+        moduleInfoModal.classList.remove("visible");
+    }
+
+    modalCloseButton.addEventListener("click", closeModal);
+    moduleInfoModal.addEventListener("click", (event) => {
+        if (event.target === moduleInfoModal) {
+            closeModal();
+        }
+    });
 
 });

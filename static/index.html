@@ -59,6 +59,13 @@
         <div class="config-layer">
             <div id="sound-config" class="config-item">🔊 Sound</div>
         </div>
+        <hr class="config-divider">
+        <div class="config-layer">
+            <div id="module-status-toggle" class="config-item">
+                Modules Status <span id="module-status-arrow">▼</span>
+            </div>
+        </div>
+        <div id="module-status-list" class="hidden"></div>
     </div>
 
     <!-- Tasks Box -->
@@ -69,5 +76,18 @@
 
     <script src="/static/app.js?%version%"></script>
     <script src="/static/wakelock.js?%version%"></script>
+
+    <!-- Module Info Modal -->
+    <div id="module-info-modal" class="modal-overlay">
+        <div class="modal-content">
+            <span id="modal-close-button" class="modal-close-button">&times;</span>
+            <h3 id="modal-module-name"></h3>
+            <p><strong>Status:</strong> <span id="modal-module-status"></span></p>
+            <p><strong>Description:</strong> <span id="modal-module-description"></span></p>
+            <p><strong>LLM:</strong> <span id="modal-module-llm"></span></p>
+            <p><strong>Tools:</strong> <span id="modal-module-tools"></span></p>
+            <p><strong>Enabled:</strong> <span id="modal-module-enabled"></span></p>
+        </div>
+    </div>
 </body>
 </html>

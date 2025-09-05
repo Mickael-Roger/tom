@@ -1,0 +1,455 @@
+version: "3.9"
+
+networks:
+  tom:
+    driver: bridge
+
+services:
+  tom:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/tom/Dockerfile
+    container_name: tom
+    restart: always
+    ports:
+      - "443:443"
+    volumes:
+      - /data/:/data/
+    networks:
+      - tom
+
+  mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/agent/Dockerfile
+    container_name: mickael
+    restart: always
+    environment:
+      - TOM_USERNAME=mickael
+      #- TOM_DEBUG_LLM=true
+    networks:
+      - tom
+    volumes:
+      - /data/:/data/
+
+  nina:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/agent/Dockerfile
+    container_name: nina
+    restart: always
+    environment:
+      - TOM_USERNAME=nina
+    networks:
+      - tom
+    volumes:
+      - /data/:/data/
+
+  ambre:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/agent/Dockerfile
+    container_name: ambre
+    restart: always
+    environment:
+      - TOM_USERNAME=ambre
+    networks:
+      - tom
+    volumes:
+      - /data/:/data/
+
+  charlotte:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/agent/Dockerfile
+    container_name: charlotte
+    restart: always
+    environment:
+      - TOM_USERNAME=charlotte
+    networks:
+      - tom
+    volumes:
+      - /data/:/data/
+
+
+### MODULES MCP ###
+  # Global
+  weather:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/weather/Dockerfile
+    container_name: weather
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/weather/:/data/
+
+  idfm:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/idfm/Dockerfile
+    container_name: idfm
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/idfm/:/data/
+
+  homeconnect:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/homeconnect/Dockerfile
+    container_name: homeconnect
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/homeconnect/:/data/
+
+  switchparentalcontrol:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/switchparentalcontrol/Dockerfile
+    container_name: switchparentalcontrol
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/switchparentalcontrol/:/data/
+
+  kwyk:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/kwyk/Dockerfile
+    container_name: kwyk
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/kwyk/:/data/
+  
+  cafetaria:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/cafetaria/Dockerfile
+    container_name: cafetaria
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/cafetaria/:/data/
+  
+  contacts:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/contacts/Dockerfile
+    container_name: contacts
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/contacts/:/data/
+
+  notifications:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/notifications/Dockerfile
+    container_name: notifications
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/notifications/:/data/
+
+
+  brave:
+    build:
+      context: https://github.com/brave/brave-search-mcp-server.git#v1.3.7
+    container_name: brave
+    restart: always
+    networks:
+      - tom
+    command: sh -c 'source /data/env && node dist/index.js --transport http --port 80'
+    volumes:
+      - /data/mcp/brave/:/data/
+ 
+  code:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/code/Dockerfile
+    container_name: code
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    ports:
+      - "15000-15010:15000-15010"
+      - "15100-15110:15100-15110"
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/code/:/data/
+      - /data/tls/cert.pem:/etc/ssl/certs/cert.pem:ro
+      - /data/tls/key.pem:/etc/ssl/certs/key.pem:ro
+
+
+  # Personal
+ 
+  n8n-mickael:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: n8n-mickael
+    restart: always
+    environment:
+      - N8N_SECURE_COOKIE=false
+      - WEBHOOK_URL=http://tom.taila2494.ts.net:5678/
+      - GENERIC_TIMEZONE="Europe/Paris"
+      - TZ="Europe/Paris"
+    networks:
+      - tom
+    ports:
+      - 5678:5678
+    volumes:
+      - /data/n8n/mickael/:/home/node/.n8n/
+  
+  memory-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/memory/Dockerfile
+    container_name: memory-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=mickael
+      - MEM0_TELEMETRY=False
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/memory/config.yml:/config.yml:ro
+      - /data/mcp/memory/mickael/:/data/
+  email-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/email/Dockerfile
+    container_name: email-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/email/mickael/:/data/
+
+
+ 
+  anki-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/anki/Dockerfile
+    container_name: anki-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - ANKI_URL=http://server.taila2494.ts.net:8765
+      - ANKI_PROFILE=mickael
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/anki/:/data/
+
+  pronote-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/pronote/Dockerfile
+    container_name: pronote-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/pronote/mickael/:/data/
+
+  behavior-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/behavior/Dockerfile
+    container_name: behavior-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=mickael
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/behavior/:/data/
+
+  youtube-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/youtube/Dockerfile
+    container_name: youtube-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=mickael
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/youtube/:/data/
+
+  news-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/news/Dockerfile
+    container_name: news-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=mickael
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/news/:/data/
+
+  calendar-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/calendar/Dockerfile
+    container_name: calendar-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=mickael
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/calendar/:/data/
+
+  calendar-nina:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/calendar/Dockerfile
+    container_name: calendar-nina
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=nina
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/calendar/:/data/
+
+  calendar-ambre:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/calendar/Dockerfile
+    container_name: calendar-ambre
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=ambre
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/calendar/:/data/
+
+  calendar-charlotte:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/calendar/Dockerfile
+    container_name: calendar-charlotte
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=charlotte
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/calendar/:/data/
+
+  todo-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/todo/Dockerfile
+    container_name: todo-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=mickael
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/todo/:/data/
+
+  todo-nina:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/todo/Dockerfile
+    container_name: todo-nina
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=nina
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/todo/:/data/
+
+  todo-ambre:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/todo/Dockerfile
+    container_name: todo-ambre
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=ambre
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/todo/:/data/
+
+  todo-charlotte:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/todo/Dockerfile
+    container_name: todo-charlotte
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=charlotte
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/todo/:/data/
+
+  gpodder-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/gpodder/Dockerfile
+    container_name: gpodder-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=mickael
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/gpodder/:/data/
+

@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tom Triage Testing Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .log-info { @apply text-blue-600; }
+        .log-error { @apply text-red-600; }
+        .log-warning { @apply text-yellow-600; }
+        .log-success { @apply text-green-600; }
+        .log-container { height: 400px; overflow-y: auto; }
+        .result-card:hover { transform: translateY(-2px); }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">🤖 Tom Triage Testing Dashboard</h1>
+            <p class="text-gray-600">Run and analyze LLM triage performance tests</p>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-2xl font-semibold mb-4">Test Control</h2>
+            <div class="flex gap-4 items-center">
+                <button id="startBtn" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors">
+                    Start Tests
+                </button>
+                <button id="startDebugBtn" class="bg-purple-500 hover:bg-purple-600 text-white px-6 py-2 rounded-lg transition-colors">
+                    Start with Debug
+                </button>
+                <button id="stopBtn" class="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg transition-colors disabled:opacity-50" disabled>
+                    Stop Tests
+                </button>
+                <div id="statusIndicator" class="flex items-center gap-2">
+                    <div id="statusDot" class="w-3 h-3 rounded-full bg-gray-400"></div>
+                    <span id="statusText" class="text-gray-600">Ready</span>
+                </div>
+            </div>
+            
+            <!-- Progress Bar (hidden by default) -->
+            <div id="progressContainer" class="mt-4 hidden">
+                <div class="flex justify-between items-center mb-2">
+                    <span id="currentLLM" class="text-sm font-medium text-gray-700">Testing...</span>
+                    <span id="progressText" class="text-sm text-gray-500">0/0</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div id="progressBar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Test Progress -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-2xl font-semibold mb-4">Test Progress</h2>
+                
+                <!-- Overall Progress -->
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm font-medium text-gray-700">Overall Progress</span>
+                        <span id="overallProgressText" class="text-sm text-gray-500">0/0 LLMs</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-3">
+                        <div id="overallProgressBar" class="bg-blue-600 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                    <div id="currentLLMStatus" class="text-sm text-gray-600 mt-2">Ready to start...</div>
+                </div>
+
+                <!-- Current Test Progress -->
+                <div id="testProgressSection" class="hidden">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm font-medium text-gray-700">Current LLM Tests</span>
+                        <span id="testProgressText" class="text-sm text-gray-500">0/0 tests</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div id="testProgressBar" class="bg-green-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                    <div id="currentTestDescription" class="text-xs text-gray-500 mt-2">No test running...</div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="mt-6">
+                    <h3 class="text-sm font-medium text-gray-700 mb-2">Recent Activity</h3>
+                    <div id="recentActivity" class="space-y-1 max-h-32 overflow-y-auto">
+                        <div class="text-sm text-gray-500">No activity yet...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-2xl font-semibold mb-4">Quick Stats</h2>
+                <div id="quickStats" class="space-y-3">
+                    <div class="text-gray-600">No test results available</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LLM Performance Charts -->
+        <div class="mt-8 bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-2xl font-semibold mb-4">LLM Performance Comparison</h2>
+            <div class="mb-4">
+                <select id="chartResultSelect" class="border rounded px-3 py-1 mr-4">
+                    <option value="">Select Test Result</option>
+                </select>
+                <div class="mt-2 flex gap-4">
+                    <button id="showTimeChart" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm">
+                        Response Times
+                    </button>
+                    <button id="showSuccessChart" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm">
+                        Success Rates
+                    </button>
+                    <button id="showCostChart" class="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm">
+                        Costs
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Response Time Chart -->
+            <div id="timeChartContainer" class="relative" style="height: 400px;">
+                <canvas id="performanceChart"></canvas>
+                <div class="text-sm text-gray-600 mt-2">Showing min/max/median response times for successful requests only</div>
+            </div>
+            
+            <!-- Success Rate Chart -->
+            <div id="successChartContainer" class="relative hidden" style="height: 400px;">
+                <canvas id="successChart"></canvas>
+                <div class="text-sm text-gray-600 mt-2">Success rate percentage for each LLM</div>
+            </div>
+
+            <!-- Cost Chart -->
+            <div id="costChartContainer" class="relative hidden" style="height: 400px;">
+                <canvas id="costChart"></canvas>
+                <div class="text-sm text-gray-600 mt-2">Total cost in USD for each LLM</div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="mt-8">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-semibold">Test Results</h2>
+                <div class="flex gap-4">
+                    <select id="llmFilter" class="border rounded px-3 py-1">
+                        <option value="">All LLMs</option>
+                    </select>
+                    <button id="refreshResults" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded transition-colors">
+                        Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div id="resultsContainer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                <!-- Results will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Detailed View Modal -->
+        <div id="detailModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+            <div class="flex items-center justify-center min-h-screen p-4">
+                <div class="bg-white rounded-lg max-w-7xl w-full max-h-screen overflow-y-auto">
+                    <div class="p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-semibold">Detailed Results</h3>
+                            <button id="closeModal" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+                        </div>
+                        <div id="detailContent">
+                            <!-- Detailed content will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let testRunning = false;
+        let currentResults = [];
+        let statusUpdateTimeout = null;
+        let performanceChart = null;
+        let successChart = null;
+        let costChart = null;
+
+        // DOM elements
+        const startBtn = document.getElementById('startBtn');
+        const startDebugBtn = document.getElementById('startDebugBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const quickStats = document.getElementById('quickStats');
+        const overallProgressBar = document.getElementById('overallProgressBar');
+        const overallProgressText = document.getElementById('overallProgressText');
+        const currentLLMStatus = document.getElementById('currentLLMStatus');
+        const testProgressSection = document.getElementById('testProgressSection');
+        const testProgressBar = document.getElementById('testProgressBar');
+        const testProgressText = document.getElementById('testProgressText');
+        const currentTestDescription = document.getElementById('currentTestDescription');
+        const recentActivity = document.getElementById('recentActivity');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const llmFilter = document.getElementById('llmFilter');
+        const refreshResults = document.getElementById('refreshResults');
+        const detailModal = document.getElementById('detailModal');
+        const closeModal = document.getElementById('closeModal');
+        const detailContent = document.getElementById('detailContent');
+        const chartResultSelect = document.getElementById('chartResultSelect');
+        const progressContainer = document.getElementById('progressContainer');
+        const showTimeChart = document.getElementById('showTimeChart');
+        const showSuccessChart = document.getElementById('showSuccessChart');
+        const showCostChart = document.getElementById('showCostChart');
+        const timeChartContainer = document.getElementById('timeChartContainer');
+        const successChartContainer = document.getElementById('successChartContainer');
+        const costChartContainer = document.getElementById('costChartContainer');
+
+        // Event listeners
+        startBtn.addEventListener('click', () => startTest(false));
+        startDebugBtn.addEventListener('click', () => startTest(true));
+        stopBtn.addEventListener('click', stopTest);
+        refreshResults.addEventListener('click', loadResults);
+        closeModal.addEventListener('click', () => detailModal.classList.add('hidden'));
+        llmFilter.addEventListener('change', filterResults);
+        chartResultSelect.addEventListener('change', () => switchChart('time'));
+        showTimeChart.addEventListener('click', () => switchChart('time'));
+        showSuccessChart.addEventListener('click', () => switchChart('success'));
+        showCostChart.addEventListener('click', () => switchChart('cost'));
+
+        // --- Core Functions ---
+        async function startTest(debug = false) {
+            try {
+                const response = await fetch('/api/start_test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ debug })
+                });
+                
+                if (response.ok) {
+                    testRunning = true;
+                    updateUI();
+                    startStatusUpdates();
+                } else {
+                    const error = await response.json();
+                    alert('Error starting test: ' + (error.message || error.error));
+                }
+            } catch (error) {
+                alert('Error starting test: ' + error.message);
+            }
+        }
+
+        async function stopTest() {
+            try {
+                const response = await fetch('/api/stop_test', { method: 'POST' });
+                if (response.ok) {
+                    testRunning = false;
+                    updateUI();
+                    stopStatusUpdates();
+                } else {
+                    const error = await response.json();
+                    alert('Error stopping test: ' + (error.message || error.error));
+                }
+            } catch (error) {
+                alert('Error stopping test: ' + error.message);
+            }
+        }
+
+        function startStatusUpdates() {
+            stopStatusUpdates(); // Ensure no multiple loops
+            const update = async () => {
+                await updateStatus();
+                if (testRunning) {
+                    statusUpdateTimeout = setTimeout(update, 1000); // Poll every second
+                }
+            };
+            update();
+        }
+
+        function stopStatusUpdates() {
+            if (statusUpdateTimeout) {
+                clearTimeout(statusUpdateTimeout);
+                statusUpdateTimeout = null;
+            }
+        }
+
+        async function updateStatus() {
+            const wasRunning = testRunning; // Check status before the fetch
+            try {
+                const response = await fetch('/api/test_status');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                // Update testRunning state based on successful response
+                testRunning = data.status === 'initializing' || data.status === 'running';
+
+                if (wasRunning && !testRunning) {
+                    // Test finished gracefully
+                    stopStatusUpdates();
+                    loadResults();
+                }
+                
+                updateUI();
+                updateProgressFromData(data);
+                updateLogsFromData(data);
+                
+            } catch (error) {
+                console.error('Error updating status:', error);
+                // Do not stop polling if the test was considered to be running.
+                // The next successful poll will correct the UI.
+            }
+        }
+
+        // --- UI Update Functions ---
+        function updateUI() {
+            startBtn.disabled = testRunning;
+            startDebugBtn.disabled = testRunning;
+            stopBtn.disabled = !testRunning;
+            progressContainer.classList.add('hidden'); // Hide old progress bar container
+            
+            if (testRunning) {
+                statusDot.className = 'w-3 h-3 rounded-full bg-green-400 animate-pulse';
+                statusText.textContent = 'Running';
+            } else {
+                statusDot.className = 'w-3 h-3 rounded-full bg-gray-400';
+                statusText.textContent = 'Ready';
+                resetProgress();
+            }
+        }
+
+        function resetProgress() {
+            overallProgressBar.style.width = '0%';
+            overallProgressText.textContent = '0/0 LLMs';
+            currentLLMStatus.textContent = 'Ready to start...';
+            testProgressSection.classList.add('hidden');
+            testProgressBar.style.width = '0%';
+            testProgressText.textContent = '0/0 tests';
+            currentTestDescription.textContent = 'No test running...';
+            recentActivity.innerHTML = '<div class="text-sm text-gray-500">No activity yet...</div>';
+        }
+
+        function updateProgressFromData(data) {
+            if (!data || !data.progress) {
+                return;
+            }
+
+            const overall = data.progress.overall;
+            if (overall) {
+                const percentage = overall.total > 0 ? (overall.current / overall.total) * 100 : 0;
+                overallProgressBar.style.width = `${percentage}%`;
+                overallProgressText.textContent = `${overall.current}/${overall.total} LLMs`;
+                currentLLMStatus.textContent = overall.text || '...';
+            }
+
+            const testCase = data.progress.test_case;
+            if (testCase && testCase.total > 0) {
+                testProgressSection.classList.remove('hidden');
+                const testPercentage = testCase.total > 0 ? (testCase.current / testCase.total) * 100 : 0;
+                testProgressBar.style.width = `${testPercentage}%`;
+                testProgressText.textContent = `${testCase.current}/${testCase.total} tests`;
+                currentTestDescription.textContent = testCase.text || '...';
+            } else {
+                testProgressSection.classList.add('hidden');
+            }
+        }
+
+        function updateLogsFromData(data) {
+            if (!data || !data.logs || data.logs.length === 0) {
+                return;
+            }
+
+            const recentLogs = data.logs.slice(-5).reverse();
+            const activityHtml = recentLogs.map(log => {
+                const timestamp = new Date(log.timestamp).toLocaleTimeString();
+                let levelClass = 'text-gray-600';
+                let icon = '•';
+                
+                if (log.level === 'SUCCESS') {
+                    levelClass = 'text-green-600';
+                    icon = '✓';
+                } else if (log.level === 'ERROR') {
+                    levelClass = 'text-red-600';
+                    icon = '✗';
+                } else if (log.level === 'WARNING') {
+                    levelClass = 'text-yellow-600';
+                    icon = '!';
+                } else if (log.message.includes('Testing LLM')) {
+                    levelClass = 'text-blue-600';
+                    icon = '▶';
+                }
+                
+                return `<div class="text-xs ${levelClass} flex items-center gap-2">
+                    <span>${icon}</span>
+                    <span class="text-gray-400">[${timestamp}]</span>
+                    <span class="flex-1 truncate" title="${log.message}">${log.message}</span>
+                </div>`;
+            }).join('');
+            
+            recentActivity.innerHTML = activityHtml;
+        }
+
+        // --- Results & Charting ---
+        async function loadResults() {
+            try {
+                const response = await fetch('/api/results');
+                const data = await response.json();
+                currentResults = data.results;
+                
+                displayResults(currentResults);
+                updateQuickStats(currentResults);
+                updateLLMFilter(currentResults);
+                updateChartResultSelect(currentResults);
+                
+            } catch (error) {
+                console.error('Error loading results:', error);
+            }
+        }
+
+        function displayResults(results) {
+            if (results.length === 0) {
+                resultsContainer.innerHTML = '<div class="col-span-full text-center text-gray-600">No test results available</div>';
+                return;
+            }
+            
+            const html = results.map(result => {
+                const data = result.data;
+                const triageData = data.triage_performance || {};
+                const summary = triageData.test_summary || {};
+                
+                return `
+                    <div class="result-card bg-white rounded-lg shadow-md p-6 cursor-pointer hover:shadow-lg transition-all" 
+                         onclick="showDetails('${result.timestamp}')">
+                        <div class="flex justify-between items-start mb-4">
+                            <h3 class="font-semibold text-lg">Test Run</h3>
+                            <span class="text-sm text-gray-500">${result.timestamp}</span>
+                        </div>
+                        <div class="space-y-2 text-sm">
+                            <div>LLMs Tested: <span class="font-medium">${summary.total_llms || 0}</span></div>
+                            <div>Test Cases: <span class="font-medium">${summary.total_test_cases || 0}</span></div>
+                            <div>Total Tests: <span class="font-medium">${summary.total_tests || 0}</span></div>
+                        </div>
+                        <div class="mt-4">
+                            <button class="text-blue-600 hover:text-blue-800 text-sm">View Details →</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            resultsContainer.innerHTML = html;
+        }
+
+        function updateQuickStats(results) {
+            if (results.length === 0) {
+                quickStats.innerHTML = '<div class="text-gray-600">No test results available</div>';
+                return;
+            }
+            
+            const latest = results[0];
+            const triageData = latest.data.triage_performance || {};
+            const llmResults = triageData.llm_results || {};
+            
+            let totalSuccessRate = 0;
+            let llmCount = 0;
+            let bestLLM = '';
+            let bestRate = -1;
+            let bestTime = Infinity;
+            
+            Object.entries(llmResults).forEach(([llm, data]) => {
+                const rate = data.summary?.success_rate || 0;
+                const medianTime = data.summary?.median_time_ms || 0;
+                totalSuccessRate += rate;
+                llmCount++;
+                
+                if (rate > bestRate || (rate === bestRate && medianTime < bestTime)) {
+                    bestRate = rate;
+                    bestTime = medianTime;
+                    bestLLM = llm;
+                }
+            });
+            
+            const avgSuccessRate = llmCount > 0 ? totalSuccessRate / llmCount : 0;
+            
+            quickStats.innerHTML = `
+                <div class="flex justify-between">
+                    <span>Avg. Success Rate:</span>
+                    <span class="font-medium">${(avgSuccessRate * 100).toFixed(1)}%</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Best Performer:</span>
+                    <span class="font-medium">${bestLLM || 'N/A'}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Latest Test:</span>
+                    <span class="font-medium">${latest.timestamp}</span>
+                </div>
+            `;
+        }
+
+        function updateLLMFilter(results) {
+            const llms = new Set();
+            results.forEach(result => {
+                const llmResults = result.data.triage_performance?.llm_results || {};
+                Object.keys(llmResults).forEach(llm => llms.add(llm));
+            });
+            
+            const currentValue = llmFilter.value;
+            llmFilter.innerHTML = '<option value="">All LLMs</option>';
+            
+            Array.from(llms).sort().forEach(llm => {
+                const option = document.createElement('option');
+                option.value = llm;
+                option.textContent = llm;
+                llmFilter.appendChild(option);
+            });
+            
+            llmFilter.value = currentValue;
+        }
+
+        function filterResults() {
+            const selectedLLM = llmFilter.value;
+            if (!selectedLLM) {
+                displayResults(currentResults);
+                return;
+            }
+            
+            const filtered = currentResults.filter(result => {
+                const llmResults = result.data.triage_performance?.llm_results || {};
+                return selectedLLM in llmResults;
+            });
+            
+            displayResults(filtered);
+        }
+
+        function updateChartResultSelect(results) {
+            const currentValue = chartResultSelect.value;
+            chartResultSelect.innerHTML = '<option value="">Select Test Result</option>';
+            
+            results.forEach(result => {
+                const option = document.createElement('option');
+                option.value = result.timestamp;
+                option.textContent = `Test ${result.timestamp}`;
+                chartResultSelect.appendChild(option);
+            });
+            
+            if (results.length > 0) {
+                const exists = results.some(r => r.timestamp === currentValue);
+                chartResultSelect.value = exists ? currentValue : results[0].timestamp;
+            } else {
+                chartResultSelect.value = '';
+            }
+            
+            switchChart('time');
+        }
+
+        function switchChart(chartType) {
+            timeChartContainer.classList.toggle('hidden', chartType !== 'time');
+            successChartContainer.classList.toggle('hidden', chartType !== 'success');
+            costChartContainer.classList.toggle('hidden', chartType !== 'cost');
+            
+            showTimeChart.classList.toggle('bg-blue-600', chartType === 'time');
+            showTimeChart.classList.toggle('bg-blue-500', chartType !== 'time');
+            showTimeChart.classList.toggle('hover:bg-blue-600', chartType !== 'time');
+
+            showSuccessChart.classList.toggle('bg-green-600', chartType === 'success');
+            showSuccessChart.classList.toggle('bg-green-500', chartType !== 'success');
+            showSuccessChart.classList.toggle('hover:bg-green-600', chartType !== 'success');
+
+            showCostChart.classList.toggle('bg-yellow-600', chartType === 'cost');
+            showCostChart.classList.toggle('bg-yellow-500', chartType !== 'cost');
+            showCostChart.classList.toggle('hover:bg-yellow-600', chartType !== 'cost');
+
+            if (chartType === 'time') {
+                updatePerformanceChart();
+            } else if (chartType === 'success') {
+                updateSuccessChart();
+            } else if (chartType === 'cost') {
+                updateCostChart();
+            }
+        }
+
+        function updatePerformanceChart() {
+            if (performanceChart) performanceChart.destroy();
+            if (successChart) successChart.destroy();
+            if (costChart) costChart.destroy();
+
+            const selectedTimestamp = chartResultSelect.value;
+            if (!selectedTimestamp) return;
+
+            const selectedResult = currentResults.find(r => r.timestamp === selectedTimestamp);
+            if (!selectedResult) return;
+
+            const llmResults = selectedResult.data.triage_performance?.llm_results || {};
+            const llmData = Object.entries(llmResults)
+                .filter(([, data]) => data.summary?.successful_tests > 0)
+                .map(([llm, data]) => ({
+                    llm: llm,
+                    min: data.summary.min_time_ms || 0,
+                    max: data.summary.max_time_ms || 0,
+                    median: data.summary.median_time_ms || 0,
+                    successRate: data.summary.success_rate || 0
+                }))
+                .sort((a, b) => a.median - b.median);
+
+            if (llmData.length === 0) return;
+
+            performanceChart = new Chart(document.getElementById('performanceChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: llmData.map(d => d.llm),
+                    datasets: [
+                        { label: 'Min Time (ms)', data: llmData.map(d => d.min), backgroundColor: 'rgba(59, 130, 246, 0.8)' },
+                        { label: 'Median Time (ms)', data: llmData.map(d => d.median), backgroundColor: 'rgba(16, 185, 129, 0.8)' },
+                        { label: 'Max Time (ms)', data: llmData.map(d => d.max), backgroundColor: 'rgba(239, 68, 68, 0.8)' }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Response Time (Successful Requests)' } } }
+            });
+        }
+
+        function updateSuccessChart() {
+            if (performanceChart) performanceChart.destroy();
+            if (successChart) successChart.destroy();
+            if (costChart) costChart.destroy();
+
+            const selectedTimestamp = chartResultSelect.value;
+            if (!selectedTimestamp) return;
+
+            const selectedResult = currentResults.find(r => r.timestamp === selectedTimestamp);
+            if (!selectedResult) return;
+
+            const llmResults = selectedResult.data.triage_performance?.llm_results || {};
+            const llmData = Object.entries(llmResults)
+                .map(([llm, data]) => ({
+                    llm: llm,
+                    successRate: (data.summary?.success_rate || 0) * 100,
+                    totalTests: data.summary?.total_tests || 0,
+                    successfulTests: data.summary?.successful_tests || 0
+                }))
+                .sort((a, b) => b.successRate - a.successRate);
+
+            if (llmData.length === 0) return;
+
+            const colors = llmData.map(d => d.successRate >= 90 ? 'rgba(34, 197, 94, 0.8)' : d.successRate >= 70 ? 'rgba(234, 179, 8, 0.8)' : 'rgba(239, 68, 68, 0.8)');
+
+            successChart = new Chart(document.getElementById('successChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: llmData.map(d => d.llm),
+                    datasets: [{ label: 'Success Rate (%)', data: llmData.map(d => d.successRate), backgroundColor: colors }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'LLM Success Rate Comparison' }, legend: { display: false } },
+                    scales: { y: { beginAtZero: true, max: 100, ticks: { callback: value => value + '%' } } }
+                }
+            });
+        }
+
+        function updateCostChart() {
+            if (performanceChart) performanceChart.destroy();
+            if (successChart) successChart.destroy();
+            if (costChart) costChart.destroy();
+
+            const selectedTimestamp = chartResultSelect.value;
+            if (!selectedTimestamp) return;
+
+            const selectedResult = currentResults.find(r => r.timestamp === selectedTimestamp);
+            if (!selectedResult) return;
+
+            const llmResults = selectedResult.data.triage_performance?.llm_results || {};
+            const llmData = Object.entries(llmResults)
+                .map(([llm, data]) => ({
+                    llm: llm,
+                    totalCost: data.summary?.total_cost || 0
+                }))
+                .sort((a, b) => b.totalCost - a.totalCost);
+
+            if (llmData.length === 0) return;
+
+            costChart = new Chart(document.getElementById('costChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: llmData.map(d => d.llm),
+                    datasets: [{
+                        label: 'Total Cost (USD)',
+                        data: llmData.map(d => d.totalCost),
+                        backgroundColor: 'rgba(251, 191, 36, 0.8)', // Amber-400
+                        borderColor: 'rgba(251, 191, 36, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: { display: true, text: 'LLM Total Cost Comparison' },
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `Cost: $${context.parsed.y.toFixed(6)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { callback: value => '$' + value.toFixed(6) }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function showDetails(resultId) {
+            const result = currentResults.find(r => r.timestamp === resultId);
+            if (!result) { alert('Could not find result details.'); return; }
+
+            const triageData = result.data.triage_performance || {};
+            const llmResults = triageData.llm_results || {};
+            
+            let detailHtml = '<div class="space-y-6">';
+            detailHtml += `<div><h4 class="font-semibold mb-2">Test Summary</h4><pre class="bg-gray-100 p-3 rounded text-xs">${JSON.stringify(triageData.test_summary, null, 2)}</pre></div>`;
+
+            Object.entries(llmResults).forEach(([llm, data]) => {
+                const failures = data.failures || [];
+                detailHtml += `
+                    <div>
+                        <h4 class="font-semibold mb-2">${llm} Results</h4>
+                        <div class="bg-gray-50 p-4 rounded">
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm mb-4">
+                                <div><b>Success:</b> ${((data.summary?.success_rate || 0) * 100).toFixed(1)}%</div>
+                                <div><b>Median Time:</b> ${data.summary?.median_time_ms || 0}ms</div>
+                                <div><b>Total Cost:</b> $${(data.summary?.total_cost || 0).toFixed(6)}</div>
+                                <div><b>Min Time:</b> ${data.summary?.min_time_ms || 0}ms</div>
+                                <div><b>Max Time:</b> ${data.summary?.max_time_ms || 0}ms</div>
+                            </div>
+                            ${failures.length > 0 ? `
+                                <div class="mt-2">
+                                    <h5 class="font-medium text-sm mb-2 text-red-600">Failed Tests (${failures.length})</h5>
+                                    <div class="space-y-1 max-h-40 overflow-y-auto text-xs">
+                                        ${failures.map(f => `<div class="bg-red-100 p-2 rounded"><b>Prompt:</b> "${f.prompt}"<br><b>Expected:</b> ${f.expected.join(', ') || 'none'} | <b>Got:</b> ${f.received.join(', ') || 'none'}</div>`).join('')}
+                                    </div>
+                                </div>
+                            ` : '<div class="text-sm text-green-600">No failures!</div>'}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            detailHtml += '</div>';
+            detailContent.innerHTML = detailHtml;
+            detailModal.classList.remove('hidden');
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', () => {
+            loadResults();
+        });
+    </script>
+</body>
+</html>

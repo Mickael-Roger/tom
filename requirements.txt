@@ -1,28 +1,3 @@
-mistralai
-caldav
-PyYAML
 cherrypy
-openai
-pronotepy==2.14.2
-beautifulsoup4
-pytz
+PyYAML
 requests
-icalendar
-vobject
-
-anki
-timezonefinder
-google-generativeai
-firebase_admin
-feedparser
-yt-dlp
-litellm==1.75.0
-paramiko
-watchdog
-deebot-client
-aiohttp #==3.10.0
-pynintendoparental
-mygpoclient
-
-# For unittest
-pytest
