@@ -405,9 +405,9 @@ class SwitchParentalControlService:
                     if tomlogger:
                         tomlogger.info(f"Added {duration} minutes to device {device.name} ({description})", module_name="switchparentalcontrol")
                     
-                    # Small delay between API calls to avoid rate limiting
+                    # Delay between API calls to ensure proper processing by Nintendo API
                     if len(api_calls_to_make) > 1:
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(1.0)
                         
                 except Exception as call_error:
                     if tomlogger:

@@ -109,6 +109,7 @@ Current scrapers in this directory:
 
 - **kyutai_scraper.py**: Scrapes news from Kyutai AI research lab blog
 - **mistral_scraper.py**: Scrapes news from Mistral AI via their CMS API
+- **anisayari_scraper.py**: Scrapes tech articles from Anisa Yari's personal blog (Next.js/React)
 
 ## Database Integration
 
