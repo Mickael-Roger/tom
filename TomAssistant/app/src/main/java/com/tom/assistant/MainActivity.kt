@@ -39,6 +39,7 @@ import com.tom.assistant.ui.tasks.TasksAdapter
 import com.tom.assistant.utils.AudioManager
 import com.tom.assistant.utils.SessionManager
 import com.tom.assistant.utils.HeadsetButtonManager
+import com.tom.assistant.utils.HealthConnectManager
 import io.noties.markwon.Markwon
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -57,6 +58,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var audioManager: AudioManager
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var headsetButtonManager: HeadsetButtonManager
+    private lateinit var healthConnectManager: HealthConnectManager
 
     private var currentPosition: Position? = null
     private var lastDisplayedTaskId = 0
@@ -67,6 +69,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val PERMISSION_REQUEST_CODE = 1001
+        private const val HEALTH_PERMISSION_REQUEST_CODE = 1002
         private val REQUIRED_PERMISSIONS = mutableListOf(
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -105,6 +108,7 @@ class MainActivity : AppCompatActivity() {
         setupHeadsetButtons()
         setupLocation()
         setupPermissions()
+        setupHealthConnect()
         setupFCM()
         
         // Démarrer le service média pour maintenir la MediaSession active
@@ -763,6 +767,48 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
+    private fun setupHealthConnect() {
+        healthConnectManager = HealthConnectManager(this)
+        
+        // Check if Health Connect is available
+        if (!healthConnectManager.isHealthConnectAvailable()) {
+            Log.w("HealthConnect", "Health Connect is not available on this device")
+            return
+        }
+        
+        // Check and request permissions, then start monitoring
+        lifecycleScope.launch {
+            try {
+                if (healthConnectManager.hasAllPermissions()) {
+                    Log.d("HealthConnect", "All Health Connect permissions granted, starting monitoring")
+                    healthConnectManager.startHealthDataMonitoring()
+                } else {
+                    Log.d("HealthConnect", "Health Connect permissions not granted, requesting permissions")
+                    requestHealthConnectPermissions()
+                }
+            } catch (e: Exception) {
+                Log.e("HealthConnect", "Error setting up Health Connect", e)
+            }
+        }
+    }
+    
+    private fun requestHealthConnectPermissions() {
+        // This method would typically use a permission contract
+        // For now, we'll log that permissions are needed
+        Log.i("HealthConnect", "Health Connect permissions are required for health data monitoring")
+        Toast.makeText(this, "Health Connect permissions are required for health monitoring", Toast.LENGTH_LONG).show()
+        
+        // Note: In a production app, you would use:
+        // val requestPermissions = registerForActivityResult(
+        //     PermissionController.createRequestPermissionResultContract()
+        // ) { granted ->
+        //     if (granted.containsAll(healthConnectManager.getPermissions())) {
+        //         healthConnectManager.startHealthDataMonitoring()
+        //     }
+        // }
+        // requestPermissions.launch(healthConnectManager.getPermissions())
+    }
+
     private fun setupFCM() {
         // Obtenir le token FCM actuel et l'envoyer au serveur
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
@@ -811,5 +857,10 @@ class MainActivity : AppCompatActivity() {
         headsetButtonManager.cleanup()
         tickerAnimator?.cancel()
         connectionRetryJob?.cancel()
+        
+        // Stop health data monitoring
+        if (::healthConnectManager.isInitialized) {
+            healthConnectManager.stopHealthDataMonitoring()
+        }
     }
 }

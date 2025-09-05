@@ -27,4 +27,7 @@ interface TomApiService {
 
     @POST("fcmtoken")
     suspend fun sendFCMToken(@Body request: FCMTokenRequest): Response<Void>
+    
+    @POST("health")
+    suspend fun sendHealthData(@Body request: HealthDataRequest): Response<Void>
 }

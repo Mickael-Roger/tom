@@ -95,6 +95,9 @@ dependencies {
     // Media session for headset buttons
     implementation("androidx.media:media:1.6.0")
     
+    // Health Connect
+    implementation("androidx.health.connect:connect-client:1.0.0-alpha11")
+    
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
