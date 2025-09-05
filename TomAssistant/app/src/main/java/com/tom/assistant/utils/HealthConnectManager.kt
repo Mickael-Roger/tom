@@ -45,14 +45,10 @@ class HealthConnectManager(private val context: Context) {
     
     /**
      * Check if Health Connect is available on this device
+     * Simply returns true and lets the actual Health Connect calls handle availability
      */
     fun isHealthConnectAvailable(): Boolean {
-        return try {
-            HealthConnectClient.isAvailable(context)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking Health Connect availability", e)
-            false
-        }
+        return true
     }
     
     /**
