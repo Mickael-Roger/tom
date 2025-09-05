@@ -155,6 +155,9 @@ class MemoryService:
             # Create Chroma database path in /data
             chroma_path = "/data/chroma_storage"
             os.makedirs(chroma_path, exist_ok=True)
+            kuzu_dir_path = "/data/kuzu_storage"
+            os.makedirs(kuzu_dir_path, exist_ok=True)
+            kuzu_path=kuzu_dir_path + "/kuzu.db"
             
             # Get LLM and embedder configuration
             llm_provider = memory_config.get('llm_provider', 'openai')
@@ -181,6 +184,12 @@ class MemoryService:
                     "provider": embedder_provider,
                     "config": {
                         "model": embedder_model
+                    }
+                },
+                "graph_store": {
+                    "provider": "kuzu",
+                    "config": {
+                        "db": kuzu_path
                     }
                 }
             }

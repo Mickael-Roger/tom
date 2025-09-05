@@ -242,6 +242,7 @@ services:
     volumes:
       - /data/mcp/memory/config.yml:/config.yml:ro
       - /data/mcp/memory/mickael/:/data/
+
   email-mickael:
     build:
       context: .
