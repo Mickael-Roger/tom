@@ -10,8 +10,9 @@ RUN pip install --upgrade pip && \
 RUN addgroup -g 1000 tomnews && \
     adduser -u 1000 -G tomnews -s /bin/sh -D tomnews
 
-# Copy news MCP server and lib directory
+# Copy news MCP server, scraping extensions, and lib directory
 COPY mcp/news_server.py /app/
+COPY mcp/news_scrape/ /app/news_scrape/
 COPY lib/ /app/lib/
 
 # Set permissions

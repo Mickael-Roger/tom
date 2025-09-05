@@ -3,6 +3,13 @@
 News MCP Server
 Provides news management functionality via MCP protocol
 Based on the original tomnews.py module
+
+Features:
+- RSS feed synchronization
+- Extensible web scraping system with pluggable scrapers
+- Dynamic scraper loading from news_scrape/ directory
+- Article management (read, unread, summaries)
+- Background status notifications
 """
 
 import json
@@ -24,6 +31,11 @@ from mcp.types import Tool, TextContent
 
 # Add lib directory to path for imports
 sys.path.insert(0, '/app/lib')
+# Add current directory to path for news_scrape imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Import news scraping extensions
+from news_scrape import load_scrapers
 try:
     from tomlogger import init_logger
     import tomlogger
@@ -42,7 +54,7 @@ else:
     logger = logging.getLogger(__name__)
 
 # Server configuration and description
-SERVER_DESCRIPTION = "This module is used for any question about the news. It provides access to RSS feeds and web-scraped news from various sources, with the ability to read, summarize, and manage news articles."
+SERVER_DESCRIPTION = "This module is used for any question about the news. It provides access to RSS feeds and web-scraped news from various sources using an extensible scraper system, with the ability to read, summarize, and manage news articles. New scrapers can be added by placing them in the news_scrape/ directory."
 
 # Initialize FastMCP server
 server = FastMCP(name="news-server", stateless_http=True, host="0.0.0.0", port=80)
@@ -101,6 +113,11 @@ class NewsService:
         
         # Initialize database
         self._init_database()
+        
+        # Load news scrapers
+        self.scrapers = load_scrapers(self.db, tomlogger if tomlogger else None)
+        if tomlogger:
+            tomlogger.info(f"✅ Loaded {len(self.scrapers)} news scrapers: {', '.join(self.scrapers.keys())}", module_name="news")
         
         # Start background update thread
         self.thread = threading.Thread(target=self._thread_update)
@@ -449,107 +466,30 @@ class NewsService:
                 tomlogger.error(f"Error updating RSS news: {str(e)}", module_name="news")
     
     def _update_web_news(self):
-        """Update web-scraped news (Kyutai, Mistral)"""
-        time_diff = datetime.now() - self.lastUpdate
-        
-        # Only scrape every 6 hours to prevent blocking
-        if time_diff > timedelta(hours=6):
-            self._scrape_kyutai_news()
-            self._scrape_mistral_news()
-            self.lastUpdate = datetime.now()
-    
-    def _scrape_kyutai_news(self):
-        """Scrape Kyutai blog for news"""
-        try:
-            kyutai_url = "https://kyutai.org/blog.html"
-            response = requests.get(kyutai_url, timeout=30)
-            
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
+        """Update web-scraped news using loaded scrapers"""
+        # Run all loaded scrapers
+        for scraper_name, scraper in self.scrapers.items():
+            try:
+                update_result = scraper.update()
                 
-                # Get existing Kyutai news IDs
-                kyutai_news_ids = []
-                dbconn = sqlite3.connect(self.db)
-                cursor = dbconn.cursor()
-                cursor.execute("SELECT news_id FROM news WHERE source = 'kyutai'")
-                ids = cursor.fetchall()
-                dbconn.close()
-                
-                for news_id in ids:
-                    kyutai_news_ids.append(news_id[0])
-                
-                # Parse new articles
-                for h1 in soup.find_all('h1'):
-                    a_tag = h1.find('a')
-                    if a_tag:
-                        item_url = a_tag['href']
-                        item_title = a_tag.get_text(strip=True)
+                if update_result.get("success"):
+                    if update_result.get("skipped"):
+                        if tomlogger:
+                            tomlogger.debug(f"Skipped {scraper_name} update: {update_result.get('reason', 'Too early')}", module_name="news")
+                    else:
+                        saved = update_result.get("saved", 0)
+                        skipped = update_result.get("skipped", 0)
+                        if tomlogger:
+                            tomlogger.info(f"Updated {scraper_name}: {saved} new, {skipped} existing", module_name="news")
+                else:
+                    error = update_result.get("error", "Unknown error")
+                    if tomlogger:
+                        tomlogger.error(f"Failed to update {scraper_name}: {error}", module_name="news")
                         
-                        post_text_div = h1.find_next_sibling('div', class_='post-text')
-                        item_description = post_text_div.p.get_text(strip=True) if post_text_div and post_text_div.p else ""
-                        
-                        if item_url not in kyutai_news_ids:
-                            dbconn = sqlite3.connect(self.db)
-                            cursor = dbconn.cursor()
-                            cursor.execute(
-                                "INSERT INTO news (source, category, news_id, author, title, summary, url) VALUES ('kyutai', 'AI', ?, 'kyutai', ?, ?, ?)",
-                                (item_url, item_title, item_description, f"https://kyutai.org/{item_url}")
-                            )
-                            dbconn.commit()
-                            dbconn.close()
-            
-        except Exception as e:
-            if tomlogger:
-                tomlogger.error(f"Error scraping Kyutai news: {str(e)}", module_name="news")
+            except Exception as e:
+                if tomlogger:
+                    tomlogger.error(f"Error running scraper {scraper_name}: {str(e)}", module_name="news")
     
-    def _scrape_mistral_news(self):
-        """Scrape Mistral news"""
-        try:
-            mistral_url = 'https://cms.mistral.ai/items/posts?fields=*,translations.*,category.*,parent.id&sort=-date&limit=10&page=1'
-            response = requests.get(mistral_url, timeout=30)
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Get existing Mistral news IDs
-                mistral_news_ids = []
-                dbconn = sqlite3.connect(self.db)
-                cursor = dbconn.cursor()
-                cursor.execute("SELECT news_id FROM news WHERE source = 'mistral'")
-                ids = cursor.fetchall()
-                dbconn.close()
-                
-                for news_id in ids:
-                    mistral_news_ids.append(news_id[0])
-                
-                # Process new articles
-                for item in data['data']:
-                    item_id = item['id']
-                    date = item['date']
-                    slug = item['slug']
-                    
-                    for news_lang in item['translations']:
-                        if news_lang['languages_code'] == 'en':
-                            title_en = news_lang['title']
-                            description_en = news_lang['description']
-                            
-                            if item_id not in mistral_news_ids:
-                                dbconn = sqlite3.connect(self.db)
-                                cursor = dbconn.cursor()
-                                
-                                date_obj = datetime.fromisoformat(date.replace('Z', '+00:00'))
-                                news_date = date_obj.strftime('%Y-%m-%d')
-                                
-                                cursor.execute(
-                                    "INSERT INTO news (source, category, news_id, author, title, summary, url, datetime) VALUES ('mistral', 'AI', ?, 'mistral', ?, ?, ?, ?)",
-                                    (item_id, title_en, description_en, f"https://mistral.ai/en/news/{slug}", news_date)
-                                )
-                                dbconn.commit()
-                                dbconn.close()
-            
-        except Exception as e:
-            if tomlogger:
-                tomlogger.error(f"Error scraping Mistral news: {str(e)}", module_name="news")
     
     def _update_background_status(self):
         """Update background status with unread count"""
