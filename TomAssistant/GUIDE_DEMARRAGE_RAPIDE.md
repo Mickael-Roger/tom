@@ -56,7 +56,7 @@ Une fois la sync terminée :
 ### Configuration Tailscale
 1. **Vérifier** que Tailscale est installé et actif sur votre téléphone
 2. **S'assurer** d'être connecté au même réseau Tailscale que le serveur
-3. **Tester** l'accès : ouvrir un navigateur et aller sur `https://server.taila2494.ts.net:8444/`
+3. **Tester** l'accès : ouvrir un navigateur et aller sur `https://tom.taila2494.ts.net/`
 
 ### Test de l'Application
 1. **Lancer** Tom Assistant sur le téléphone

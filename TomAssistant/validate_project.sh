@@ -104,13 +104,13 @@ echo "- Drawables XML: $(find app/src/main/res/drawable -name "*.xml" | wc -l)"
 
 echo
 echo "🔍 Vérification de la configuration Tailscale:"
-if grep -q "server.taila2494.ts.net:8444" app/src/main/java/com/tom/assistant/network/ApiClient.kt; then
+if grep -q "tom.taila2494.ts.net" app/src/main/java/com/tom/assistant/network/ApiClient.kt; then
     echo "✅ URL Tailscale configurée dans ApiClient.kt"
 else
     echo "❌ URL Tailscale non trouvée dans ApiClient.kt"
 fi
 
-if grep -q "server.taila2494.ts.net:8444" app/src/main/res/layout/activity_login.xml; then
+if grep -q "tom.taila2494.ts.net" app/src/main/res/layout/activity_login.xml; then
     echo "✅ URL Tailscale configurée dans le layout de login"
 else
     echo "❌ URL Tailscale non trouvée dans le layout de login"

@@ -76,7 +76,7 @@
                 android:hint="Server URL"
                 android:inputType="textUri"
                 android:maxLines="1"
-                android:text="https://server.taila2494.ts.net:8444/"
+                android:text="https://tom.taila2494.ts.net/"
                 android:textColor="#333333"
                 android:textColorHint="#666666" />
 

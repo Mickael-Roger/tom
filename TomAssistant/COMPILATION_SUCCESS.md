@@ -86,7 +86,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 - Gestion des permissions Android
 
 ### ✅ **Configuration Tailscale**
-- URL serveur : `https://server.taila2494.ts.net:8444/`
+- URL serveur : `https://tom.taila2494.ts.net/`
 - HTTPS sécurisé avec certificats automatiques
 - Fonctionnement partout avec Tailscale
 - Pas de configuration réseau nécessaire
@@ -96,7 +96,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 ### Prérequis
 1. **Tailscale installé** et actif sur le téléphone
 2. **Connexion** au même réseau Tailscale que le serveur
-3. **Serveur Tom** accessible sur `https://server.taila2494.ts.net:8444/`
+3. **Serveur Tom** accessible sur `https://tom.taila2494.ts.net/`
 
 ### Premier Lancement
 1. **Installer** l'APK sur le téléphone

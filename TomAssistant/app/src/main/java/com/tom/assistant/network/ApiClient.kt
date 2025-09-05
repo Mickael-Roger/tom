@@ -22,7 +22,7 @@ object ApiClient {
     }
     
     // URL de base de votre serveur Tom via Tailscale
-    private const val BASE_URL = "https://server.taila2494.ts.net:8444/"
+    private const val BASE_URL = "https://tom.taila2494.ts.net/"
     
     // Cookie manager pour gérer les sessions avec store persistant
     private val cookieManager by lazy {

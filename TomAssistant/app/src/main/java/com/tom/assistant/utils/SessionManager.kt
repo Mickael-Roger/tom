@@ -16,7 +16,7 @@ class SessionManager(context: Context) {
         private const val KEY_SERVER_URL = "serverUrl"
         private const val KEY_SOUND_ENABLED = "soundEnabled"
         private const val KEY_AUTO_SUBMIT = "autoSubmit"
-        private const val DEFAULT_SERVER_URL = "https://server.taila2494.ts.net:8444/"
+        private const val DEFAULT_SERVER_URL = "https://tom.taila2494.ts.net/"
     }
     
     fun saveLoginSession(username: String) {
