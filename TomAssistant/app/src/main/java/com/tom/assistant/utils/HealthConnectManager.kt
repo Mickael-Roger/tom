@@ -47,7 +47,12 @@ class HealthConnectManager(private val context: Context) {
      * Check if Health Connect is available on this device
      */
     fun isHealthConnectAvailable(): Boolean {
-        return HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
+        return try {
+            HealthConnectClient.isAvailable(context)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking Health Connect availability", e)
+            false
+        }
     }
     
     /**
