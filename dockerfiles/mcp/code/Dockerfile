@@ -68,9 +68,6 @@ RUN echo "code ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/code && \
 # Set up non-root user
 USER code
 
-# Expose ports
-EXPOSE 80 8080
-
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV TOM_LOG_LEVEL=INFO

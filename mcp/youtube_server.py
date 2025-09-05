@@ -288,6 +288,9 @@ class YouTubeService:
         if isinstance(video_ids, str):
             video_ids = [video_ids]
         
+        # Convert all video_ids to strings to handle both integer and string inputs
+        video_ids = [str(vid) for vid in video_ids]
+        
         if not video_ids:
             return {"status": "error", "message": "No video IDs provided"}
         

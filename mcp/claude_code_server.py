@@ -68,8 +68,9 @@ The format of the @project_status.json file will be as follows:
  - "error": When you are not able to finish the project and cannot go further
  - "finished": When the user's request is fully completed
 
-If the request involves a website or any other web-based site, you will expose it using Python (ideally via the command `python -m http.server PORT`).
-The user can access sites on any port between 9090 and 9099. You can use the ss command if you want to check whether any of these ports are already in use. BE CAREFUL to always run `python -m http.server PORT` from inside the directory of the project (where the webpages resides)
+If the request involves a website or any other web-based site, you will expose it using Python (ideally via the command `python3 -m http.server PORT --bind 127.0.0.1`).
+IMPORTANT: If the development project you need to carry out involves exposing an application or a website, you must expose it over HTTP on one of the ports between 15000 and 15010, and only on localhost.
+You can use the ss command if you want to check whether any of these ports are already in use. BE CAREFUL to always run `python -m http.server PORT` from inside the directory of the project (where the webpages resides)
 
 In all cases where you expose a website, you must specify the port you used in the description of the corresponding task in the project_status.json file.
 

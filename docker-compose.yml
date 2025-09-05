@@ -199,11 +199,14 @@ services:
     environment:
       - TOM_LOG_LEVEL=DEBUG
     ports:
-      - "9090-9099:9090-9099"
+      - "15000-15010:15000-15010"
+      - "15100-15110:15100-15110"
     networks:
       - tom
     volumes:
       - /data/mcp/code/:/data/
+      - /data/tls/cert.pem:/etc/ssl/certs/cert.pem:ro
+      - /data/tls/key.pem:/etc/ssl/certs/key.pem:ro
 
 
   # Personal
@@ -215,6 +218,8 @@ services:
     environment:
       - N8N_SECURE_COOKIE=false
       - WEBHOOK_URL=http://tom.taila2494.ts.net:5678/
+      - GENERIC_TIMEZONE="Europe/Paris"
+      - TZ="Europe/Paris"
     networks:
       - tom
     ports:
@@ -253,6 +258,19 @@ services:
       - tom
     volumes:
       - /data/mcp/anki/:/data/
+
+  pronote-mickael:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/pronote/Dockerfile
+    container_name: pronote-mickael
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/pronote/mickael/:/data/
 
   behavior-mickael:
     build:
@@ -333,6 +351,20 @@ services:
     environment:
       - TOM_LOG_LEVEL=DEBUG
       - TOM_USER=ambre
+    networks:
+      - tom
+    volumes:
+      - /data/mcp/calendar/:/data/
+
+  calendar-charlotte:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/mcp/calendar/Dockerfile
+    container_name: calendar-charlotte
+    restart: always
+    environment:
+      - TOM_LOG_LEVEL=DEBUG
+      - TOM_USER=charlotte
     networks:
       - tom
     volumes:
