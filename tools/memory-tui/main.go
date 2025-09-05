@@ -232,7 +232,7 @@ var (
 
 	promptBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#874BFD")).
+			BorderForeground(lipgloss.Color("#626262")).
 			Padding(0, 1)
 
 	promptBoxFocusedStyle = lipgloss.NewStyle().
@@ -510,9 +510,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i, mem := range msg.memories {
 			items[i] = memoryItem{memory: mem}
 		}
-		m.list.SetItems(items)
+		// Force complete list recreation to ensure clean display
+		m.list.SetItems([]list.Item{}) // Clear first
+		m.list.SetItems(items)         // Then set new items
+		m.list.ResetSelected()         // Reset selection
 		m.message = fmt.Sprintf("Loaded %d memories", len(msg.memories))
-		return m, nil
+		// Force a complete screen redraw
+		return m, tea.ClearScreen
 
 	case memoryAddedMsg:
 		m.loading = false
@@ -531,9 +535,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i, mem := range msg.memories {
 			items[i] = memoryItem{memory: mem}
 		}
-		m.list.SetItems(items)
+		// Force complete list recreation to ensure clean display
+		m.list.SetItems([]list.Item{}) // Clear first
+		m.list.SetItems(items)         // Then set new items
+		m.list.ResetSelected()         // Reset selection
 		m.message = fmt.Sprintf("Found %d memories", len(msg.memories))
-		return m, nil
+		// Force a complete screen redraw
+		return m, tea.ClearScreen
 
 	case errMsg:
 		m.loading = false
@@ -548,6 +556,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textArea.SetWidth(msg.Width - 8) // Adjust for box padding and borders
 		m.searchInput.Width = msg.Width - 20 // Adjust for box padding and "Command: " text
 		m.promptInput.Width = msg.Width - 20 // Adjust for box padding and "Command: " text
+		// Force a refresh of the list display when window size changes
+		if m.state == listView {
+			m.list.ResetSelected()
+		}
 		return m, nil
 
 	case spinner.TickMsg:
@@ -843,7 +855,41 @@ func (m model) renderListView() string {
 
 	title := titleStyle.Render("🧠 Tom Memory Manager")
 	help := helpStyle.Render("📝 Memory Manager | Tab: switch focus | Enter: view detail | Del: delete")
-	listContent := fmt.Sprintf("%s\n%s\n%s", title, m.list.View(), help)
+	
+	// Get the list view
+	listView := m.list.View()
+	
+	// Calculate the exact dimensions for the list display area
+	availableHeight := m.list.Height()
+	availableWidth := m.list.Width()
+	
+	// Split the current list view into lines
+	listLines := strings.Split(listView, "\n")
+	
+	// If we have fewer lines than available height, fill the rest with blank lines
+	if len(listLines) < availableHeight {
+		blankLines := clearListArea(availableHeight-len(listLines), availableWidth)
+		listLines = append(listLines, blankLines...)
+	}
+	
+	// If we have more lines than available height, truncate
+	if len(listLines) > availableHeight {
+		listLines = listLines[:availableHeight]
+	}
+	
+	// Ensure each line is exactly the right width (pad or truncate)
+	for i, line := range listLines {
+		if len(line) < availableWidth {
+			listLines[i] = line + strings.Repeat(" ", availableWidth-len(line))
+		} else if len(line) > availableWidth {
+			listLines[i] = line[:availableWidth]
+		}
+	}
+	
+	// Join back into a single string
+	paddedListView := strings.Join(listLines, "\n")
+	
+	listContent := fmt.Sprintf("%s\n%s\n%s", title, paddedListView, help)
 	
 	return style.Render(listContent)
 }
@@ -943,6 +989,23 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// Helper function to create a blank line of specified width
+func createBlankLine(width int) string {
+	if width <= 0 {
+		return ""
+	}
+	return strings.Repeat(" ", width)
+}
+
+// Helper function to clear the list display area completely
+func clearListArea(height, width int) []string {
+	lines := make([]string, height)
+	for i := range lines {
+		lines[i] = createBlankLine(width)
+	}
+	return lines
 }
 
 func (m model) renderAddView() string {
