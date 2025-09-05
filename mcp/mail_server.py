@@ -574,6 +574,131 @@ class MailService:
             if tomlogger:
                 tomlogger.error(f"Error deleting email: {str(e)}", module_name="mail")
             return json.dumps({"error": f"Failed to delete email: {str(e)}"}, ensure_ascii=False)
+    
+    def create_folder(self, folder_name: str) -> str:
+        """Create a new folder/mailbox"""
+        try:
+            with imaplib.IMAP4_SSL(self.imap_config['host'], self.imap_config['port']) as imap:
+                imap.login(self.imap_config['username'], self.imap_config['password'])
+                
+                # Create folder
+                status, response = imap.create(folder_name)
+                
+                if status != 'OK':
+                    return json.dumps({"error": f"Failed to create folder: {response[0].decode() if response else 'Unknown error'}"}, ensure_ascii=False)
+                
+                result = {
+                    "status": "success",
+                    "message": "Folder created successfully",
+                    "folder_name": folder_name
+                }
+                
+                if tomlogger:
+                    tomlogger.info(f"Created folder '{folder_name}'", module_name="mail")
+                
+                return json.dumps(result, ensure_ascii=False)
+                
+        except Exception as e:
+            if tomlogger:
+                tomlogger.error(f"Error creating folder: {str(e)}", module_name="mail")
+            return json.dumps({"error": f"Failed to create folder: {str(e)}"}, ensure_ascii=False)
+    
+    def list_folders(self) -> str:
+        """List all folders/mailboxes"""
+        try:
+            with imaplib.IMAP4_SSL(self.imap_config['host'], self.imap_config['port']) as imap:
+                imap.login(self.imap_config['username'], self.imap_config['password'])
+                
+                # List all folders
+                status, folders = imap.list()
+                
+                if status != 'OK':
+                    return json.dumps({"error": "Failed to list folders"}, ensure_ascii=False)
+                
+                folder_list = []
+                for folder in folders:
+                    if folder:
+                        folder_str = folder.decode()
+                        # Extract folder name from IMAP LIST response
+                        # Format is typically: (flags) "delimiter" "folder_name"
+                        parts = folder_str.split('"')
+                        if len(parts) >= 3:
+                            folder_name = parts[-2]
+                            # Get folder flags (first part)
+                            flags = parts[0].strip('() ')
+                            folder_list.append({
+                                "name": folder_name,
+                                "flags": flags
+                            })
+                
+                result = {
+                    "status": "success",
+                    "count": len(folder_list),
+                    "folders": folder_list
+                }
+                
+                if tomlogger:
+                    tomlogger.info(f"Listed {len(folder_list)} folders", module_name="mail")
+                
+                return json.dumps(result, ensure_ascii=False)
+                
+        except Exception as e:
+            if tomlogger:
+                tomlogger.error(f"Error listing folders: {str(e)}", module_name="mail")
+            return json.dumps({"error": f"Failed to list folders: {str(e)}"}, ensure_ascii=False)
+    
+    def move_email_to_folder(self, email_id: str, folder_name: str) -> str:
+        """Move an email to a specific folder"""
+        try:
+            with imaplib.IMAP4_SSL(self.imap_config['host'], self.imap_config['port']) as imap:
+                imap.login(self.imap_config['username'], self.imap_config['password'])
+                imap.select('INBOX')
+                
+                # Check if target folder exists
+                status, folders = imap.list()
+                folder_exists = False
+                if status == 'OK':
+                    for folder in folders:
+                        if folder:
+                            folder_str = folder.decode()
+                            if folder_name in folder_str:
+                                folder_exists = True
+                                break
+                
+                if not folder_exists:
+                    return json.dumps({"error": f"Target folder '{folder_name}' does not exist"}, ensure_ascii=False)
+                
+                # Copy email to target folder
+                copy_status, copy_response = imap.copy(email_id.encode(), folder_name)
+                if copy_status != 'OK':
+                    return json.dumps({"error": f"Failed to copy email to folder: {copy_response[0].decode() if copy_response else 'Unknown error'}"}, ensure_ascii=False)
+                
+                # Mark original email as deleted
+                imap.store(email_id.encode(), '+FLAGS', '\\Deleted')
+                
+                # Expunge to remove from INBOX
+                try:
+                    imap.expunge()
+                except:
+                    # Some servers don't support expunge or handle it differently
+                    pass
+                
+                result = {
+                    "status": "success",
+                    "message": f"Email moved to folder '{folder_name}'",
+                    "email_id": email_id,
+                    "folder_name": folder_name
+                }
+                
+                if tomlogger:
+                    tomlogger.info(f"Moved email {email_id} to folder '{folder_name}'", module_name="mail")
+                
+                return json.dumps(result, ensure_ascii=False)
+                
+        except Exception as e:
+            if tomlogger:
+                tomlogger.error(f"Error moving email to folder: {str(e)}", module_name="mail")
+            return json.dumps({"error": f"Failed to move email to folder: {str(e)}"}, ensure_ascii=False)
 
 
 # Load configuration and initialize mail service
@@ -684,6 +809,42 @@ def delete_email(email_id: str) -> str:
         tomlogger.info(f"Tool call: delete_email with email_id={email_id}", module_name="mail")
     
     return mail_service.delete_email(email_id)
+
+
+@server.tool()
+def create_folder(folder_name: str) -> str:
+    """Create a new folder/mailbox.
+    
+    Args:
+        folder_name: Name of the folder to create
+    """
+    if tomlogger:
+        tomlogger.info(f"Tool call: create_folder with folder_name={folder_name}", module_name="mail")
+    
+    return mail_service.create_folder(folder_name)
+
+
+@server.tool()
+def list_folders() -> str:
+    """List all available folders/mailboxes. Returns folder names and flags."""
+    if tomlogger:
+        tomlogger.info("Tool call: list_folders", module_name="mail")
+    
+    return mail_service.list_folders()
+
+
+@server.tool()
+def move_email_to_folder(email_id: str, folder_name: str) -> str:
+    """Move an email to a specific folder.
+    
+    Args:
+        email_id: ID of the email to move
+        folder_name: Name of the target folder
+    """
+    if tomlogger:
+        tomlogger.info(f"Tool call: move_email_to_folder with email_id={email_id} folder_name={folder_name}", module_name="mail")
+    
+    return mail_service.move_email_to_folder(email_id, folder_name)
 
 
 @server.resource("description://mail")
