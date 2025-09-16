@@ -26,7 +26,7 @@ document.addEventListener("DOMContentLoaded", () => {
     fetch("/reset", { method: "POST" })
         .then(response => response.json())
         .then(data => {
-            if (data.success) {
+            if (data.status === "OK") {
                 console.log("Session history reset automatically on page load");
             } else {
                 console.error("Failed to reset session history:", data.message);
@@ -40,6 +40,21 @@ document.addEventListener("DOMContentLoaded", () => {
     let isSpeaking = false; // Flag for TTS state
     let autoSubmitEnabled = false; // Auto-submit state
     let soundEnabled = true; // Sound state (default: enabled)
+
+    // Check external library availability on page load
+    function checkLibrariesAvailability() {
+        console.log('External libraries status:');
+        console.log('- Marked (markdown parser):', typeof marked !== 'undefined' ? '✓ Available' : '✗ Not available');
+        console.log('- DOMPurify (HTML sanitizer):', typeof DOMPurify !== 'undefined' ? '✓ Available' : '✗ Not available');
+        console.log('- Firebase app:', typeof firebase !== 'undefined' ? '✓ Available' : '✗ Not available');
+        
+        // Log user agent for debugging mobile issues
+        console.log('User Agent:', navigator.userAgent);
+        console.log('Display mode:', window.matchMedia('(display-mode: standalone)').matches ? 'PWA' : 'Web browser');
+    }
+    
+    // Run check after DOM is loaded
+    setTimeout(checkLibrariesAvailability, 1000);
 
     // Settings persistence functions
     function saveSettings() {
@@ -174,13 +189,15 @@ document.addEventListener("DOMContentLoaded", () => {
                     })
                     .then(data => {
                         // Afficher la réponse de /process après les messages de tâches
-                        if (data.response) {
-                            addMessageToChat("bot", data.response);
+                        // Handle both response formats: sound disabled (response) and sound enabled (text_display)
+                        const messageToDisplay = data.response || data.text_display;
+                        if (messageToDisplay) {
+                            addMessageToChat("bot", messageToDisplay);
     
                             // Use local TTS if enabled
                             if (soundEnabled && isTTSAvailable()) {
-                                // Use response_tts if available (server-synthesized), otherwise fallback to sanitized response
-                                const textToSpeak = data.response_tts || sanitizeText(data.response);
+                                // Use text_tts if available (server-synthesized), otherwise fallback to sanitized response
+                                const textToSpeak = data.text_tts || sanitizeText(messageToDisplay);
                                 speakText(textToSpeak);
                             }
                         }
@@ -192,7 +209,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         fetch("/reset", { method: "POST" })
                             .then(response => response.json())
                             .then(data => {
-                                if (data.success) {
+                                if (data.status === "OK") {
                                     const failureMessage = "Échec";
                                     addMessageToChat("bot", failureMessage);
                                 } else {
@@ -220,16 +237,53 @@ document.addEventListener("DOMContentLoaded", () => {
     function sanitizeText(text){
         const openPattern = /\[open:(.+)\]/;
         displayText = text.replace(openPattern, "").trim();
-        sanitizedText = DOMPurify.sanitize(displayText);
+        
+        // Use DOMPurify if available, otherwise use basic HTML escaping
+        if (typeof DOMPurify !== 'undefined') {
+            sanitizedText = DOMPurify.sanitize(displayText);
+        } else {
+            console.warn('DOMPurify not available in sanitizeText, using basic HTML escaping');
+            sanitizedText = escapeHtml(displayText);
+        }
 
         return sanitizedText;
 
     }
 
+    // Helper function to escape HTML characters (fallback when DOMPurify is not available)
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     function renderMarkdown(text) {
-        // Parse markdown and sanitize the result
-        const htmlContent = marked.parse(text);
-        return DOMPurify.sanitize(htmlContent);
+        // Check if marked is available, fallback to plain text if not
+        if (typeof marked === 'undefined') {
+            console.warn('Marked library not available, using plain text');
+            return escapeHtml(text);
+        }
+        
+        // Check if DOMPurify is available
+        if (typeof DOMPurify === 'undefined') {
+            console.warn('DOMPurify library not available, using basic HTML escaping');
+            try {
+                const htmlContent = marked.parse(text);
+                return escapeHtml(htmlContent);
+            } catch (e) {
+                console.error('Marked parsing failed:', e);
+                return escapeHtml(text);
+            }
+        }
+        
+        // Both libraries available, use normal flow with error handling
+        try {
+            const htmlContent = marked.parse(text);
+            return DOMPurify.sanitize(htmlContent);
+        } catch (e) {
+            console.error('Markdown rendering failed:', e);
+            return escapeHtml(text);
+        }
     }
 
     // Function to add a message to the chat
@@ -258,7 +312,13 @@ document.addEventListener("DOMContentLoaded", () => {
         if (sender === "bot") {
             messageDiv.innerHTML = renderMarkdown(processedText);
         } else {
-            messageDiv.innerHTML = DOMPurify.sanitize(processedText);
+            // Use DOMPurify if available, otherwise use basic HTML escaping
+            if (typeof DOMPurify !== 'undefined') {
+                messageDiv.innerHTML = DOMPurify.sanitize(processedText);
+            } else {
+                console.warn('DOMPurify not available for user message, using basic HTML escaping');
+                messageDiv.innerHTML = escapeHtml(processedText);
+            }
         }
 
         chatBox.appendChild(messageDiv);
@@ -326,7 +386,7 @@ document.addEventListener("DOMContentLoaded", () => {
         fetch("/reset", { method: "POST" })
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
+                if (data.status === "OK") {
                     // Clear the chat box content
                     chatBox.innerHTML = "";
     

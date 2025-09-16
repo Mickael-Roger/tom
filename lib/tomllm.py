@@ -52,7 +52,8 @@ class TomLLM:
         self.history = {
             'web': [],      # Web browser client
             'android': [],  # Android mobile client  
-            'tui': []       # Terminal UI client
+            'tui': [],      # Terminal UI client
+            'pwa': []       # Progressive Web App client
         }
         
         # Debug logging configuration
@@ -595,7 +596,7 @@ class TomLLM:
             user_request: User's request text
             position: Optional GPS position {'latitude': float, 'longitude': float}
             available_modules: List of {'name': str, 'description': str}
-            client_type: 'web', 'tui', or 'android'
+            client_type: 'web', 'android', 'tui', or 'pwa'
             personal_context: User's personal context from configuration
             mcp_client: Optional MCPClient instance for memory retrieval
             
@@ -886,7 +887,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             complexity: LLM complexity level to use
             max_iterations: Maximum number of tool call iterations
             mcp_client: MCPClient instance for executing MCP tools
-            client_type: Client type for history tracking ('web', 'android', 'tui')
+            client_type: Client type for history tracking ('web', 'android', 'tui', 'pwa')
             track_history: Whether to track conversation in history
             selected_modules: List of selected module names for behavior prompts
             
@@ -1359,7 +1360,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         Add a message to conversation history for specific client type
         
         Args:
-            client_type: 'web', 'android', or 'tui'
+            client_type: 'web', 'android', 'tui', or 'pwa'
             message: Message dict to add to history
         """
         if client_type not in self.history:
@@ -1386,7 +1387,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         Add user request to history
         
         Args:
-            client_type: 'web', 'android', or 'tui'
+            client_type: 'web', 'android', 'tui', or 'pwa'
             user_content: User's request text
         """
         user_message = {
@@ -1402,7 +1403,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         Add assistant tool calls to history
         
         Args:
-            client_type: 'web', 'android', or 'tui'
+            client_type: 'web', 'android', 'tui', or 'pwa'
             tool_calls: List of tool call objects from LLM response
         """
         assistant_message = {
@@ -1419,7 +1420,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         Add tool execution result to history
         
         Args:
-            client_type: 'web', 'android', or 'tui'
+            client_type: 'web', 'android', 'tui', or 'pwa'
             tool_call_id: ID of the tool call this result corresponds to
             result_content: JSON string result from tool execution
         """
@@ -1437,7 +1438,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         Add final assistant response to history
         
         Args:
-            client_type: 'web', 'android', or 'tui'
+            client_type: 'web', 'android', 'tui', or 'pwa'
             response_content: Final response text from assistant
         """
         response_message = {
@@ -1456,7 +1457,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         Args:
             tom_persona: Tom's persona description for the specific context
             personal_context: User's personal context from config
-            client_type: 'web', 'android', or 'tui'
+            client_type: 'web', 'android', 'tui', or 'pwa'
             
         Returns:
             JSON-formatted static system message dict (cacheable)
@@ -1475,7 +1476,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             "formatting": {
                 "markdown": True,
                 "language": "auto-detect to match user input",
-                "no_urls_direct": True if client_type in ['web', 'android'] else False
+                "no_urls_direct": True if client_type in ['web', 'android', 'pwa'] else False
             }
         }
         
@@ -1560,7 +1561,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
             weeknumber: Current week number
             gps: GPS position string (empty if not available)
             personal_context: User's personal context from config
-            client_type: 'web', 'android', or 'tui'
+            client_type: 'web', 'android', 'tui', or 'pwa'
             available_tools: Whether tools are available for this conversation
             
         Returns:
@@ -1649,7 +1650,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         Build conversation with history prepended in correct order
         
         Args:
-            client_type: 'web', 'android', or 'tui'
+            client_type: 'web', 'android', 'tui', or 'pwa'
             current_conversation: Current conversation messages (user request, response formatting, etc)
             temporal_message: DEPRECATED - Optional temporal message (date/GPS) that goes first but never in history
             tom_prompt: DEPRECATED - Optional Tom prompt that goes second but never in history
@@ -1827,7 +1828,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         Reset conversation history for specific client type, with optional behavior tuning analysis
         
         Args:
-            client_type: 'web', 'android', or 'tui'
+            client_type: 'web', 'android', 'tui', or 'pwa'
             mcp_client: Optional MCPClient instance for behavior tuning analysis
         """
         if client_type not in self.history:
@@ -1873,7 +1874,7 @@ Once you call the 'modules_needed_to_answer_user_prompt' function, the user's re
         Get the number of messages in history for a client type
         
         Args:
-            client_type: 'web', 'android', or 'tui'
+            client_type: 'web', 'android', 'tui', or 'pwa'
             
         Returns:
             Number of messages in history
